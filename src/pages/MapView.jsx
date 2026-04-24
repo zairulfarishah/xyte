@@ -1,29 +1,25 @@
 import { useEffect, useState } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet'
 import { supabase } from '../supabase'
+import { Search } from 'lucide-react'
 import 'leaflet/dist/leaflet.css'
 
 const STATUS_COLORS = {
-  upcoming:  '#EAB308',
-  ongoing:   '#F97316',
-  completed: '#22C55E',
-  cancelled: '#EF4444',
-  postponed: '#6B7280',
+  upcoming:  { dot: '#eab308', bg: '#fef9c3', text: '#854d0e', border: '#fde047' },
+  ongoing:   { dot: '#f97316', bg: '#ffedd5', text: '#9a3412', border: '#fb923c' },
+  completed: { dot: '#22c55e', bg: '#dcfce7', text: '#166534', border: '#4ade80' },
+  cancelled: { dot: '#ef4444', bg: '#fee2e2', text: '#991b1b', border: '#f87171' },
+  postponed: { dot: '#94a3b8', bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' },
 }
 
-const STATUS_BADGE = {
-  upcoming:  'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30',
-  ongoing:   'bg-orange-500/20 text-orange-400 border border-orange-500/30',
-  completed: 'bg-green-500/20 text-green-400 border border-green-500/30',
-  cancelled: 'bg-red-500/20 text-red-400 border border-red-500/30',
-  postponed: 'bg-gray-500/20 text-gray-400 border border-gray-500/30',
-}
+const TABS = ['All','Upcoming','Ongoing','Completed','Cancelled','Postponed']
 
 export default function MapView() {
-  const [sites, setSites]         = useState([])
-  const [selected, setSelected]   = useState(null)
-  const [filter, setFilter]       = useState('all')
-  const [loading, setLoading]     = useState(true)
+  const [sites, setSites]       = useState([])
+  const [selected, setSelected] = useState(null)
+  const [tab, setTab]           = useState('All')
+  const [search, setSearch]     = useState('')
+  const [loading, setLoading]   = useState(true)
 
   useEffect(() => { fetchSites() }, [])
 
@@ -37,135 +33,176 @@ export default function MapView() {
     setLoading(false)
   }
 
-  const filtered = filter === 'all'
-    ? sites
-    : sites.filter(s => s.site_status === filter)
+  const filtered = sites
+    .filter(s => tab === 'All' || s.site_status === tab.toLowerCase())
+    .filter(s => !search || s.site_name.toLowerCase().includes(search.toLowerCase()) || s.location.toLowerCase().includes(search.toLowerCase()))
 
   const withCoords = filtered.filter(s => s.latitude && s.longitude)
-
   const center = withCoords.length > 0
     ? [withCoords[0].latitude, withCoords[0].longitude]
     : [3.1390, 101.6869]
 
+  const counts = Object.keys(STATUS_COLORS).reduce((acc, k) => {
+    acc[k] = sites.filter(s => s.site_status === k).length
+    return acc
+  }, {})
+
   if (loading) return (
-    <div className="flex items-center justify-center h-64">
-      <p className="text-gray-500">Loading map...</p>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+      <div style={{ color: '#64748b' }}>Loading map...</div>
     </div>
   )
 
   return (
-    <div className="space-y-4">
+    <div style={{ padding: '28px', height: '100vh', display: 'flex', flexDirection: 'column' }}>
 
       {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold text-white">Map</h2>
-        <p className="text-gray-400 text-sm mt-1">All site locations</p>
-      </div>
-
-      {/* Filter */}
-      <div className="flex gap-2 flex-wrap">
-        {['all','upcoming','ongoing','completed','cancelled','postponed'].map(s => (
-          <button
-            key={s}
-            onClick={() => setFilter(s)}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors border ${
-              filter === s
-                ? 'bg-blue-600 border-blue-600 text-white'
-                : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white'
-            }`}
-          >
-            {s === 'all' ? 'All' : s}
-          </button>
-        ))}
-      </div>
-
-      {/* Legend */}
-      <div className="flex gap-4 flex-wrap">
-        {Object.entries(STATUS_COLORS).map(([status, color]) => (
-          <div key={status} className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
-            <span className="text-xs text-gray-400 capitalize">{status}</span>
-          </div>
-        ))}
+      <div style={{ marginBottom: '20px' }}>
+        <h1 style={{ fontSize: '22px', fontWeight: '700', color: '#0f172a' }}>Map</h1>
+        <p style={{ color: '#64748b', fontSize: '13px', marginTop: '2px' }}>All site locations</p>
       </div>
 
       {/* Main layout */}
-      <div className="flex gap-4 h-[600px]">
+      <div style={{ display: 'flex', gap: '20px', flex: 1, minHeight: 0 }}>
 
-        {/* Site list — left panel */}
-        <div className="w-64 flex-shrink-0 bg-gray-900 border border-gray-800 rounded-xl overflow-y-auto">
-          {filtered.length === 0 ? (
-            <p className="text-gray-500 text-sm p-4">No sites found.</p>
-          ) : filtered.map(site => (
-            <div
-              key={site.id}
-              onClick={() => setSelected(site)}
-              className={`p-3 border-b border-gray-800 cursor-pointer transition-colors hover:bg-gray-800 ${
-                selected?.id === site.id ? 'bg-gray-800 border-l-2 border-l-blue-500' : ''
-              }`}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm font-medium truncate">{site.site_name}</p>
-                  <p className="text-gray-500 text-xs truncate mt-0.5">{site.location}</p>
-                  <p className="text-gray-600 text-xs mt-1">
-                    {new Date(site.scheduled_date).toLocaleDateString('en-MY', {
-                      day: 'numeric', month: 'short', year: 'numeric'
-                    })}
-                  </p>
-                </div>
-                <div
-                  className="w-2.5 h-2.5 rounded-full flex-shrink-0 mt-1"
-                  style={{ backgroundColor: STATUS_COLORS[site.site_status] }}
-                />
-              </div>
+        {/* Left panel */}
+        <div style={{ width: '300px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+          {/* Search */}
+          <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '12px' }}>
+            <div style={{ position: 'relative' }}>
+              <Search size={13} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+              <input
+                placeholder="Search sites..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                style={{ width: '100%', padding: '7px 10px 7px 30px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', color: '#0f172a' }}
+              />
             </div>
-          ))}
+          </div>
+
+          {/* Filter tabs */}
+          <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '12px' }}>
+            <p style={{ fontSize: '11px', fontWeight: '600', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Filters</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              {TABS.map(t => {
+                const key = t.toLowerCase()
+                const c   = STATUS_COLORS[key]
+                const isActive = tab === t
+                return (
+                  <button key={t} onClick={() => setTab(t)} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '7px 10px', borderRadius: '8px', border: 'none', cursor: 'pointer',
+                    background: isActive ? '#eff6ff' : 'transparent',
+                    transition: 'all 0.15s'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {t !== 'All' && (
+                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: c?.dot || '#94a3b8' }} />
+                      )}
+                      <span style={{ fontSize: '13px', fontWeight: isActive ? '600' : '400', color: isActive ? '#1d4ed8' : '#64748b' }}>{t}</span>
+                    </div>
+                    {t !== 'All' && (
+                      <span style={{ fontSize: '11px', background: '#f1f5f9', color: '#64748b', padding: '1px 7px', borderRadius: '99px' }}>
+                        {counts[key] || 0}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Summary */}
+          <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '12px' }}>
+            <p style={{ fontSize: '11px', fontWeight: '600', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px' }}>Summary</p>
+            {Object.entries(STATUS_COLORS).map(([key, c]) => (
+              <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: c.dot }} />
+                  <span style={{ fontSize: '13px', color: '#475569', textTransform: 'capitalize' }}>{key}</span>
+                </div>
+                <span style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a' }}>{counts[key] || 0}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Site list */}
+          <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', flex: 1, overflowY: 'auto' }}>
+            <div style={{ padding: '12px', borderBottom: '1px solid #f1f5f9' }}>
+              <p style={{ fontSize: '11px', fontWeight: '600', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Sites ({filtered.length})
+              </p>
+            </div>
+            {filtered.length === 0 ? (
+              <p style={{ padding: '20px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>No sites found.</p>
+            ) : filtered.map(site => {
+              const c = STATUS_COLORS[site.site_status]
+              const isSelected = selected?.id === site.id
+              return (
+                <div key={site.id} onClick={() => setSelected(isSelected ? null : site)} style={{
+                  padding: '12px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer',
+                  background: isSelected ? '#eff6ff' : 'white',
+                  borderLeft: isSelected ? '3px solid #2563eb' : '3px solid transparent',
+                  transition: 'all 0.15s'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ fontWeight: '600', fontSize: '13px', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{site.site_name}</p>
+                      <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{site.location}</p>
+                      <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+                        {new Date(site.scheduled_date).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </p>
+                    </div>
+                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: c?.dot, flexShrink: 0, marginTop: '4px' }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
 
-        {/* Map — right panel */}
-        <div className="flex-1 rounded-xl overflow-hidden border border-gray-800">
-          <MapContainer
-            center={center}
-            zoom={10}
-            style={{ height: '100%', width: '100%' }}
-          >
+        {/* Map */}
+        <div style={{ flex: 1, borderRadius: '12px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+          <MapContainer center={center} zoom={10} style={{ height: '100%', width: '100%' }}>
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
             {withCoords.map(site => {
-              const pic  = site.site_assignments?.find(a => a.assignment_role === 'PIC')
-              const crew = site.site_assignments?.filter(a => a.assignment_role === 'crew')
+              const c   = STATUS_COLORS[site.site_status]
+              const pic = site.site_assignments?.find(a => a.assignment_role === 'PIC')
+              const crew = site.site_assignments?.filter(a => a.assignment_role === 'crew') || []
+              const isSelected = selected?.id === site.id
               return (
                 <CircleMarker
                   key={site.id}
                   center={[site.latitude, site.longitude]}
-                  radius={selected?.id === site.id ? 14 : 10}
+                  radius={isSelected ? 14 : 10}
                   pathOptions={{
-                    color:       STATUS_COLORS[site.site_status],
-                    fillColor:   STATUS_COLORS[site.site_status],
-                    fillOpacity: 0.8,
-                    weight:      selected?.id === site.id ? 3 : 1.5,
+                    color: isSelected ? '#2563eb' : c?.dot,
+                    fillColor: c?.dot,
+                    fillOpacity: 0.85,
+                    weight: isSelected ? 3 : 2,
                   }}
                   eventHandlers={{ click: () => setSelected(site) }}
                 >
                   <Popup>
-                    <div style={{ minWidth: '160px' }}>
-                      <p style={{ fontWeight: 600, marginBottom: 4 }}>{site.site_name}</p>
-                      <p style={{ color: '#6b7280', fontSize: 12 }}>{site.location}</p>
-                      <p style={{ fontSize: 12, marginTop: 4 }}>
-                        {new Date(site.scheduled_date).toLocaleDateString('en-MY', {
-                          day: 'numeric', month: 'short', year: 'numeric'
-                        })}
+                    <div style={{ minWidth: '180px', fontFamily: 'Inter, sans-serif' }}>
+                      <p style={{ fontWeight: '700', fontSize: '14px', marginBottom: '4px', color: '#0f172a' }}>{site.site_name}</p>
+                      <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '6px' }}>{site.location}</p>
+                      <div style={{ display: 'inline-block', background: c?.bg, color: c?.text, border: `1px solid ${c?.border}`, padding: '2px 8px', borderRadius: '99px', fontSize: '11px', fontWeight: '500', marginBottom: '8px', textTransform: 'capitalize' }}>{site.site_status}</div>
+                      <p style={{ fontSize: '12px', color: '#475569', marginBottom: '2px' }}>
+                        <span style={{ color: '#94a3b8' }}>Date: </span>
+                        {new Date(site.scheduled_date).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })}
                       </p>
-                      <p style={{ fontSize: 12, marginTop: 4 }}>
-                        <span style={{ color: '#6b7280' }}>PIC: </span>
+                      <p style={{ fontSize: '12px', color: '#475569', marginBottom: '2px' }}>
+                        <span style={{ color: '#94a3b8' }}>PIC: </span>
                         {pic?.team_members?.full_name || '—'}
                       </p>
-                      {crew?.length > 0 && (
-                        <p style={{ fontSize: 12 }}>
-                          <span style={{ color: '#6b7280' }}>Crew: </span>
+                      {crew.length > 0 && (
+                        <p style={{ fontSize: '12px', color: '#475569' }}>
+                          <span style={{ color: '#94a3b8' }}>Crew: </span>
                           {crew.map(c => c.team_members?.full_name).join(', ')}
                         </p>
                       )}
@@ -177,60 +214,6 @@ export default function MapView() {
           </MapContainer>
         </div>
       </div>
-
-      {/* Selected site detail */}
-      {selected && (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <h3 className="text-white font-semibold">{selected.site_name}</h3>
-                <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_BADGE[selected.site_status]}`}>
-                  {selected.site_status}
-                </span>
-              </div>
-              <p className="text-gray-400 text-sm">{selected.location}</p>
-              <div className="mt-3 flex gap-6 text-sm">
-                <div>
-                  <p className="text-gray-500 text-xs mb-1">Date</p>
-                  <p className="text-white">
-                    {new Date(selected.scheduled_date).toLocaleDateString('en-MY', {
-                      weekday: 'short', day: 'numeric', month: 'short', year: 'numeric'
-                    })}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-500 text-xs mb-1">PIC</p>
-                  <p className="text-blue-400">
-                    {selected.site_assignments?.find(a => a.assignment_role === 'PIC')?.team_members?.full_name || '—'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-500 text-xs mb-1">Crew</p>
-                  <p className="text-gray-300">
-                    {selected.site_assignments
-                      ?.filter(a => a.assignment_role === 'crew')
-                      ?.map(c => c.team_members?.full_name)
-                      ?.join(', ') || '—'}
-                  </p>
-                </div>
-                {selected.notes && (
-                  <div>
-                    <p className="text-gray-500 text-xs mb-1">Notes</p>
-                    <p className="text-gray-300">{selected.notes}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-            <button
-              onClick={() => setSelected(null)}
-              className="text-gray-600 hover:text-white text-lg transition-colors"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
