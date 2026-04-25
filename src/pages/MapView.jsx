@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet'
 import { supabase } from '../supabase'
 import { Search } from 'lucide-react'
+import PlaceSearchBox from '../components/PlaceSearchBox'
 import 'leaflet/dist/leaflet.css'
 
 const STATUS_COLORS = {
@@ -19,6 +20,8 @@ export default function MapView() {
   const [selected, setSelected] = useState(null)
   const [tab, setTab]           = useState('All')
   const [search, setSearch]     = useState('')
+  const [placeQuery, setPlaceQuery] = useState('')
+  const [placeResult, setPlaceResult] = useState(null)
   const [loading, setLoading]   = useState(true)
 
   useEffect(() => { fetchSites() }, [])
@@ -41,6 +44,10 @@ export default function MapView() {
   const center = withCoords.length > 0
     ? [withCoords[0].latitude, withCoords[0].longitude]
     : [3.1390, 101.6869]
+  const activeCenter = placeResult ? [placeResult.latitude, placeResult.longitude] : center
+  const activeMapKey = placeResult
+    ? `search-${placeResult.latitude}-${placeResult.longitude}-${tab}`
+    : `default-${center[0]}-${center[1]}-${tab}`
 
   const counts = Object.keys(STATUS_COLORS).reduce((acc, k) => {
     acc[k] = sites.filter(s => s.site_status === k).length
@@ -54,16 +61,16 @@ export default function MapView() {
   )
 
   return (
-    <div style={{ padding: '28px', height: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ padding: '16px 20px', height: 'calc(100vh - 54px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
       {/* Header */}
-      <div style={{ marginBottom: '20px' }}>
-        <h1 style={{ fontSize: '22px', fontWeight: '700', color: '#0f172a' }}>Map</h1>
-        <p style={{ color: '#64748b', fontSize: '13px', marginTop: '2px' }}>All site locations</p>
+      <div style={{ marginBottom: '12px', flexShrink: 0 }}>
+        <h1 style={{ fontSize: '20px', fontWeight: '700', color: '#0f172a' }}>Map</h1>
+        <p style={{ color: '#64748b', fontSize: '12px', marginTop: '1px' }}>All site locations</p>
       </div>
 
       {/* Main layout */}
-      <div style={{ display: 'flex', gap: '20px', flex: 1, minHeight: 0 }}>
+      <div style={{ display: 'flex', gap: '16px', flex: 1, minHeight: 0 }}>
 
         {/* Left panel */}
         <div style={{ width: '300px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -79,6 +86,16 @@ export default function MapView() {
                 style={{ width: '100%', padding: '7px 10px 7px 30px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', color: '#0f172a' }}
               />
             </div>
+          </div>
+
+          <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '12px' }}>
+            <p style={{ fontSize: '11px', fontWeight: '600', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Find Place</p>
+            <PlaceSearchBox
+              value={placeQuery}
+              onChange={setPlaceQuery}
+              onSelect={result => setPlaceResult(result)}
+              placeholder="Search a place on the map..."
+            />
           </div>
 
           {/* Filter tabs */}
@@ -164,7 +181,7 @@ export default function MapView() {
 
         {/* Map */}
         <div style={{ flex: 1, borderRadius: '12px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-          <MapContainer center={center} zoom={10} style={{ height: '100%', width: '100%' }}>
+          <MapContainer key={activeMapKey} center={activeCenter} zoom={placeResult ? 14 : 10} style={{ height: '100%', width: '100%' }}>
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -211,6 +228,20 @@ export default function MapView() {
                 </CircleMarker>
               )
             })}
+            {placeResult && (
+              <CircleMarker
+                center={[placeResult.latitude, placeResult.longitude]}
+                radius={10}
+                pathOptions={{ color: '#0f172a', fillColor: '#2563eb', fillOpacity: 1, weight: 3 }}
+              >
+                <Popup>
+                  <div style={{ minWidth: '180px', fontFamily: 'Inter, sans-serif' }}>
+                    <p style={{ fontWeight: '700', fontSize: '14px', marginBottom: '4px', color: '#0f172a' }}>Selected Location</p>
+                    <p style={{ fontSize: '12px', color: '#64748b', lineHeight: 1.5 }}>{placeResult.label}</p>
+                  </div>
+                </Popup>
+              </CircleMarker>
+            )}
           </MapContainer>
         </div>
       </div>

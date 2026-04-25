@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabase'
-import { User, Bell, Shield, Database, Info } from 'lucide-react'
+import { User, Info } from 'lucide-react'
+import { ROLE_MULTIPLIERS, WEEKLY_CAPACITY_DAYS } from '../utils/workload'
 
 const AVATAR_COLORS = ['#2563eb','#7c3aed','#db2777','#059669','#d97706','#dc2626']
 
@@ -134,22 +135,48 @@ export default function SettingsPage() {
               {/* Weightage info */}
               <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '20px' }}>
                 <h2 style={{ fontSize: '15px', fontWeight: '600', color: '#0f172a', marginBottom: '4px' }}>Workload Weightage</h2>
-                <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '16px' }}>Points assigned per task type</p>
+                <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '16px' }}>% of weekly capacity per task type (week = {WEEKLY_CAPACITY_DAYS} days)</p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {[
-                    { label: 'PIC Assignment',    pts: 5, color: '#2563eb', bg: '#eff6ff', desc: 'Liaises with client, manages full process' },
-                    { label: 'Crew Assignment',   pts: 3, color: '#7c3aed', bg: '#faf5ff', desc: 'On-site work, same as PIC at site level' },
-                    { label: 'Report (doing)',     pts: 2, color: '#059669', bg: '#f0fdf4', desc: 'Writing and preparing the report' },
-                    { label: 'Report (prep)',      pts: 2, color: '#d97706', bg: '#fffbeb', desc: 'Data preparation and review' },
-                  ].map(({ label, pts, color, bg, desc }) => (
+                    {
+                      label: 'PIC — Site Scanning', color: '#2563eb', bg: '#eff6ff',
+                      desc: 'Liaises with client, manages full process',
+                      pct: `${((ROLE_MULTIPLIERS.site_scanning.pic / WEEKLY_CAPACITY_DAYS) * 100).toFixed(0)}% per day`,
+                      example: `e.g. 1-day site = ${((1 / WEEKLY_CAPACITY_DAYS) * 100 * ROLE_MULTIPLIERS.site_scanning.pic).toFixed(0)}%`,
+                    },
+                    {
+                      label: 'Crew — Site Scanning', color: '#7c3aed', bg: '#faf5ff',
+                      desc: 'On-site scanning work',
+                      pct: `${((ROLE_MULTIPLIERS.site_scanning.crew / WEEKLY_CAPACITY_DAYS) * 100).toFixed(0)}% per day`,
+                      example: `e.g. 1-day site = ${((1 / WEEKLY_CAPACITY_DAYS) * 100 * ROLE_MULTIPLIERS.site_scanning.crew).toFixed(0)}%`,
+                    },
+                    {
+                      label: 'PIC / Crew — Site Visit', color: '#059669', bg: '#f0fdf4',
+                      desc: 'Fixed half-day visit, same weight for all',
+                      pct: `${((0.5 / WEEKLY_CAPACITY_DAYS) * 100).toFixed(0)}% fixed`,
+                      example: 'Always half day (0.5)',
+                    },
+                    {
+                      label: 'Meeting', color: '#d97706', bg: '#fffbeb',
+                      desc: 'Contributes based on meeting duration',
+                      pct: '9–18% per meeting',
+                      example: '2hrs=5% / half day=9% / full day=18%',
+                    },
+                    {
+                      label: 'Report Preparation', color: '#dc2626', bg: '#fef2f2',
+                      desc: 'When site moves to report phase',
+                      pct: `${((1 / WEEKLY_CAPACITY_DAYS) * 100).toFixed(0)}% per day`,
+                      example: `e.g. 1-day report = ${((1 / WEEKLY_CAPACITY_DAYS) * 100).toFixed(0)}%`,
+                    },
+                  ].map(({ label, color, bg, desc, pct, example }) => (
                     <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', background: bg, borderRadius: '10px' }}>
                       <div>
                         <p style={{ fontWeight: '600', fontSize: '13px', color }}>{label}</p>
                         <p style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{desc}</p>
+                        <p style={{ fontSize: '10px', color: '#94a3b8', marginTop: '1px' }}>{example}</p>
                       </div>
-                      <div style={{ background: 'white', borderRadius: '8px', padding: '6px 14px', textAlign: 'center', minWidth: '60px' }}>
-                        <p style={{ fontSize: '18px', fontWeight: '700', color }}>{pts}</p>
-                        <p style={{ fontSize: '10px', color: '#94a3b8' }}>pts</p>
+                      <div style={{ background: 'white', borderRadius: '8px', padding: '6px 12px', textAlign: 'center', minWidth: '80px', flexShrink: 0 }}>
+                        <p style={{ fontSize: '13px', fontWeight: '700', color }}>{pct}</p>
                       </div>
                     </div>
                   ))}
