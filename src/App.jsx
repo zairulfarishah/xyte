@@ -206,7 +206,7 @@ function PageLoader() {
 
 function AppShell() {
   const navigate = useNavigate()
-  const { user, loading: authLoading, fullName } = useAuth()
+  const { user, loading: authLoading, fullName, avatarUrl } = useAuth()
   const [searchOpen, setSearchOpen] = useState(false)
   const [notifOpen, setNotifOpen]   = useState(false)
   const [notifs, setNotifs]         = useState([])
@@ -342,8 +342,11 @@ function AppShell() {
           </div>
 
           <div ref={avatarRef} style={{ position: 'relative' }}>
-            <button onClick={() => setAvatarOpen(o => !o)} style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#1d4ed8', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '700', fontSize: '11px', cursor: 'pointer' }}>
-              {fullName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+            <button onClick={() => setAvatarOpen(o => !o)} style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#1d4ed8', border: 'none', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '700', fontSize: '11px', cursor: 'pointer' }}>
+              {avatarUrl
+                ? <img src={avatarUrl} alt={fullName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                : fullName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+              }
             </button>
             {avatarOpen && (
               <div style={{ position: 'absolute', right: 0, top: '42px', width: '200px', background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 12px 40px rgba(0,0,0,0.18)', zIndex: 1100, overflow: 'hidden' }}>
