@@ -1,15 +1,16 @@
-import { useState, useEffect, useRef } from 'react'
+import { lazy, Suspense, useState, useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, useNavigate } from 'react-router-dom'
 import { Search, Bell, X, MapPin, Users } from 'lucide-react'
 import { supabase } from './supabase'
-import Dashboard from './pages/Dashboard'
-import Sites from './pages/Sites'
-import SiteDetail from './pages/SiteDetail'
-import MapView from './pages/MapView'
-import Team from './pages/Team'
-import Library from './pages/Library'
-import Reports from './pages/Reports'
-import SettingsPage from './pages/SettingsPage'
+
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Sites = lazy(() => import('./pages/Sites'))
+const SiteDetail = lazy(() => import('./pages/SiteDetail'))
+const MapView = lazy(() => import('./pages/MapView'))
+const Team = lazy(() => import('./pages/Team'))
+const Library = lazy(() => import('./pages/Library'))
+const Reports = lazy(() => import('./pages/Reports'))
+const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 
 const NAV = [
   { to: '/',         label: 'Dashboard', end: true  },
@@ -180,6 +181,26 @@ function NotifDropdown({ notifs, lastSeen, onClose }) {
   )
 }
 
+function PageLoader() {
+  return (
+    <div style={{ minHeight: 'calc(100vh - 54px)', display: 'grid', placeItems: 'center', padding: '32px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: '#475569', fontSize: '14px', fontWeight: '600' }}>
+        <div
+          style={{
+            width: '18px',
+            height: '18px',
+            borderRadius: '50%',
+            border: '2px solid #dbeafe',
+            borderTopColor: '#2563eb',
+            animation: 'spin 0.8s linear infinite',
+          }}
+        />
+        Loading page...
+      </div>
+    </div>
+  )
+}
+
 function AppShell() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [notifOpen, setNotifOpen]   = useState(false)
@@ -286,16 +307,18 @@ function AppShell() {
 
       {/* Main */}
       <main style={{ flex: 1, minWidth: 0 }}>
-        <Routes>
-          <Route path="/"          element={<Dashboard />}    />
-          <Route path="/sites"     element={<Sites />}        />
-          <Route path="/sites/:id" element={<SiteDetail />}   />
-          <Route path="/map"       element={<MapView />}      />
-          <Route path="/team"      element={<Team />}         />
-          <Route path="/library"   element={<Library />}      />
-          <Route path="/reports"   element={<Reports />}      />
-          <Route path="/settings"  element={<SettingsPage />} />
-        </Routes>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            <Route path="/"          element={<Dashboard />}    />
+            <Route path="/sites"     element={<Sites />}        />
+            <Route path="/sites/:id" element={<SiteDetail />}   />
+            <Route path="/map"       element={<MapView />}      />
+            <Route path="/team"      element={<Team />}         />
+            <Route path="/library"   element={<Library />}      />
+            <Route path="/reports"   element={<Reports />}      />
+            <Route path="/settings"  element={<SettingsPage />} />
+          </Routes>
+        </Suspense>
       </main>
 
       {searchOpen && <SearchOverlay onClose={() => setSearchOpen(false)} />}
