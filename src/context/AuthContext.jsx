@@ -3,7 +3,18 @@ import { supabase } from '../supabase'
 
 const AuthContext = createContext(null)
 
-const ADMIN_EMAIL = 'zairul.f@sonicon.com.my'
+const ADMIN_EMAIL = 'zairul.f@xradar.asia'
+
+function getAuthDisplayName(user) {
+  return (
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.name ||
+    user?.user_metadata?.display_name ||
+    user?.identities?.[0]?.identity_data?.full_name ||
+    user?.identities?.[0]?.identity_data?.name ||
+    ''
+  )
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser]       = useState(null)
@@ -12,10 +23,11 @@ export function AuthProvider({ children }) {
 
   async function fetchMember(email) {
     if (!email) { setMember(null); return }
+    const normalizedEmail = String(email).trim().toLowerCase()
     const { data } = await supabase
       .from('team_members')
       .select('short_name, full_name, avatar_url')
-      .eq('email', email)
+      .ilike('email', normalizedEmail)
       .single()
     setMember(data || null)
   }
@@ -29,12 +41,13 @@ export function AuthProvider({ children }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       const u = session?.user ?? null
       setUser(u)
-      fetchMember(u?.email)
+      fetchMember(u?.email).finally(() => setLoading(false))
     })
     return () => subscription.unsubscribe()
   }, [])
 
-  const fullName  = member?.full_name  || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User'
+  const authDisplayName = getAuthDisplayName(user)
+  const fullName  = member?.full_name || authDisplayName || user?.email?.split('@')[0] || 'User'
   const firstName = member?.short_name || fullName.split(' ')[0]
   const avatarUrl = member?.avatar_url || null
   const isZairul = user?.email === ADMIN_EMAIL

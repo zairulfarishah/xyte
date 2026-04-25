@@ -227,19 +227,8 @@ function AppShell() {
     await supabase.auth.signOut()
   }
 
-  if (authLoading) return (
-    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#0f172a' }}>
-      <div style={{ width: '20px', height: '20px', borderRadius: '50%', border: '2px solid #1e3a8a', borderTopColor: '#2563eb', animation: 'spin 0.8s linear infinite' }} />
-    </div>
-  )
-
-  if (!user) return (
-    <Suspense fallback={null}>
-      <LoginPage />
-    </Suspense>
-  )
-
   useEffect(() => {
+    if (!user) return undefined
     fetchNotifs()
     const channel = supabase
       .channel('notifications-realtime')
@@ -248,7 +237,7 @@ function AppShell() {
       })
       .subscribe()
     return () => supabase.removeChannel(channel)
-  }, [])
+  }, [user])
 
   useEffect(() => {
     function handle(e) {
@@ -278,6 +267,18 @@ function AppShell() {
   }
 
   const unread = notifs.filter(n => new Date(n.created_at) > new Date(lastSeen)).length
+
+  if (authLoading) return (
+    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#0f172a' }}>
+      <div style={{ width: '20px', height: '20px', borderRadius: '50%', border: '2px solid #1e3a8a', borderTopColor: '#2563eb', animation: 'spin 0.8s linear infinite' }} />
+    </div>
+  )
+
+  if (!user) return (
+    <Suspense fallback={null}>
+      <LoginPage />
+    </Suspense>
+  )
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#f1f5f9' }}>
