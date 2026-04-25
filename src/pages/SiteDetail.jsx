@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { ChevronLeft, ChevronRight, Pencil, MapPin, Upload, X, Users, FileText, LayoutGrid } from 'lucide-react'
+import { getSiteHeaderImage } from '../utils/siteHeader'
 
 const STATUS_COLORS = {
   upcoming:  { bg: '#fef9c3', text: '#854d0e', border: '#fde047' },
@@ -152,7 +153,14 @@ export default function SiteDetail() {
     <div style={{ background: '#f1f5f9', minHeight: '100vh' }}>
 
       {/* Dark header */}
-      <div style={{ background: '#0f172a', padding: '24px 28px' }}>
+      <div style={{ background: '#0f172a', padding: '24px 28px', position: 'relative', overflow: 'hidden' }}>
+        <img
+          src={site.site_photo_url || getSiteHeaderImage(site.site_type)}
+          alt=""
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+        />
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,0.35), rgba(15,23,42,0.82))' }} />
+        <div style={{ position: 'relative', zIndex: 1 }}>
         {/* Breadcrumb */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '16px' }}>
           <Link to="/sites" style={{ color: '#64748b', fontSize: '13px', textDecoration: 'none' }}>Sites</Link>
@@ -188,6 +196,7 @@ export default function SiteDetail() {
         <p style={{ color: '#475569', fontSize: '13px', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
           <MapPin size={12} color="#475569" /> {site.location}
         </p>
+        </div>
       </div>
 
       {/* Content */}
@@ -265,6 +274,7 @@ export default function SiteDetail() {
                     { label: 'Scheduled Date',  value: new Date(site.scheduled_date).toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' }) },
                     { label: 'Site Duration',   value: `${site.site_duration_days} day(s)` },
                     { label: 'Report Duration', value: site.report_duration_days > 0 ? `${site.report_duration_days} day(s)` : 'N/A' },
+                    { label: 'Client Company',  value: site.client_company_name || 'Not set' },
                     { label: 'Location',        value: site.location },
                     { label: 'Coordinates',     value: site.latitude && site.longitude ? `${Number(site.latitude).toFixed(4)}, ${Number(site.longitude).toFixed(4)}` : 'Not set' },
                   ].map(({ label, value }) => (

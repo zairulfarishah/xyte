@@ -6,6 +6,7 @@ import { Plus, Pencil, Trash2, Search, ArrowUpRight, MapPin, Users, Activity, X,
 import { notify } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
+import { getSiteHeaderImage } from '../utils/siteHeader'
 import 'leaflet/dist/leaflet.css'
 
 const CARD_GRADIENTS = {
@@ -104,6 +105,7 @@ function StatusPill({ status, colors }) {
 const EMPTY = {
   site_type: 'site_scanning',
   site_name: '', location: '', latitude: '', longitude: '',
+  client_company_name: '',
   client_name: '', client_number: '', scope_of_work: '', salesperson: '',
   scheduled_date: '', site_status: 'upcoming', report_status: 'pending',
   site_duration_days: '1', report_duration_days: '0.5',
@@ -146,6 +148,14 @@ export default function Sites() {
   const location = useLocation()
   useEffect(() => { fetchAll() }, [])
   useEffect(() => { if (location.state?.openAdd) openAdd() }, [location.state])
+  useEffect(() => {
+    function handleOpenAdd() {
+      openAdd()
+    }
+
+    window.addEventListener('xyte:open-add-site', handleOpenAdd)
+    return () => window.removeEventListener('xyte:open-add-site', handleOpenAdd)
+  }, [])
 
   async function fetchAll() {
     setLoading(true)
@@ -182,6 +192,7 @@ export default function Sites() {
       site_type: site.site_type || 'site_scanning',
       site_name: site.site_name, location: site.location,
       latitude: site.latitude || '', longitude: site.longitude || '',
+      client_company_name: site.client_company_name || '',
       client_name: site.client_name || '',
       client_number: site.client_number || '',
       scope_of_work: site.scope_of_work || '',
@@ -230,6 +241,7 @@ export default function Sites() {
       site_name: form.site_name, location: form.location,
       latitude:  form.latitude  !== '' ? parseFloat(form.latitude)  : null,
       longitude: form.longitude !== '' ? parseFloat(form.longitude) : null,
+      client_company_name: form.client_company_name || null,
       client_name: form.client_name || null,
       client_number: form.client_number || null,
       scope_of_work: form.scope_of_work || null,
@@ -339,11 +351,9 @@ export default function Sites() {
               >
                 {/* Banner */}
                 <div style={{ height: '64px', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: CARD_GRADIENTS[site.site_type] || CARD_GRADIENTS.site_scanning }}>
-                  {site.site_photo_url && (
-                    <img src={site.site_photo_url} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
-                  )}
-                  <div style={{ position: 'absolute', inset: 0, background: site.site_photo_url ? 'rgba(0,0,0,0.38)' : 'transparent' }} />
-                  {!site.site_photo_url && <TypeIcon size={22} color="rgba(255,255,255,0.25)" />}
+                  <img src={site.site_photo_url || getSiteHeaderImage(site.site_type)} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.22)' }} />
+                  {!site.site_photo_url && <TypeIcon size={22} color="rgba(255,255,255,0.55)" />}
                   <div style={{ position: 'absolute', bottom: '7px', left: '10px', display: 'flex', alignItems: 'center', gap: '4px', zIndex: 1 }}>
                     <MapPin size={10} color="rgba(255,255,255,0.6)" />
                     <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '10px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{site.location}</span>
@@ -604,6 +614,10 @@ export default function Sites() {
                 />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Client Company Name</label>
+                  <input style={inputStyle} value={form.client_company_name} placeholder="e.g. XRadar Asia Sdn Bhd" onChange={e => setForm(f => ({ ...f, client_company_name: e.target.value }))} />
+                </div>
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Client Name</label>
                   <input style={inputStyle} value={form.client_name} placeholder="e.g. TNB Bhd" onChange={e => setForm(f => ({ ...f, client_name: e.target.value }))} />

@@ -61,6 +61,7 @@ const EMPTY_FORM = {
   location: '',
   latitude: '',
   longitude: '',
+  client_company_name: '',
   client_name: '',
   client_number: '',
   scope_of_work: '',
@@ -208,10 +209,22 @@ export default function Dashboard() {
   const [uploadError, setUploadError] = useState(null)
   const photoInputRef = useRef(null)
   const [updateSite, setUpdateSite] = useState(null)
+  const [quickAssign, setQuickAssign] = useState(null)
+  const [quickAssignSaving, setQuickAssignSaving] = useState(false)
   const [mapFilter, setMapFilter] = useState('all')
 
   useEffect(() => {
     fetchAll()
+  }, [])
+
+  useEffect(() => {
+    function handleOpenAdd() {
+      setForm(EMPTY_FORM)
+      setShowAdd(true)
+    }
+
+    window.addEventListener('xyte:open-add-site', handleOpenAdd)
+    return () => window.removeEventListener('xyte:open-add-site', handleOpenAdd)
   }, [])
 
   async function fetchAll() {
@@ -268,6 +281,7 @@ export default function Dashboard() {
       location: form.location,
       latitude: form.latitude !== '' ? parseFloat(form.latitude) : null,
       longitude: form.longitude !== '' ? parseFloat(form.longitude) : null,
+      client_company_name: form.client_company_name || null,
       client_name: form.client_name || null,
       client_number: form.client_number || null,
       scope_of_work: form.scope_of_work || null,
@@ -325,6 +339,62 @@ export default function Dashboard() {
 
     setSaving(false)
     setUpdateSite(null)
+    fetchAll()
+  }
+
+  function openQuickAssign(site = null) {
+    const targetSite = site
+      || noPicSites[0]
+      || soonSites[0]
+      || upcoming[0]
+      || sites.find(item => !['completed', 'cancelled'].includes(item.site_status))
+
+    if (!targetSite) {
+      setForm(EMPTY_FORM)
+      setShowAdd(true)
+      return
+    }
+
+    const assignments = targetSite.site_assignments || []
+    const currentPic = assignments.find(item => String(item.assignment_role).toLowerCase() === 'pic')?.member_id || ''
+    const currentCrew = assignments
+      .filter(item => String(item.assignment_role).toLowerCase() === 'crew')
+      .map(item => item.member_id)
+
+    setQuickAssign({
+      siteId: targetSite.id,
+      picId: currentPic,
+      crewIds: currentCrew,
+    })
+  }
+
+  async function handleQuickAssignSave() {
+    if (!quickAssign?.siteId) return
+    setQuickAssignSaving(true)
+
+    await supabase
+      .from('site_assignments')
+      .delete()
+      .eq('site_id', quickAssign.siteId)
+
+    const assignments = []
+    if (quickAssign.picId) {
+      assignments.push({ site_id: quickAssign.siteId, member_id: quickAssign.picId, assignment_role: 'PIC' })
+    }
+    quickAssign.crewIds.forEach(memberId => {
+      if (memberId !== quickAssign.picId) {
+        assignments.push({ site_id: quickAssign.siteId, member_id: memberId, assignment_role: 'crew' })
+      }
+    })
+
+    if (assignments.length > 0) {
+      await supabase.from('site_assignments').insert(assignments)
+    }
+
+    const targetSite = sites.find(site => site.id === quickAssign.siteId)
+    await notify(`Updated assignments for ${targetSite?.site_name || 'site'}`, fullName)
+    setQuickAssignSaving(false)
+    setQuickAssign(null)
     fetchAll()
   }
 
@@ -464,6 +534,11 @@ export default function Dashboard() {
     approved: sites.filter(site => site.report_status === 'approved').length,
   }), [sites])
 
+  const assignableSites = useMemo(
+    () => sites.filter(site => !['completed', 'cancelled'].includes(site.site_status)),
+    [sites]
+  )
+
   const progressSites = useMemo(
     () => sites.filter(site => ['upcoming', 'ongoing', 'completed'].includes(site.site_status)).slice(0, 3),
     [sites]
@@ -492,7 +567,7 @@ export default function Dashboard() {
           background: 'radial-gradient(circle at 18% 5%, rgba(59,130,246,.22), transparent 26%), radial-gradient(circle at 70% 0%, rgba(14,165,233,.12), transparent 30%), linear-gradient(180deg, #071226 0 220px, #eef3f8 220px 100%)',
         }}
       >
-        <main style={{ maxWidth: '1540px', margin: '0 auto', padding: '30px 30px 36px' }}>
+        <main style={{ maxWidth: '1720px', margin: '0 auto', padding: '30px 18px 36px' }}>
           <section
             style={{
               display: 'grid',
@@ -699,6 +774,7 @@ export default function Dashboard() {
                 ))}
 
                 <button
+                  onClick={() => openQuickAssign()}
                   style={{
                     marginTop: '14px',
                     width: '100%',
@@ -1249,6 +1325,15 @@ export default function Dashboard() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
+                  <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Client Company Name</label>
+                  <input
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: 'white', color: '#0f172a', boxSizing: 'border-box' }}
+                    value={form.client_company_name}
+                    placeholder="e.g. XRadar Asia Sdn Bhd"
+                    onChange={event => setForm(f => ({ ...f, client_company_name: event.target.value }))}
+                  />
+                </div>
+                <div>
                   <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Client Name</label>
                   <input
                     style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: 'white', color: '#0f172a', boxSizing: 'border-box' }}
@@ -1494,6 +1579,103 @@ export default function Dashboard() {
                 <button
                   onClick={() => setUpdateSite(null)}
                   style={{ flex: 1, background: '#f1f5f9', color: '#374151', border: 'none', padding: '11px', borderRadius: '8px', fontSize: '13px', fontWeight: '500', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {quickAssign && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.45)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '16px',
+          }}
+          onClick={event => event.target === event.currentTarget && setQuickAssign(null)}
+        >
+          <div style={{ background: 'white', borderRadius: '18px', width: '100%', maxWidth: '540px', padding: '26px', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
+            <div style={{ marginBottom: '22px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a' }}>Quick Assign</h3>
+              <p style={{ fontSize: '13px', color: '#64748b', marginTop: '5px' }}>Assign PIC and crew for an active site directly from the dashboard.</p>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '6px' }}>Site</label>
+                <select
+                  value={quickAssign.siteId}
+                  onChange={event => openQuickAssign(assignableSites.find(site => site.id === event.target.value))}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '13px', background: 'white', color: '#0f172a' }}
+                >
+                  {assignableSites.map(site => (
+                    <option key={site.id} value={site.id}>
+                      {site.site_name} · {formatShortDate(site.scheduled_date)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '6px' }}>PIC</label>
+                <select
+                  value={quickAssign.picId}
+                  onChange={event => setQuickAssign(current => ({ ...current, picId: event.target.value }))}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '13px', background: 'white', color: '#0f172a' }}
+                >
+                  <option value="">- Select PIC -</option>
+                  {members.map(member => (
+                    <option key={member.id} value={member.id}>
+                      {member.full_name} · {member.workload.workload_percentage}% load
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '8px' }}>Crew</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '190px', overflowY: 'auto', paddingRight: '4px' }}>
+                  {members.map(member => (
+                    <label key={member.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '9px 10px', borderRadius: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', cursor: 'pointer' }}>
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a' }}>{member.full_name}</div>
+                        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{member.role} · {member.workload.workload_percentage}% load</div>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={quickAssign.crewIds.includes(member.id)}
+                        onChange={() => setQuickAssign(current => ({
+                          ...current,
+                          crewIds: current.crewIds.includes(member.id)
+                            ? current.crewIds.filter(id => id !== member.id)
+                            : [...current.crewIds, member.id],
+                        }))}
+                        style={{ accentColor: '#2563eb', width: '16px', height: '16px', flexShrink: 0 }}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', paddingTop: '4px' }}>
+                <button
+                  onClick={handleQuickAssignSave}
+                  disabled={quickAssignSaving}
+                  style={{ flex: 1, background: '#2563eb', color: 'white', border: 'none', padding: '11px', borderRadius: '10px', fontSize: '13px', fontWeight: '700', cursor: quickAssignSaving ? 'not-allowed' : 'pointer', opacity: quickAssignSaving ? 0.7 : 1 }}
+                >
+                  {quickAssignSaving ? 'Saving...' : 'Save Assignment'}
+                </button>
+                <button
+                  onClick={() => setQuickAssign(null)}
+                  style={{ flex: 1, background: '#f1f5f9', color: '#0f172a', border: 'none', padding: '11px', borderRadius: '10px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}
                 >
                   Cancel
                 </button>
