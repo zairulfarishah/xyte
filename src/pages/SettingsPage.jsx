@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabase'
-import { User, Info } from 'lucide-react'
+import { User, Info, Lock } from 'lucide-react'
 import { ROLE_MULTIPLIERS, WEEKLY_CAPACITY_DAYS } from '../utils/workload'
+
+const CURRENT_USER = 'Zairul Farishah'
 
 const AVATAR_COLORS = ['#2563eb','#7c3aed','#db2777','#059669','#d97706','#dc2626']
 
@@ -54,6 +56,18 @@ export default function SettingsPage() {
     border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none',
     background: '#f8fafc', color: '#0f172a'
   }
+
+  if (CURRENT_USER !== 'Zairul Farishah') return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: '16px' }}>
+      <div style={{ width: '56px', height: '56px', borderRadius: '16px', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Lock size={24} color="#ef4444" />
+      </div>
+      <div style={{ textAlign: 'center' }}>
+        <p style={{ fontWeight: '700', fontSize: '16px', color: '#0f172a', marginBottom: '4px' }}>Access Restricted</p>
+        <p style={{ color: '#64748b', fontSize: '13px' }}>Settings are only accessible by Zairul.</p>
+      </div>
+    </div>
+  )
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>

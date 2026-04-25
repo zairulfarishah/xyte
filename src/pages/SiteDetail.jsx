@@ -26,16 +26,18 @@ const TYPE_LABELS = {
   meeting:       'Meeting',
 }
 
-function Avatar({ name, size = 36, index = 0 }) {
+function Avatar({ name, size = 36, index = 0, avatarUrl = null }) {
   const initials = name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?'
   return (
     <div style={{
-      width: size, height: size, borderRadius: '50%',
-      background: AVATAR_COLORS[index % AVATAR_COLORS.length],
+      width: size, height: size, borderRadius: '50%', flexShrink: 0, overflow: 'hidden',
+      background: avatarUrl ? '#0f172a' : AVATAR_COLORS[index % AVATAR_COLORS.length],
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: 'white', fontWeight: '700', fontSize: size * 0.35, flexShrink: 0,
+      color: 'white', fontWeight: '700', fontSize: size * 0.35,
       border: '2px solid white',
-    }}>{initials}</div>
+    }}>
+      {avatarUrl ? <img src={avatarUrl} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initials}
+    </div>
   )
 }
 
@@ -71,7 +73,7 @@ export default function SiteDetail() {
     const [{ data: siteData }, { data: allSites }] = await Promise.all([
       supabase
         .from('sites')
-        .select('*, site_assignments(assignment_role, member_id, team_members(id, full_name, role))')
+        .select('*, site_assignments(assignment_role, member_id, team_members(id, full_name, role, avatar_url))')
         .eq('id', id)
         .single(),
       supabase
@@ -281,7 +283,7 @@ export default function SiteDetail() {
                   )}
                   {pic && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px', background: '#eff6ff', borderRadius: '12px', border: '1px solid #bfdbfe' }}>
-                      <Avatar name={pic.team_members?.full_name} size={48} index={0} />
+                      <Avatar name={pic.team_members?.full_name} size={48} index={0} avatarUrl={pic.team_members?.avatar_url} />
                       <div style={{ flex: 1 }}>
                         <p style={{ fontWeight: '600', fontSize: '14px', color: '#0f172a' }}>{pic.team_members?.full_name}</p>
                         <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>{pic.team_members?.role}</p>
@@ -291,7 +293,7 @@ export default function SiteDetail() {
                   )}
                   {crew.map((c, i) => (
                     <div key={c.member_id} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                      <Avatar name={c.team_members?.full_name} size={48} index={i + 1} />
+                      <Avatar name={c.team_members?.full_name} size={48} index={i + 1} avatarUrl={c.team_members?.avatar_url} />
                       <div style={{ flex: 1 }}>
                         <p style={{ fontWeight: '600', fontSize: '14px', color: '#0f172a' }}>{c.team_members?.full_name}</p>
                         <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>{c.team_members?.role}</p>

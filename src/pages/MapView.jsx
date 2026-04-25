@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet'
+import { MapContainer, TileLayer, CircleMarker, Tooltip } from 'react-leaflet'
 import { supabase } from '../supabase'
 import { Search } from 'lucide-react'
 import PlaceSearchBox from '../components/PlaceSearchBox'
@@ -99,31 +99,23 @@ export default function MapView() {
           </div>
 
           {/* Filter tabs */}
-          <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '12px' }}>
-            <p style={{ fontSize: '11px', fontWeight: '600', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Filters</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '10px' }}>
+            <p style={{ fontSize: '10px', fontWeight: '600', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '7px' }}>Filter</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
               {TABS.map(t => {
                 const key = t.toLowerCase()
                 const c   = STATUS_COLORS[key]
                 const isActive = tab === t
                 return (
                   <button key={t} onClick={() => setTab(t)} style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '7px 10px', borderRadius: '8px', border: 'none', cursor: 'pointer',
-                    background: isActive ? '#eff6ff' : 'transparent',
-                    transition: 'all 0.15s'
+                    display: 'flex', alignItems: 'center', gap: '5px',
+                    padding: '4px 9px', borderRadius: '99px', border: `1px solid ${isActive ? (c?.border || '#bfdbfe') : '#e2e8f0'}`,
+                    cursor: 'pointer', transition: 'all 0.15s',
+                    background: isActive ? (c?.bg || '#eff6ff') : 'transparent',
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {t !== 'All' && (
-                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: c?.dot || '#94a3b8' }} />
-                      )}
-                      <span style={{ fontSize: '13px', fontWeight: isActive ? '600' : '400', color: isActive ? '#1d4ed8' : '#64748b' }}>{t}</span>
-                    </div>
-                    {t !== 'All' && (
-                      <span style={{ fontSize: '11px', background: '#f1f5f9', color: '#64748b', padding: '1px 7px', borderRadius: '99px' }}>
-                        {counts[key] || 0}
-                      </span>
-                    )}
+                    {t !== 'All' && <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: c?.dot || '#94a3b8', flexShrink: 0 }} />}
+                    <span style={{ fontSize: '11px', fontWeight: isActive ? '700' : '500', color: isActive ? (c?.text || '#1d4ed8') : '#64748b', whiteSpace: 'nowrap' }}>{t}</span>
+                    {t !== 'All' && <span style={{ fontSize: '10px', color: isActive ? c?.text : '#94a3b8', fontWeight: '600' }}>{counts[key] || 0}</span>}
                   </button>
                 )
               })}
@@ -131,17 +123,19 @@ export default function MapView() {
           </div>
 
           {/* Summary */}
-          <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '12px' }}>
-            <p style={{ fontSize: '11px', fontWeight: '600', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px' }}>Summary</p>
-            {Object.entries(STATUS_COLORS).map(([key, c]) => (
-              <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: c.dot }} />
-                  <span style={{ fontSize: '13px', color: '#475569', textTransform: 'capitalize' }}>{key}</span>
+          <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '10px' }}>
+            <p style={{ fontSize: '10px', fontWeight: '600', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '7px' }}>Summary</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
+              {Object.entries(STATUS_COLORS).map(([key, c]) => (
+                <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc', borderRadius: '7px', padding: '5px 8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: c.dot, flexShrink: 0 }} />
+                    <span style={{ fontSize: '11px', color: '#475569', textTransform: 'capitalize' }}>{key}</span>
+                  </div>
+                  <span style={{ fontSize: '11px', fontWeight: '700', color: '#0f172a' }}>{counts[key] || 0}</span>
                 </div>
-                <span style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a' }}>{counts[key] || 0}</span>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
 
           {/* Site list */}
@@ -204,27 +198,31 @@ export default function MapView() {
                   }}
                   eventHandlers={{ click: () => setSelected(site) }}
                 >
-                  <Popup>
-                    <div style={{ minWidth: '180px', fontFamily: 'Inter, sans-serif' }}>
-                      <p style={{ fontWeight: '700', fontSize: '14px', marginBottom: '4px', color: '#0f172a' }}>{site.site_name}</p>
-                      <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '6px' }}>{site.location}</p>
-                      <div style={{ display: 'inline-block', background: c?.bg, color: c?.text, border: `1px solid ${c?.border}`, padding: '2px 8px', borderRadius: '99px', fontSize: '11px', fontWeight: '500', marginBottom: '8px', textTransform: 'capitalize' }}>{site.site_status}</div>
-                      <p style={{ fontSize: '12px', color: '#475569', marginBottom: '2px' }}>
-                        <span style={{ color: '#94a3b8' }}>Date: </span>
-                        {new Date(site.scheduled_date).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })}
-                      </p>
-                      <p style={{ fontSize: '12px', color: '#475569', marginBottom: '2px' }}>
-                        <span style={{ color: '#94a3b8' }}>PIC: </span>
-                        {pic?.team_members?.full_name || '—'}
-                      </p>
-                      {crew.length > 0 && (
-                        <p style={{ fontSize: '12px', color: '#475569' }}>
-                          <span style={{ color: '#94a3b8' }}>Crew: </span>
-                          {crew.map(c => c.team_members?.full_name).join(', ')}
+                  <Tooltip direction="top" offset={[0, -12]} opacity={1}>
+                    <div style={{ minWidth: '190px', fontFamily: 'Inter, sans-serif', padding: '2px 0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '5px' }}>
+                        <p style={{ fontWeight: '700', fontSize: '13px', color: '#0f172a', margin: 0 }}>{site.site_name}</p>
+                        <span style={{ background: c?.bg, color: c?.text, border: `1px solid ${c?.border}`, padding: '2px 7px', borderRadius: '99px', fontSize: '10px', fontWeight: '700', textTransform: 'capitalize', whiteSpace: 'nowrap' }}>{site.site_status}</span>
+                      </div>
+                      <p style={{ fontSize: '11px', color: '#64748b', marginBottom: '6px' }}>{site.location}</p>
+                      <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '6px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        <p style={{ fontSize: '11px', color: '#475569', margin: 0 }}>
+                          <span style={{ color: '#94a3b8' }}>Date: </span>
+                          {new Date(site.scheduled_date).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })}
                         </p>
-                      )}
+                        <p style={{ fontSize: '11px', color: '#475569', margin: 0 }}>
+                          <span style={{ color: '#94a3b8' }}>PIC: </span>
+                          {pic?.team_members?.full_name || '—'}
+                        </p>
+                        {crew.length > 0 && (
+                          <p style={{ fontSize: '11px', color: '#475569', margin: 0 }}>
+                            <span style={{ color: '#94a3b8' }}>Crew: </span>
+                            {crew.map(c => c.team_members?.full_name).join(', ')}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  </Popup>
+                  </Tooltip>
                 </CircleMarker>
               )
             })}
@@ -234,12 +232,12 @@ export default function MapView() {
                 radius={10}
                 pathOptions={{ color: '#0f172a', fillColor: '#2563eb', fillOpacity: 1, weight: 3 }}
               >
-                <Popup>
-                  <div style={{ minWidth: '180px', fontFamily: 'Inter, sans-serif' }}>
-                    <p style={{ fontWeight: '700', fontSize: '14px', marginBottom: '4px', color: '#0f172a' }}>Selected Location</p>
-                    <p style={{ fontSize: '12px', color: '#64748b', lineHeight: 1.5 }}>{placeResult.label}</p>
+                <Tooltip direction="top" offset={[0, -12]} opacity={1}>
+                  <div style={{ minWidth: '180px', fontFamily: 'Inter, sans-serif', padding: '2px 0' }}>
+                    <p style={{ fontWeight: '700', fontSize: '13px', color: '#0f172a', marginBottom: '4px' }}>Selected Location</p>
+                    <p style={{ fontSize: '11px', color: '#64748b', lineHeight: 1.5 }}>{placeResult.label}</p>
                   </div>
-                </Popup>
+                </Tooltip>
               </CircleMarker>
             )}
           </MapContainer>

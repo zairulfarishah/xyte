@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../supabase'
-import { Search, MapPin, Calendar, TrendingUp, Users, Briefcase, Activity, Clock, FileText, Radar } from 'lucide-react'
+import { Search, MapPin, Calendar, TrendingUp, Users, Briefcase, Activity, Clock, FileText, Radar, Camera } from 'lucide-react'
 import { calculateWorkload } from '../utils/workload'
 
 const AVATAR_COLORS = ['#2563eb', '#7c3aed', '#db2777', '#059669', '#d97706', '#dc2626']
@@ -24,28 +24,34 @@ const SITE_TYPE_COLORS = {
   meeting: { bg: 'rgba(168, 85, 247, 0.16)', text: '#e9d5ff', border: 'rgba(192, 132, 252, 0.35)' },
 }
 
-function Avatar({ name, size = 40, index = 0 }) {
+function Avatar({ name, size = 40, index = 0, avatarUrl = null, onUpload = null }) {
   const initials = name?.split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase() || '?'
+  const [hovered, setHovered] = useState(false)
 
   return (
     <div
+      onClick={onUpload}
+      onMouseEnter={() => onUpload && setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
-        width: size,
-        height: size,
-        borderRadius: '50%',
-        background: AVATAR_COLORS[index % AVATAR_COLORS.length],
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: 'white',
-        fontWeight: '700',
-        fontSize: size * 0.35,
-        flexShrink: 0,
+        width: size, height: size, borderRadius: '50%', flexShrink: 0, position: 'relative', overflow: 'hidden',
+        background: avatarUrl ? '#0f172a' : AVATAR_COLORS[index % AVATAR_COLORS.length],
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: 'white', fontWeight: '700', fontSize: size * 0.35,
         border: '2px solid rgba(255,255,255,0.82)',
         boxShadow: '0 14px 30px rgba(15, 23, 42, 0.18)',
+        cursor: onUpload ? 'pointer' : 'default',
       }}
     >
-      {initials}
+      {avatarUrl
+        ? <img src={avatarUrl} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        : initials
+      }
+      {onUpload && hovered && (
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Camera size={Math.max(size * 0.32, 12)} color="white" />
+        </div>
+      )}
     </div>
   )
 }
@@ -120,6 +126,27 @@ export default function Team() {
   const [selectedId, setSelectedId] = useState(null)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
+  const [uploadingFor, setUploadingFor] = useState(null)
+  const avatarInputRef = useRef(null)
+
+  function triggerAvatarUpload(memberId) {
+    setUploadingFor(memberId)
+    avatarInputRef.current?.click()
+  }
+
+  async function handleAvatarFileChange(e) {
+    const file = e.target.files[0]
+    if (!file || !uploadingFor) return
+    const ext = file.name.split('.').pop()
+    const path = `${uploadingFor}.${ext}`
+    const { error } = await supabase.storage.from('team-avatars').upload(path, file, { upsert: true })
+    if (error) { console.error('Avatar upload error:', error.message); setUploadingFor(null); return }
+    const { data: { publicUrl } } = supabase.storage.from('team-avatars').getPublicUrl(path)
+    await supabase.from('team_members').update({ avatar_url: publicUrl }).eq('id', uploadingFor)
+    setMembers(prev => prev.map(m => m.id === uploadingFor ? { ...m, avatar_url: publicUrl } : m))
+    setUploadingFor(null)
+    e.target.value = ''
+  }
 
   useEffect(() => {
     fetchAll()
@@ -230,6 +257,7 @@ export default function Team() {
 
   return (
     <div style={{ minHeight: '100vh', background: 'radial-gradient(circle at top left, #13315c 0%, #0b1220 38%, #060912 100%)' }}>
+      <input ref={avatarInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarFileChange} />
       <div style={{ maxWidth: '1540px', margin: '0 auto', padding: '26px 30px 36px' }}>
         <div
           style={{
@@ -351,7 +379,7 @@ export default function Team() {
                       boxShadow: isSelected ? '0 16px 36px rgba(37, 99, 235, 0.18)' : 'none',
                     }}
                   >
-                    <Avatar name={member.full_name} size={42} index={index} />
+                    <Avatar name={member.full_name} size={42} index={index} avatarUrl={member.avatar_url} onUpload={() => triggerAvatarUpload(member.id)} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontWeight: '600', fontSize: '13px', color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{member.full_name}</p>
                       <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{member.role}</p>
@@ -395,7 +423,7 @@ export default function Team() {
                   >
                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px' }}>
                       <div style={{ display: 'flex', gap: '16px' }}>
-                        <Avatar name={selected.full_name} size={68} index={selectedIndex} />
+                        <Avatar name={selected.full_name} size={68} index={selectedIndex} avatarUrl={selected.avatar_url} onUpload={() => triggerAvatarUpload(selected.id)} />
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px', flexWrap: 'wrap' }}>
                             <h2 style={{ fontSize: '23px', fontWeight: '800', color: 'white' }}>{selected.full_name}</h2>
@@ -620,7 +648,7 @@ export default function Team() {
 
                   return (
                     <div key={member.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '11px 12px', marginBottom: '8px', borderRadius: '18px', background: 'rgba(15,23,42,0.72)', border: '1px solid rgba(148,163,184,0.08)' }}>
-                      <Avatar name={member.full_name} size={38} index={index} />
+                      <Avatar name={member.full_name} size={38} index={index} avatarUrl={member.avatar_url} onUpload={() => triggerAvatarUpload(member.id)} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <p style={{ color: '#e2e8f0', fontSize: '12px', fontWeight: '700', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.full_name}</p>
                         <div style={{ height: '6px', background: 'rgba(148,163,184,0.12)', borderRadius: '999px', overflow: 'hidden', marginTop: '8px' }}>

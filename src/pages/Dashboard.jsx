@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../supabase'
 import { MapContainer, TileLayer, CircleMarker, Tooltip, useMapEvents } from 'react-leaflet'
 import { Link } from 'react-router-dom'
-import { ArrowUpRight, CheckCircle, Plus, Pencil, Calendar, Sparkles } from 'lucide-react'
+import { ArrowUpRight, CheckCircle, Plus, Pencil, Sparkles, Camera } from 'lucide-react'
 import { calculateWorkload } from '../utils/workload'
 import { notify } from '../utils/notify'
 import PlaceSearchBox from '../components/PlaceSearchBox'
@@ -52,12 +52,20 @@ const TYPE_COLORS = {
   meeting: { bg: '#faf5ff', text: '#6d28d9', border: '#c4b5fd' },
 }
 
+const SALESPERSONS = ['GH Tan', 'Chong Jie Yan', 'Jasmin', 'Darren', 'Wendy', 'Zairul']
+
+const CURRENT_USER = 'Zairul Farishah'
+
 const EMPTY_FORM = {
   site_type: 'site_scanning',
   site_name: '',
   location: '',
   latitude: '',
   longitude: '',
+  client_name: '',
+  client_number: '',
+  scope_of_work: '',
+  salesperson: '',
   scheduled_date: '',
   site_status: 'upcoming',
   report_status: 'pending',
@@ -66,6 +74,21 @@ const EMPTY_FORM = {
   notes: '',
   pic_id: '',
   crew_ids: [],
+  site_photo: null,
+  site_photo_preview: null,
+  site_photo_url: '',
+}
+
+async function uploadSitePhoto(file) {
+  const ext = file.name.split('.').pop()
+  const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+  const { error } = await supabase.storage.from('site-photos').upload(path, file)
+  if (error) {
+    console.error('Photo upload error:', error.message)
+    return { url: null, error: error.message }
+  }
+  const { data: { publicUrl } } = supabase.storage.from('site-photos').getPublicUrl(path)
+  return { url: publicUrl, error: null }
 }
 
 function MapClickHandler({ onPick }) {
@@ -98,27 +121,17 @@ function LocationPicker({ lat, lng, onPick, mapKey }) {
   )
 }
 
-function Avatar({ name, size = 36, index = 0 }) {
-  const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
-
+function Avatar({ name, size = 36, index = 0, avatarUrl = null }) {
+  const initials = name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?'
   return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        borderRadius: '50%',
-        background: AVATAR_COLORS[index % AVATAR_COLORS.length],
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: 'white',
-        fontWeight: '700',
-        fontSize: size * 0.35,
-        flexShrink: 0,
-        boxShadow: '0 12px 24px rgba(15,23,42,0.12)',
-      }}
-    >
-      {initials}
+    <div style={{
+      width: size, height: size, borderRadius: '50%', flexShrink: 0, overflow: 'hidden',
+      background: avatarUrl ? '#0f172a' : AVATAR_COLORS[index % AVATAR_COLORS.length],
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      color: 'white', fontWeight: '700', fontSize: size * 0.35,
+      boxShadow: '0 12px 24px rgba(15,23,42,0.12)',
+    }}>
+      {avatarUrl ? <img src={avatarUrl} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initials}
     </div>
   )
 }
@@ -192,10 +205,10 @@ export default function Dashboard() {
   const [showAdd, setShowAdd] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
+  const [uploadError, setUploadError] = useState(null)
+  const photoInputRef = useRef(null)
   const [updateSite, setUpdateSite] = useState(null)
   const [mapFilter, setMapFilter] = useState('all')
-  const [mapQuery, setMapQuery] = useState('')
-  const [mapSearchResult, setMapSearchResult] = useState(null)
 
   useEffect(() => {
     fetchAll()
@@ -211,7 +224,7 @@ export default function Dashboard() {
 
     const { data: allSites } = await supabase
       .from('sites')
-      .select('*, site_assignments(assignment_role, member_id, team_members(id, full_name))')
+      .select('*, site_assignments(assignment_role, member_id, team_members(id, full_name, avatar_url))')
       .order('scheduled_date', { ascending: true })
 
     const siteList = allSites || []
@@ -235,6 +248,18 @@ export default function Dashboard() {
     if (!form.site_name || !form.location || !form.scheduled_date) return
     setSaving(true)
 
+    setUploadError(null)
+    let photoUrl = form.site_photo_url
+    if (form.site_photo) {
+      const result = await uploadSitePhoto(form.site_photo)
+      if (result.error) {
+        setUploadError(result.error)
+        setSaving(false)
+        return
+      }
+      photoUrl = result.url
+    }
+
     const isSiteVisit = form.site_type === 'site_visit'
     const isMeeting = form.site_type === 'meeting'
     const payload = {
@@ -243,6 +268,11 @@ export default function Dashboard() {
       location: form.location,
       latitude: form.latitude !== '' ? parseFloat(form.latitude) : null,
       longitude: form.longitude !== '' ? parseFloat(form.longitude) : null,
+      client_name: form.client_name || null,
+      client_number: form.client_number || null,
+      scope_of_work: form.scope_of_work || null,
+      salesperson: form.salesperson || null,
+      site_photo_url: photoUrl || null,
       scheduled_date: form.scheduled_date,
       site_status: form.site_status,
       site_duration_days: isSiteVisit ? 0.5 : (parseFloat(form.site_duration_days) || 1),
@@ -271,7 +301,10 @@ export default function Dashboard() {
 
   async function handleStatusSave() {
     if (!updateSite) return
+    if (updateSite.report_status === 'approved' && CURRENT_USER !== 'Zairul Farishah') return
     setSaving(true)
+
+    const original = sites.find(s => s.id === updateSite.id)
 
     await supabase
       .from('sites')
@@ -281,7 +314,15 @@ export default function Dashboard() {
       })
       .eq('id', updateSite.id)
 
-    await notify(`Updated ${updateSite.site_name} -> ${updateSite.site_status}`)
+    await notify(`Updated ${updateSite.site_name} → ${updateSite.site_status}`)
+
+    if (original?.report_status !== updateSite.report_status) {
+      if (updateSite.report_status === 'submitted')
+        await notify(`Report for "${updateSite.site_name}" has been submitted — ready for review`)
+      if (updateSite.report_status === 'approved')
+        await notify(`Report for "${updateSite.site_name}" has been approved by Zairul`)
+    }
+
     setSaving(false)
     setUpdateSite(null)
     fetchAll()
@@ -299,13 +340,6 @@ export default function Dashboard() {
     if (mapFilter === 'completed') return site.site_status === 'completed'
     return true
   })
-  const activeMapCenter = mapSearchResult
-    ? [mapSearchResult.latitude, mapSearchResult.longitude]
-    : mapCenter
-  const activeMapKey = mapSearchResult
-    ? `search-${mapSearchResult.latitude}-${mapSearchResult.longitude}-${mapFilter}`
-    : `default-${mapCenter[0]}-${mapCenter[1]}-${mapFilter}`
-
   const noPicSites = sites.filter(site => !site.site_assignments?.some(a => a.assignment_role === 'PIC') && !['completed', 'cancelled'].includes(site.site_status))
   const soonSites = sites.filter(site => {
     const diff = (new Date(site.scheduled_date) - new Date()) / (1000 * 60 * 60 * 24)
@@ -330,6 +364,92 @@ export default function Dashboard() {
     [members]
   )
 
+  const smartInsight = useMemo(() => {
+    const shortestName = person => person?.full_name?.split(' ')[0] || 'Team member'
+    const primarySupport = supportCandidates.map(shortestName).join(' or ')
+    const topPendingReport = pendingReports[0]
+    const nearestSite = soonSites[0]
+
+    if (overloaded[0] && busiestMember) {
+      return {
+        tone: {
+          bg: '#fff7ed',
+          border: '#fed7aa',
+          title: '#7c2d12',
+          text: '#9a3412',
+          pillBg: '#ffedd5',
+          pillText: '#9a3412',
+        },
+        badge: 'Capacity Risk',
+        title: `${shortestName(busiestMember)} is carrying the heaviest load this week`,
+        body: `${busiestMember.workload.workload_percentage}% workload is starting to crowd the schedule. Shift prep or crew support to ${primarySupport || 'the lowest-load engineer'} to keep delivery stable.`,
+      }
+    }
+
+    if (nearestSite) {
+      const picName = shortestName(nearestSite.site_assignments?.find(a => a.assignment_role === 'PIC')?.team_members)
+      return {
+        tone: {
+          bg: '#eff6ff',
+          border: '#bfdbfe',
+          title: '#1d4ed8',
+          text: '#1e40af',
+          pillBg: '#dbeafe',
+          pillText: '#1d4ed8',
+        },
+        badge: 'Upcoming Visit',
+        title: `${nearestSite.site_name} needs final readiness check`,
+        body: `${formatShortDate(nearestSite.scheduled_date)} is coming up soon. Confirm PIC ${picName}, crew availability, and exact location pin before the visit window closes.`,
+      }
+    }
+
+    if (topPendingReport) {
+      return {
+        tone: {
+          bg: '#fefce8',
+          border: '#fde68a',
+          title: '#854d0e',
+          text: '#a16207',
+          pillBg: '#fef3c7',
+          pillText: '#92400e',
+        },
+        badge: 'Report Queue',
+        title: `${pendingReports.length} report${pendingReports.length === 1 ? '' : 's'} still need attention`,
+        body: `${topPendingReport.site_name} is the next reporting priority. Clearing the oldest draft first will reduce backlog and keep approvals moving.`,
+      }
+    }
+
+    if (noPicSites[0]) {
+      return {
+        tone: {
+          bg: '#fef2f2',
+          border: '#fecaca',
+          title: '#991b1b',
+          text: '#b91c1c',
+          pillBg: '#fee2e2',
+          pillText: '#991b1b',
+        },
+        badge: 'Ownership Gap',
+        title: `${noPicSites[0].site_name} does not have a PIC yet`,
+        body: 'Assigning one owner now will make the rest of the workflow clearer for crew planning, status updates, and report handoff.',
+      }
+    }
+
+    return {
+      tone: {
+        bg: '#f0fdf4',
+        border: '#bbf7d0',
+        title: '#166534',
+        text: '#15803d',
+        pillBg: '#dcfce7',
+        pillText: '#166534',
+      },
+      badge: 'All Clear',
+      title: 'The dashboard is in a healthy state today',
+      body: `No urgent deadline, overload, or ownership gap is standing out right now. Team average load is ${teamAverage}% with ${upcoming.length} upcoming task${upcoming.length === 1 ? '' : 's'} in view.`,
+    }
+  }, [busiestMember, noPicSites, overloaded, pendingReports, soonSites, supportCandidates, teamAverage, upcoming])
+
   const focusSite = useMemo(() => {
     if (soonSites[0]) return soonSites[0]
     if (upcoming[0]) return upcoming[0]
@@ -349,10 +469,6 @@ export default function Dashboard() {
     [sites]
   )
 
-  const timelineSites = useMemo(
-    () => [...upcoming].slice(0, 3),
-    [upcoming]
-  )
 
   if (loading) {
     return (
@@ -432,55 +548,61 @@ export default function Dashboard() {
             style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(6, minmax(0, 1fr))',
-              gap: '14px',
+              gap: '12px',
               marginBottom: '24px',
             }}
           >
             {[
-              { label: 'Total Sites', value: totalSites, trend: getTrendText(upcoming.length, 'sites'), icon: '▦', color: '#3b82f6', gradient: 'linear-gradient(135deg,#3b82f6,#2563eb)' },
-              { label: 'Upcoming', value: upcomingSitesCount, trend: getTrendText(upcomingSitesCount, 'upcoming'), icon: '▣', color: '#f59e0b', gradient: 'linear-gradient(135deg,#fbbf24,#f97316)' },
-              { label: 'Ongoing', value: activeSites, trend: activeSites === 0 ? 'All clear' : `${activeSites} active now`, icon: '◷', color: '#f59e0b', gradient: 'linear-gradient(135deg,#fde047,#f59e0b)' },
-              { label: 'Completed', value: completedSites, trend: completedSites > 0 ? `${Math.round((completedSites / Math.max(totalSites, 1)) * 100)}% completion` : 'No completions yet', icon: '✓', color: '#22c55e', gradient: 'linear-gradient(135deg,#4ade80,#16a34a)' },
-              { label: 'Team Members', value: members.length, trend: getTrendText(members.length, 'team'), icon: '♟', color: '#8b5cf6', gradient: 'linear-gradient(135deg,#8b5cf6,#6d28d9)' },
-              { label: 'Pending Reports', value: pendingReports.length, trend: getTrendText(pendingReports.length, 'alert'), icon: '▤', color: '#ef4444', gradient: 'linear-gradient(135deg,#fb7185,#ef4444)' },
+              { label: 'Total Sites',     value: totalSites,           trend: getTrendText(upcoming.length, 'sites'),   icon: '▦', color: '#2563eb', tint: 'rgba(37,99,235,.08)',   gradient: 'linear-gradient(135deg,#60a5fa,#2563eb)',  glow: 'rgba(37,99,235,.22)'  },
+              { label: 'Upcoming',        value: upcomingSitesCount,   trend: getTrendText(upcomingSitesCount,'upcoming'),icon: '▣', color: '#d97706', tint: 'rgba(217,119,6,.08)',   gradient: 'linear-gradient(135deg,#fbbf24,#f97316)',  glow: 'rgba(217,119,6,.22)'  },
+              { label: 'Ongoing',         value: activeSites,          trend: activeSites === 0 ? 'All clear' : `${activeSites} active now`, icon: '◉', color: '#ea580c', tint: 'rgba(234,88,12,.08)', gradient: 'linear-gradient(135deg,#fb923c,#dc2626)', glow: 'rgba(234,88,12,.22)' },
+              { label: 'Completed',       value: completedSites,       trend: completedSites > 0 ? `${Math.round((completedSites/Math.max(totalSites,1))*100)}% done` : 'None yet', icon: '✓', color: '#16a34a', tint: 'rgba(22,163,74,.08)', gradient: 'linear-gradient(135deg,#4ade80,#16a34a)', glow: 'rgba(22,163,74,.22)' },
+              { label: 'Team Members',    value: members.length,       trend: getTrendText(members.length,'team'),      icon: '◈', color: '#7c3aed', tint: 'rgba(124,58,237,.08)',  gradient: 'linear-gradient(135deg,#a78bfa,#6d28d9)',  glow: 'rgba(124,58,237,.22)' },
+              { label: 'Pending Reports', value: pendingReports.length,trend: getTrendText(pendingReports.length,'alert'),icon: '▤', color: '#dc2626', tint: 'rgba(220,38,38,.08)',  gradient: 'linear-gradient(135deg,#f87171,#dc2626)',  glow: 'rgba(220,38,38,.22)'  },
             ].map(card => (
               <div
                 key={card.label}
+                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = `0 12px 32px ${card.glow}, 0 2px 8px rgba(0,0,0,.06)` }}
+                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 1px 4px rgba(15,23,42,.06), 0 4px 16px rgba(15,23,42,.06)' }}
                 style={{
-                  background: 'rgba(255,255,255,.96)',
-                  border: '1px solid rgba(203,213,225,.75)',
+                  background: 'white',
+                  border: '1px solid rgba(226,232,240,.9)',
                   borderRadius: '16px',
-                  padding: '18px',
-                  boxShadow: '0 18px 45px rgba(15,23,42,.08)',
-                  display: 'grid',
-                  gridTemplateColumns: '44px 1fr',
-                  columnGap: '14px',
-                  alignItems: 'center',
-                  minHeight: '108px',
+                  padding: '16px 18px 14px',
+                  boxShadow: '0 1px 4px rgba(15,23,42,.06), 0 4px 16px rgba(15,23,42,.06)',
+                  position: 'relative',
+                  overflow: 'hidden',
+                  cursor: 'default',
+                  transition: 'transform .18s, box-shadow .18s',
                 }}
               >
-                <div
-                  style={{
-                    width: '44px',
-                    height: '44px',
-                    borderRadius: '12px',
-                    display: 'grid',
-                    placeItems: 'center',
-                    color: 'white',
-                    fontSize: '20px',
-                    fontWeight: '900',
-                    boxShadow: '0 12px 26px rgba(15,23,42,.12)',
-                    gridRow: '1 / span 2',
-                    background: card.gradient,
-                  }}
-                >
-                  {card.icon}
+                {/* tinted top bar */}
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: card.gradient }} />
+
+                {/* faint background glow blob */}
+                <div style={{ position: 'absolute', top: '-20px', right: '-20px', width: '80px', height: '80px', borderRadius: '50%', background: card.tint, filter: 'blur(16px)', pointerEvents: 'none' }} />
+
+                {/* icon badge */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                  <span style={{ fontSize: '10px', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.07em' }}>{card.label}</span>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: card.gradient, display: 'grid', placeItems: 'center', color: 'white', fontSize: '13px', fontWeight: '900', boxShadow: `0 4px 10px ${card.glow}`, flexShrink: 0 }}>
+                    {card.icon}
+                  </div>
                 </div>
-                <div>
-                  <div style={{ color: '#334155', fontSize: '13px', fontWeight: '700' }}>{card.label}</div>
-                  <div style={{ marginTop: '5px', fontSize: '26px', fontWeight: '850', letterSpacing: '-.04em', color: '#0f172a' }}>{card.value}</div>
+
+                {/* value */}
+                <div style={{ fontSize: '38px', fontWeight: '850', letterSpacing: '-.05em', color: '#0f172a', lineHeight: 1 }}>
+                  {card.value}
                 </div>
-                <div style={{ marginTop: '7px', fontSize: '11px', color: card.color, fontWeight: '800', gridColumn: 2, lineHeight: 1.4 }}>{card.trend}</div>
+
+                {/* divider */}
+                <div style={{ height: '1px', background: 'rgba(226,232,240,.7)', margin: '10px 0 8px' }} />
+
+                {/* trend */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: card.color, flexShrink: 0 }} />
+                  <span style={{ fontSize: '11px', fontWeight: '700', color: card.color }}>{card.trend}</span>
+                </div>
               </div>
             ))}
           </section>
@@ -516,32 +638,52 @@ export default function Dashboard() {
               </div>
 
               <div style={{ padding: '16px 18px 18px' }}>
-                {busiestMember && (
+                {smartInsight && (
                   <div
                     style={{
                       display: 'block',
                       margin: '4px 0 14px',
-                      padding: '10px 12px',
-                      borderRadius: '12px',
-                      background: '#fff7ed',
-                      border: '1px solid #fed7aa',
-                      color: '#9a3412',
+                      padding: '12px 12px 13px',
+                      borderRadius: '14px',
+                      background: smartInsight.tone.bg,
+                      border: `1px solid ${smartInsight.tone.border}`,
+                      color: smartInsight.tone.text,
                       fontSize: '12px',
-                      fontWeight: '700',
                     }}
                   >
-                    <b style={{ display: 'block', color: '#7c2d12', marginBottom: '4px' }}>
-                      <Sparkles size={12} style={{ verticalAlign: 'middle', marginRight: '5px' }} />
-                      Smart insight
-                    </b>
-                    {busiestMember.full_name.split(' ')[0]} is highest loaded. Suggested support: {supportCandidates.map(member => member.full_name.split(' ')[0]).join(' or ')}.
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '8px' }}>
+                      <b style={{ display: 'flex', alignItems: 'center', gap: '6px', color: smartInsight.tone.title, fontSize: '12px' }}>
+                        <Sparkles size={12} />
+                        Smart insight
+                      </b>
+                      <span
+                        style={{
+                          padding: '5px 8px',
+                          borderRadius: '999px',
+                          background: smartInsight.tone.pillBg,
+                          color: smartInsight.tone.pillText,
+                          fontSize: '10px',
+                          fontWeight: '800',
+                          letterSpacing: '.02em',
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        {smartInsight.badge}
+                      </span>
+                    </div>
+                    <div style={{ color: smartInsight.tone.title, fontSize: '13px', fontWeight: '800', lineHeight: 1.4 }}>
+                      {smartInsight.title}
+                    </div>
+                    <div style={{ marginTop: '5px', color: smartInsight.tone.text, fontSize: '12px', lineHeight: 1.6, fontWeight: '600' }}>
+                      {smartInsight.body}
+                    </div>
                   </div>
                 )}
 
                 {members.map((member, index) => (
                   <div key={member.id} style={{ padding: '14px 0', borderBottom: index === members.length - 1 ? 0 : '1px solid #e5eaf2' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <Avatar name={member.full_name} size={36} index={index} />
+                      <Avatar name={member.full_name} size={36} index={index} avatarUrl={member.avatar_url} />
                       <div style={{ flex: 1 }}>
                         <b style={{ fontSize: '14px' }}>{member.full_name}</b>
                         <p style={{ margin: '3px 0 0', color: '#64748b', fontSize: '12px' }}>{member.role}</p>
@@ -606,11 +748,7 @@ export default function Dashboard() {
                       position: 'absolute',
                       top: '16px',
                       left: '16px',
-                      right: '16px',
-                      display: 'grid',
-                      gridTemplateColumns: 'auto minmax(240px, 320px)',
-                      gap: '12px',
-                      alignItems: 'start',
+                      display: 'flex',
                       zIndex: 500,
                     }}
                   >
@@ -647,29 +785,9 @@ export default function Dashboard() {
                         </button>
                       ))}
                     </div>
-
-                    <div
-                      style={{
-                        background: 'rgba(255,255,255,.9)',
-                        backdropFilter: 'blur(12px)',
-                        padding: '10px',
-                        borderRadius: '16px',
-                        boxShadow: '0 12px 30px rgba(15,23,42,.14)',
-                      }}
-                    >
-                      <PlaceSearchBox
-                        value={mapQuery}
-                        onChange={setMapQuery}
-                        onSelect={result => {
-                          setMapQuery(result.label)
-                          setMapSearchResult(result)
-                        }}
-                        placeholder="Find a place on map..."
-                      />
-                    </div>
                   </div>
 
-                  <MapContainer key={activeMapKey} center={activeMapCenter} zoom={mapSearchResult ? 14 : 10} style={{ height: '100%', width: '100%' }} zoomControl={false}>
+                  <MapContainer key={`dashboard-map-${mapCenter[0]}-${mapCenter[1]}-${mapFilter}`} center={mapCenter} zoom={10} style={{ height: '100%', width: '100%' }} zoomControl={false}>
                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                     {filteredMapSites.map(site => (
                       <CircleMarker
@@ -698,20 +816,6 @@ export default function Dashboard() {
                         </Tooltip>
                       </CircleMarker>
                     ))}
-                    {mapSearchResult && (
-                      <CircleMarker
-                        center={[mapSearchResult.latitude, mapSearchResult.longitude]}
-                        radius={10}
-                        pathOptions={{ color: '#0f172a', weight: 3, fillColor: '#2563eb', fillOpacity: 1 }}
-                      >
-                        <Tooltip direction="top" offset={[0, -10]} opacity={1}>
-                          <div style={{ minWidth: '180px' }}>
-                            <div style={{ fontWeight: '800', fontSize: '13px', color: '#0f172a' }}>Selected Location</div>
-                            <div style={{ marginTop: '4px', fontSize: '11px', color: '#475569', lineHeight: 1.5 }}>{mapSearchResult.label}</div>
-                          </div>
-                        </Tooltip>
-                      </CircleMarker>
-                    )}
                   </MapContainer>
                 </div>
               </section>
@@ -770,39 +874,56 @@ export default function Dashboard() {
                     overflow: 'hidden',
                   }}
                 >
-                  <div
-                    style={{
-                      padding: '16px 18px',
-                      borderBottom: '1px solid rgba(226,232,240,.9)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                    }}
-                  >
-                    <h3 style={{ margin: 0, fontSize: '16px' }}>Mini Gantt</h3>
-                    <span style={{ color: '#2563eb', fontSize: '13px', fontWeight: '700' }}>7 days</span>
+                  <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(226,232,240,.9)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <h3 style={{ margin: 0, fontSize: '16px' }}>Alerts</h3>
+                    <span style={{ color: '#2563eb', fontSize: '13px', fontWeight: '700' }}>Priority</span>
                   </div>
                   <div style={{ padding: '14px 18px 16px', minHeight: '216px' }}>
-                    <div style={{ display: 'grid', gap: '14px' }}>
-                      {timelineSites.map((site, index) => (
-                        <div key={site.id} style={{ display: 'grid', gridTemplateColumns: '74px 1fr', alignItems: 'center', gap: '10px', fontSize: '12px', fontWeight: '800', color: '#334155' }}>
-                          <span>{site.site_name}</span>
-                          <div style={{ height: '12px', background: '#edf2f7', borderRadius: '999px', position: 'relative', overflow: 'hidden' }}>
-                            <div
-                              style={{
-                                position: 'absolute',
-                                top: 0,
-                                bottom: 0,
-                                left: `${index * 20 + 5}%`,
-                                width: `${Math.max(24, (Number(site.site_duration_days) || 1) * 16)}%`,
-                                borderRadius: '999px',
-                                background: 'linear-gradient(90deg,#2563eb,#38bdf8)',
-                              }}
-                            />
+                    {allClear ? (
+                      <div style={{ minHeight: '186px', display: 'grid', placeItems: 'center', textAlign: 'center', color: '#16a34a', fontWeight: '800', fontSize: '13px', padding: '18px' }}>
+                        <CheckCircle size={20} color="#16a34a" style={{ marginBottom: '6px' }} />
+                        <div>All clear — no issues detected</div>
+                      </div>
+                    ) : (
+                      <div>
+                        {noPicSites.map(site => (
+                          <div key={site.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '10px 12px', borderRadius: '10px', background: '#eff6ff', border: '1px solid #bfdbfe', marginBottom: '8px' }}>
+                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#2563eb', flexShrink: 0, marginTop: '4px' }} />
+                            <div>
+                              <div style={{ fontSize: '12px', fontWeight: '700', color: '#1d4ed8' }}>No PIC assigned</div>
+                              <div style={{ fontSize: '12px', color: '#1e40af', marginTop: '1px' }}>{site.site_name}</div>
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                        {soonSites.map(site => (
+                          <div key={site.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '10px 12px', borderRadius: '10px', background: '#fefce8', border: '1px solid #fde68a', marginBottom: '8px' }}>
+                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f59e0b', flexShrink: 0, marginTop: '4px' }} />
+                            <div>
+                              <div style={{ fontSize: '12px', fontWeight: '700', color: '#854d0e' }}>Site in {Math.round((new Date(site.scheduled_date) - new Date()) / 86400000)}d</div>
+                              <div style={{ fontSize: '12px', color: '#a16207', marginTop: '1px' }}>{site.site_name} — confirm readiness</div>
+                            </div>
+                          </div>
+                        ))}
+                        {pendingReports.slice(0, 3).map(site => (
+                          <div key={site.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '10px 12px', borderRadius: '10px', background: '#fef2f2', border: '1px solid #fecaca', marginBottom: '8px' }}>
+                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444', flexShrink: 0, marginTop: '4px' }} />
+                            <div>
+                              <div style={{ fontSize: '12px', fontWeight: '700', color: '#991b1b' }}>Report {site.report_status.replace('_', ' ')}</div>
+                              <div style={{ fontSize: '12px', color: '#b91c1c', marginTop: '1px' }}>{site.site_name}</div>
+                            </div>
+                          </div>
+                        ))}
+                        {overloaded.map(member => (
+                          <div key={member.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '10px 12px', borderRadius: '10px', background: '#fff7ed', border: '1px solid #fed7aa', marginBottom: '8px' }}>
+                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f97316', flexShrink: 0, marginTop: '4px' }} />
+                            <div>
+                              <div style={{ fontSize: '12px', fontWeight: '700', color: '#7c2d12' }}>Overloaded — {member.workload.workload_percentage}%</div>
+                              <div style={{ fontSize: '12px', color: '#9a3412', marginTop: '1px' }}>{member.full_name}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </section>
               </div>
@@ -830,77 +951,66 @@ export default function Dashboard() {
                   <h3 style={{ margin: 0, fontSize: '16px' }}>Upcoming</h3>
                   <Link to="/sites" style={{ color: '#2563eb', fontSize: '13px', fontWeight: '700', textDecoration: 'none' }}>All ↗</Link>
                 </div>
-                <div style={{ padding: '14px 18px 16px' }}>
+                <div style={{ padding: '12px 14px 14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {upcoming.length === 0 ? (
-                    <div style={{ marginTop: '20px', textAlign: 'center', color: '#16a34a', fontWeight: '800', fontSize: '13px', padding: '18px' }}>
+                    <div style={{ textAlign: 'center', color: '#16a34a', fontWeight: '800', fontSize: '13px', padding: '24px 18px' }}>
                       No upcoming sites in the next 14 days
                     </div>
                   ) : upcoming.map(site => {
                     const pic = site.site_assignments?.find(a => a.assignment_role === 'PIC')
                     const urgent = soonSites.some(item => item.id === site.id)
+                    const accentColor = urgent ? '#dc2626' : site.site_status === 'ongoing' ? '#ea580c' : '#d97706'
 
                     return (
-                      <div key={site.id} style={{ padding: '13px 0', borderBottom: '1px solid #eef2f7' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center' }}>
-                          <b style={{ fontSize: '14px' }}>{site.site_name}</b>
-                          <span
-                            style={{
-                              padding: '5px 9px',
-                              borderRadius: '999px',
-                              fontSize: '11px',
-                              fontWeight: '800',
-                              background: urgent ? '#fee2e2' : STATUS_COLORS[site.site_status]?.bg || '#fef3c7',
-                              color: urgent ? '#991b1b' : STATUS_COLORS[site.site_status]?.text || '#92400e',
-                              border: `1px solid ${urgent ? '#fecaca' : STATUS_COLORS[site.site_status]?.border || '#facc15'}`,
-                            }}
-                          >
+                      <div key={site.id} style={{
+                        background: '#f8fafc',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '12px',
+                        borderLeft: `3px solid ${accentColor}`,
+                        padding: '12px 14px',
+                        transition: 'background .15s',
+                      }}
+                        onMouseEnter={e => e.currentTarget.style.background = '#f1f5f9'}
+                        onMouseLeave={e => e.currentTarget.style.background = '#f8fafc'}
+                      >
+                        {/* top row */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '5px' }}>
+                          <b style={{ fontSize: '13px', color: '#0f172a', lineHeight: 1.3 }}>{site.site_name}</b>
+                          <span style={{
+                            padding: '3px 8px', borderRadius: '999px', fontSize: '10px', fontWeight: '800', whiteSpace: 'nowrap', flexShrink: 0,
+                            background: urgent ? '#fee2e2' : STATUS_COLORS[site.site_status]?.bg || '#fef3c7',
+                            color: urgent ? '#991b1b' : STATUS_COLORS[site.site_status]?.text || '#92400e',
+                            border: `1px solid ${urgent ? '#fecaca' : STATUS_COLORS[site.site_status]?.border || '#facc15'}`,
+                          }}>
                             {urgent ? 'Urgent' : site.site_status}
                           </span>
                         </div>
-                        <p style={{ margin: '7px 0 10px', color: '#64748b', fontSize: '12px', lineHeight: 1.5 }}>
+
+                        {/* meta */}
+                        <p style={{ margin: '0 0 8px', color: '#64748b', fontSize: '11px' }}>
                           {formatShortDate(site.scheduled_date)} · PIC: {pic?.team_members?.full_name || 'No PIC'}
                         </p>
-                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', margin: '8px 0 10px' }}>
-                          {(site.site_assignments || []).slice(0, 3).map((assignment, index) => (
-                            <span
-                              key={`${site.id}-${index}`}
-                              style={{
-                                height: '24px',
-                                minWidth: '24px',
-                                padding: '0 7px',
-                                borderRadius: '999px',
-                                display: 'inline-grid',
-                                placeItems: 'center',
-                                background: '#e0f2fe',
-                                color: '#075985',
-                                fontSize: '10px',
-                                fontWeight: '900',
-                                border: '1px solid #bae6fd',
-                              }}
-                            >
-                              {assignment.team_members?.full_name?.split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase() || '--'}
-                            </span>
-                          ))}
+
+                        {/* bottom row: avatars + button */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            {(site.site_assignments || []).slice(0, 4).map((assignment, idx) => (
+                              <div key={`${site.id}-${idx}`} title={assignment.team_members?.full_name} style={{ marginLeft: idx > 0 ? '-5px' : 0, borderRadius: '50%', border: '2px solid white', overflow: 'hidden', flexShrink: 0 }}>
+                                <Avatar name={assignment.team_members?.full_name || '?'} size={22} index={idx} avatarUrl={assignment.team_members?.avatar_url} />
+                              </div>
+                            ))}
+                          </div>
+                          <button
+                            onClick={() => setUpdateSite({ id: site.id, site_name: site.site_name, site_status: site.site_status, report_status: site.report_status, site_type: site.site_type || 'site_scanning' })}
+                            style={{
+                              border: 'none', background: '#2563eb', color: 'white',
+                              borderRadius: '7px', padding: '5px 10px', fontWeight: '600',
+                              fontSize: '11px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px',
+                            }}
+                          >
+                            <Pencil size={11} /> Update
+                          </button>
                         </div>
-                        <button
-                          onClick={() => setUpdateSite({ id: site.id, site_name: site.site_name, site_status: site.site_status, report_status: site.report_status, site_type: site.site_type || 'site_scanning' })}
-                          style={{
-                            border: 0,
-                            background: '#f1f5f9',
-                            color: '#334155',
-                            borderRadius: '9px',
-                            padding: '8px 10px',
-                            fontWeight: '750',
-                            fontSize: '12px',
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                          }}
-                        >
-                          <Pencil size={12} />
-                          Update
-                        </button>
                       </div>
                     )
                   })}
@@ -929,73 +1039,22 @@ export default function Dashboard() {
                   <span style={{ color: '#2563eb', fontSize: '13px', fontWeight: '700' }}>Status</span>
                 </div>
                 <div style={{ padding: '14px 18px 16px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
-                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '12px', textAlign: 'center' }}>
-                      <b style={{ display: 'block', fontSize: '22px', letterSpacing: '-.04em', color: '#ef4444' }}>{reportSummary.pending}</b>
-                      <span style={{ display: 'block', marginTop: '3px', color: '#64748b', fontSize: '11px', fontWeight: '800' }}>Pending</span>
-                    </div>
-                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '12px', textAlign: 'center' }}>
-                      <b style={{ display: 'block', fontSize: '22px', letterSpacing: '-.04em', color: '#f59e0b' }}>{reportSummary.in_progress}</b>
-                      <span style={{ display: 'block', marginTop: '3px', color: '#64748b', fontSize: '11px', fontWeight: '800' }}>Draft</span>
-                    </div>
-                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '12px', textAlign: 'center' }}>
-                      <b style={{ display: 'block', fontSize: '22px', letterSpacing: '-.04em', color: '#22c55e' }}>{reportSummary.approved + reportSummary.submitted}</b>
-                      <span style={{ display: 'block', marginTop: '3px', color: '#64748b', fontSize: '11px', fontWeight: '800' }}>Done</span>
-                    </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                    {[
+                      { label: 'Pending',   value: reportSummary.pending,     color: '#ef4444' },
+                      { label: 'Draft',     value: reportSummary.in_progress, color: '#f59e0b' },
+                      { label: 'Submitted', value: reportSummary.submitted,   color: '#7c3aed' },
+                      { label: 'Approved',  value: reportSummary.approved,    color: '#16a34a' },
+                    ].map(({ label, value, color }) => (
+                      <div key={label} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px', textAlign: 'center' }}>
+                        <b style={{ display: 'block', fontSize: '22px', letterSpacing: '-.04em', color }}>{value}</b>
+                        <span style={{ display: 'block', marginTop: '3px', color: '#64748b', fontSize: '11px', fontWeight: '800' }}>{label}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </section>
 
-              <section
-                style={{
-                  background: 'rgba(255,255,255,.96)',
-                  border: '1px solid rgba(203,213,225,.85)',
-                  borderRadius: '16px',
-                  boxShadow: '0 18px 45px rgba(15,23,42,.08)',
-                  overflow: 'hidden',
-                }}
-              >
-                <div
-                  style={{
-                    padding: '16px 18px',
-                    borderBottom: '1px solid rgba(226,232,240,.9)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <h3 style={{ margin: 0, fontSize: '16px' }}>Alerts</h3>
-                  <span style={{ color: '#2563eb', fontSize: '13px', fontWeight: '700' }}>Priority</span>
-                </div>
-                <div style={{ padding: '14px 18px 16px' }}>
-                  {!allClear && noPicSites[0] && (
-                    <div style={{ borderRadius: '18px', padding: '14px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', fontWeight: '800', fontSize: '14px', marginBottom: '12px' }}>
-                      No PIC assigned for {noPicSites[0].site_name}
-                    </div>
-                  )}
-
-                  {pendingReports.slice(0, 2).map(site => (
-                    <div key={site.id} style={{ padding: '10px 0', borderBottom: '1px solid #eef2f7', fontSize: '12px', color: '#475569' }}>
-                      <b style={{ color: '#0f172a' }}>{site.site_name}</b>
-                      <div style={{ marginTop: '4px' }}>Report still {site.report_status.replace('_', ' ')}</div>
-                    </div>
-                  ))}
-
-                  {overloaded.slice(0, 2).map(member => (
-                    <div key={member.id} style={{ padding: '10px 0', borderBottom: '1px solid #eef2f7', fontSize: '12px', color: '#475569' }}>
-                      <b style={{ color: '#0f172a' }}>{member.full_name}</b>
-                      <div style={{ marginTop: '4px' }}>Load is at {member.workload.workload_percentage}% this week</div>
-                    </div>
-                  ))}
-
-                  {allClear && (
-                    <div style={{ marginTop: '20px', textAlign: 'center', color: '#16a34a', fontWeight: '800', fontSize: '13px', padding: '18px' }}>
-                      <CheckCircle size={16} color="#16a34a" style={{ marginBottom: '4px' }} />
-                      <div>All clear</div>
-                    </div>
-                  )}
-                </div>
-              </section>
             </aside>
           </section>
         </main>
@@ -1041,6 +1100,43 @@ export default function Dashboard() {
           <div style={{ background: 'white', borderRadius: '20px', width: '100%', maxWidth: '680px', maxHeight: '92vh', overflowY: 'auto', padding: '30px' }}>
             <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginBottom: '24px' }}>Add New Site</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+
+              {/* Photo upload */}
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '6px' }}>Cover Photo</label>
+                <input ref={photoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={event => {
+                  const file = event.target.files[0]
+                  if (!file) return
+                  setUploadError(null)
+                  setForm(f => ({ ...f, site_photo: file, site_photo_preview: URL.createObjectURL(file) }))
+                  event.target.value = ''
+                }} />
+                {form.site_photo_preview ? (
+                  <div style={{ position: 'relative', borderRadius: '10px', overflow: 'hidden' }}>
+                    <img src={form.site_photo_preview} alt="preview" style={{ width: '100%', height: '140px', objectFit: 'cover', display: 'block' }} />
+                    <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', opacity: 0, transition: 'opacity 0.15s' }}
+                      onMouseEnter={e => e.currentTarget.style.opacity = 1}
+                      onMouseLeave={e => e.currentTarget.style.opacity = 0}
+                    >
+                      <button type="button" onClick={() => photoInputRef.current?.click()} style={{ background: 'white', color: '#0f172a', border: 'none', padding: '6px 12px', borderRadius: '7px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>Change</button>
+                      <button type="button" onClick={() => setForm(f => ({ ...f, site_photo: null, site_photo_preview: null, site_photo_url: '' }))} style={{ background: '#ef4444', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '7px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>Remove</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => photoInputRef.current?.click()} style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', border: '2px dashed #e2e8f0', borderRadius: '10px', padding: '28px', cursor: 'pointer', background: '#f8fafc', transition: 'border-color 0.15s' }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = '#2563eb'}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = '#e2e8f0'}
+                  >
+                    <Camera size={22} color="#94a3b8" />
+                    <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '500' }}>Click to upload a cover photo</span>
+                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>JPG, PNG, WEBP</span>
+                  </button>
+                )}
+                {uploadError && (
+                  <p style={{ marginTop: '6px', fontSize: '11px', color: '#ef4444', fontWeight: '500' }}>Upload failed: {uploadError}</p>
+                )}
+              </div>
+
               <div>
                 <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '6px' }}>Site Type *</label>
                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -1149,6 +1245,50 @@ export default function Dashboard() {
                     mapKey={`${form.latitude}-${form.longitude}`}
                   />
                 </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Client Name</label>
+                  <input
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: 'white', color: '#0f172a', boxSizing: 'border-box' }}
+                    value={form.client_name}
+                    placeholder="e.g. TNB Bhd"
+                    onChange={event => setForm(f => ({ ...f, client_name: event.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Client Number</label>
+                  <input
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: 'white', color: '#0f172a', boxSizing: 'border-box' }}
+                    value={form.client_number}
+                    placeholder="e.g. PO-12345"
+                    onChange={event => setForm(f => ({ ...f, client_number: event.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Scope of Work</label>
+                <textarea
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: 'white', color: '#0f172a', boxSizing: 'border-box', resize: 'none' }}
+                  rows={2}
+                  value={form.scope_of_work}
+                  placeholder="Describe the scope of work..."
+                  onChange={event => setForm(f => ({ ...f, scope_of_work: event.target.value }))}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Salesperson</label>
+                <select
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: 'white', color: '#0f172a' }}
+                  value={form.salesperson}
+                  onChange={event => setForm(f => ({ ...f, salesperson: event.target.value }))}
+                >
+                  <option value="">— Select Salesperson —</option>
+                  {SALESPERSONS.map(sp => <option key={sp} value={sp}>{sp}</option>)}
+                </select>
               </div>
 
               <div>
@@ -1313,21 +1453,25 @@ export default function Dashboard() {
                     {['pending', 'in_progress', 'submitted', 'approved'].map(option => {
                       const active = updateSite.report_status === option
                       const colors = { pending: '#64748b', in_progress: '#2563eb', submitted: '#7c3aed', approved: '#16a34a' }
+                      const locked = option === 'approved' && CURRENT_USER !== 'Zairul Farishah'
 
                       return (
                         <button
                           key={option}
                           type="button"
-                          onClick={() => setUpdateSite(site => ({ ...site, report_status: option }))}
+                          disabled={locked}
+                          title={locked ? 'Only Zairul can approve' : undefined}
+                          onClick={() => !locked && setUpdateSite(site => ({ ...site, report_status: option }))}
                           style={{
                             padding: '6px 14px',
                             borderRadius: '99px',
                             fontSize: '12px',
                             fontWeight: '500',
-                            cursor: 'pointer',
+                            cursor: locked ? 'not-allowed' : 'pointer',
                             border: `1.5px solid ${active ? colors[option] : '#e2e8f0'}`,
                             background: active ? colors[option] : 'white',
-                            color: active ? 'white' : '#64748b',
+                            color: active ? 'white' : locked ? '#cbd5e1' : '#64748b',
+                            opacity: locked ? 0.45 : 1,
                             transition: 'all 0.15s',
                           }}
                         >

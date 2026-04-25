@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState, useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, useNavigate } from 'react-router-dom'
-import { Search, Bell, X, MapPin, Users } from 'lucide-react'
+import { Search, Bell, X, MapPin, Users, Plus } from 'lucide-react'
 import { supabase } from './supabase'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
@@ -202,6 +202,7 @@ function PageLoader() {
 }
 
 function AppShell() {
+  const navigate = useNavigate()
   const [searchOpen, setSearchOpen] = useState(false)
   const [notifOpen, setNotifOpen]   = useState(false)
   const [notifs, setNotifs]         = useState([])
@@ -281,6 +282,15 @@ function AppShell() {
 
         {/* Right icons */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginLeft: 'auto' }}>
+          <button
+            onClick={() => navigate('/sites', { state: { openAdd: true } })}
+            style={{ display: 'flex', alignItems: 'center', gap: '5px', background: '#2563eb', border: 'none', cursor: 'pointer', color: 'white', padding: '6px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: '600', transition: 'background 0.15s' }}
+            onMouseEnter={e => e.currentTarget.style.background = '#1d4ed8'}
+            onMouseLeave={e => e.currentTarget.style.background = '#2563eb'}
+          >
+            <Plus size={13} /> Add Site
+          </button>
+
           <button onClick={() => setSearchOpen(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center', padding: 0, transition: 'color 0.15s' }}
             onMouseEnter={e => e.currentTarget.style.color = 'white'}
             onMouseLeave={e => e.currentTarget.style.color = '#64748b'}>

@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabase'
 import { FileText, CheckCircle, Clock, AlertCircle, Search } from 'lucide-react'
+import { notify } from '../utils/notify'
+
+const CURRENT_USER = 'Zairul Farishah'
 
 const REPORT_COLORS = {
   pending:     { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' },
@@ -19,15 +22,17 @@ const STATUS_COLORS = {
 
 const AVATAR_COLORS = ['#2563eb','#7c3aed','#db2777','#059669','#d97706','#dc2626']
 
-function Avatar({ name, size = 28, index = 0 }) {
+function Avatar({ name, size = 28, index = 0, avatarUrl = null }) {
   const initials = name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?'
   return (
     <div style={{
-      width: size, height: size, borderRadius: '50%',
-      background: AVATAR_COLORS[index % AVATAR_COLORS.length],
+      width: size, height: size, borderRadius: '50%', flexShrink: 0, overflow: 'hidden',
+      background: avatarUrl ? '#0f172a' : AVATAR_COLORS[index % AVATAR_COLORS.length],
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: 'white', fontWeight: '600', fontSize: size * 0.36, flexShrink: 0
-    }}>{initials}</div>
+      color: 'white', fontWeight: '600', fontSize: size * 0.36,
+    }}>
+      {avatarUrl ? <img src={avatarUrl} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initials}
+    </div>
   )
 }
 
@@ -60,7 +65,7 @@ export default function Reports() {
     setLoading(true)
     const { data: s } = await supabase
       .from('sites')
-      .select(`*, site_assignments(assignment_role, team_members(id, full_name))`)
+      .select(`*, site_assignments(assignment_role, team_members(id, full_name, avatar_url))`)
       .order('scheduled_date', { ascending: false })
     const { data: m } = await supabase
       .from('team_members').select('*').order('full_name')
@@ -70,8 +75,15 @@ export default function Reports() {
   }
 
   async function updateReportStatus(siteId, newStatus) {
+    if (newStatus === 'approved' && CURRENT_USER !== 'Zairul Farishah') return
+    const site = sites.find(s => s.id === siteId)
+    const prevStatus = site?.report_status
     setUpdating(siteId)
     await supabase.from('sites').update({ report_status: newStatus }).eq('id', siteId)
+    if (prevStatus !== newStatus) {
+      if (newStatus === 'submitted') await notify(`Report for "${site?.site_name}" has been submitted — ready for review`)
+      if (newStatus === 'approved') await notify(`Report for "${site?.site_name}" has been approved by Zairul`)
+    }
     await fetchAll()
     setUpdating(null)
   }
@@ -185,7 +197,7 @@ export default function Reports() {
                   </td>
                   <td style={{ padding: '12px 16px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      {pic && <Avatar name={pic.team_members.full_name} size={24} index={memberIndex >= 0 ? memberIndex : 0} />}
+                      {pic && <Avatar name={pic.team_members.full_name} size={24} index={memberIndex >= 0 ? memberIndex : 0} avatarUrl={pic.team_members?.avatar_url} />}
                       <span style={{ color: '#2563eb', fontSize: '13px' }}>{pic?.team_members?.full_name || '—'}</span>
                     </div>
                   </td>
@@ -193,7 +205,7 @@ export default function Reports() {
                     <div style={{ display: 'flex' }}>
                       {crew.slice(0, 3).map((c, ci) => (
                         <div key={ci} title={c.team_members?.full_name} style={{ marginLeft: ci > 0 ? '-6px' : 0, border: '2px solid white', borderRadius: '50%' }}>
-                          <Avatar name={c.team_members?.full_name || '?'} size={24} index={ci + 1} />
+                          <Avatar name={c.team_members?.full_name || '?'} size={24} index={ci + 1} avatarUrl={c.team_members?.avatar_url} />
                         </div>
                       ))}
                       {crew.length > 3 && <span style={{ fontSize: '11px', color: '#94a3b8', marginLeft: '6px', alignSelf: 'center' }}>+{crew.length - 3}</span>}
@@ -210,7 +222,9 @@ export default function Reports() {
                       style={{ padding: '5px 8px', borderRadius: '7px', border: '1px solid #e2e8f0', fontSize: '12px', color: '#0f172a', background: 'white', cursor: 'pointer', outline: 'none' }}
                     >
                       {['pending','in_progress','submitted','approved'].map(s => (
-                        <option key={s} value={s}>{s.replace('_', ' ')}</option>
+                        <option key={s} value={s} disabled={s === 'approved' && CURRENT_USER !== 'Zairul Farishah'}>
+                          {s.replace('_', ' ')}{s === 'approved' && CURRENT_USER !== 'Zairul Farishah' ? ' (Zairul only)' : ''}
+                        </option>
                       ))}
                     </select>
                   </td>
