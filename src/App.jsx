@@ -1,7 +1,10 @@
 import { lazy, Suspense, useState, useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, useNavigate } from 'react-router-dom'
-import { Search, Bell, X, MapPin, Users, Plus } from 'lucide-react'
+import { Search, Bell, X, MapPin, Users, Plus, LogOut } from 'lucide-react'
 import { supabase } from './supabase'
+import { AuthProvider, useAuth } from './context/AuthContext'
+
+const LoginPage = lazy(() => import('./pages/LoginPage'))
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Sites = lazy(() => import('./pages/Sites'))
@@ -203,11 +206,38 @@ function PageLoader() {
 
 function AppShell() {
   const navigate = useNavigate()
+  const { user, loading: authLoading, fullName } = useAuth()
   const [searchOpen, setSearchOpen] = useState(false)
   const [notifOpen, setNotifOpen]   = useState(false)
   const [notifs, setNotifs]         = useState([])
   const [lastSeen, setLastSeen]     = useState(() => localStorage.getItem('xyte_notif_seen') || '1970-01-01')
-  const notifRef = useRef(null)
+  const [avatarOpen, setAvatarOpen] = useState(false)
+  const notifRef  = useRef(null)
+  const avatarRef = useRef(null)
+
+  useEffect(() => {
+    function handle(e) {
+      if (avatarRef.current && !avatarRef.current.contains(e.target)) setAvatarOpen(false)
+    }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [])
+
+  async function handleSignOut() {
+    await supabase.auth.signOut()
+  }
+
+  if (authLoading) return (
+    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#0f172a' }}>
+      <div style={{ width: '20px', height: '20px', borderRadius: '50%', border: '2px solid #1e3a8a', borderTopColor: '#2563eb', animation: 'spin 0.8s linear infinite' }} />
+    </div>
+  )
+
+  if (!user) return (
+    <Suspense fallback={null}>
+      <LoginPage />
+    </Suspense>
+  )
 
   useEffect(() => {
     fetchNotifs()
@@ -311,7 +341,25 @@ function AppShell() {
             {notifOpen && <NotifDropdown notifs={notifs} lastSeen={lastSeen} onClose={() => setNotifOpen(false)} />}
           </div>
 
-          <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#1d4ed8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '600', fontSize: '12px', cursor: 'pointer' }}>ZF</div>
+          <div ref={avatarRef} style={{ position: 'relative' }}>
+            <button onClick={() => setAvatarOpen(o => !o)} style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#1d4ed8', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '700', fontSize: '11px', cursor: 'pointer' }}>
+              {fullName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+            </button>
+            {avatarOpen && (
+              <div style={{ position: 'absolute', right: 0, top: '42px', width: '200px', background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 12px 40px rgba(0,0,0,0.18)', zIndex: 1100, overflow: 'hidden' }}>
+                <div style={{ padding: '12px 14px', borderBottom: '1px solid #f1f5f9' }}>
+                  <p style={{ fontWeight: '600', fontSize: '13px', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fullName}</p>
+                  <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</p>
+                </div>
+                <button onClick={handleSignOut} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: '#ef4444', fontSize: '13px', fontWeight: '500' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#fff1f2'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                >
+                  <LogOut size={14} /> Sign Out
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </nav>
 
@@ -339,7 +387,9 @@ function AppShell() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AppShell />
+      <AuthProvider>
+        <AppShell />
+      </AuthProvider>
     </BrowserRouter>
   )
 }

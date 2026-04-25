@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../supabase'
 import { FileText, CheckCircle, Clock, AlertCircle, Search } from 'lucide-react'
 import { notify } from '../utils/notify'
-
-const CURRENT_USER = 'Zairul Farishah'
+import { useAuth } from '../context/AuthContext'
 
 const REPORT_COLORS = {
   pending:     { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' },
@@ -50,6 +49,7 @@ function Pill({ status, colors }) {
 const TABS = ['All', 'Pending', 'In Progress', 'Submitted', 'Approved']
 
 export default function Reports() {
+  const { isZairul } = useAuth()
   const [sites, setSites]     = useState([])
   const [members, setMembers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -75,7 +75,7 @@ export default function Reports() {
   }
 
   async function updateReportStatus(siteId, newStatus) {
-    if (newStatus === 'approved' && CURRENT_USER !== 'Zairul Farishah') return
+    if (newStatus === 'approved' && !isZairul) return
     const site = sites.find(s => s.id === siteId)
     const prevStatus = site?.report_status
     setUpdating(siteId)
@@ -222,8 +222,8 @@ export default function Reports() {
                       style={{ padding: '5px 8px', borderRadius: '7px', border: '1px solid #e2e8f0', fontSize: '12px', color: '#0f172a', background: 'white', cursor: 'pointer', outline: 'none' }}
                     >
                       {['pending','in_progress','submitted','approved'].map(s => (
-                        <option key={s} value={s} disabled={s === 'approved' && CURRENT_USER !== 'Zairul Farishah'}>
-                          {s.replace('_', ' ')}{s === 'approved' && CURRENT_USER !== 'Zairul Farishah' ? ' (Zairul only)' : ''}
+                        <option key={s} value={s} disabled={s === 'approved' && !isZairul}>
+                          {s.replace('_', ' ')}{s === 'approved' && !isZairul ? ' (Zairul only)' : ''}
                         </option>
                       ))}
                     </select>

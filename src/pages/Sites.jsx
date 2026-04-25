@@ -4,10 +4,9 @@ import { MapContainer, TileLayer, CircleMarker, useMapEvents } from 'react-leafl
 import { supabase } from '../supabase'
 import { Plus, Pencil, Trash2, Search, ArrowUpRight, MapPin, Users, Activity, X, Camera } from 'lucide-react'
 import { notify } from '../utils/notify'
+import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
 import 'leaflet/dist/leaflet.css'
-
-const CURRENT_USER = 'Zairul Farishah'
 
 const CARD_GRADIENTS = {
   site_scanning: 'linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%)',
@@ -127,6 +126,7 @@ async function uploadSitePhoto(file) {
 const TABS = ['All', 'Upcoming', 'Ongoing', 'Completed', 'Cancelled', 'Postponed']
 
 export default function Sites() {
+  const { fullName, isZairul } = useAuth()
   const [sites, setSites]       = useState([])
   const [members, setMembers]   = useState([])
   const [loading, setLoading]   = useState(true)
@@ -161,7 +161,7 @@ export default function Sites() {
   }
 
   async function handleQuickUpdate(siteId, field, value) {
-    if (field === 'report_status' && value === 'approved' && CURRENT_USER !== 'Zairul Farishah') return
+    if (field === 'report_status' && value === 'approved' && !isZairul) return
     setQuickSaving(`${siteId}-${field}`)
     await supabase.from('sites').update({ [field]: value }).eq('id', siteId)
     setSites(prev => prev.map(s => s.id === siteId ? { ...s, [field]: value } : s))
@@ -441,7 +441,7 @@ export default function Sites() {
                               const c = REPORT_COLORS[s]
                               const active = site.report_status === s
                               const isLoading = quickSaving === `${site.id}-report_status`
-                              const locked = s === 'approved' && CURRENT_USER !== 'Zairul Farishah'
+                              const locked = s === 'approved' && !isZairul
                               return (
                                 <button key={s} disabled={!!quickSaving || locked} onClick={() => !locked && handleQuickUpdate(site.id, 'report_status', s)} title={locked ? 'Only Zairul can approve' : undefined} style={{
                                   padding: '4px 9px', borderRadius: '99px', fontSize: '10px', fontWeight: '600',

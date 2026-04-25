@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../supabase'
 import { User, Info, Lock } from 'lucide-react'
 import { ROLE_MULTIPLIERS, WEEKLY_CAPACITY_DAYS } from '../utils/workload'
-
-const CURRENT_USER = 'Zairul Farishah'
+import { useAuth } from '../context/AuthContext'
 
 const AVATAR_COLORS = ['#2563eb','#7c3aed','#db2777','#059669','#d97706','#dc2626']
 
@@ -25,6 +24,7 @@ const SECTIONS = [
 ]
 
 export default function SettingsPage() {
+  const { isZairul } = useAuth()
   const [members, setMembers]   = useState([])
   const [loading, setLoading]   = useState(true)
   const [section, setSection]   = useState('team')
@@ -57,7 +57,7 @@ export default function SettingsPage() {
     background: '#f8fafc', color: '#0f172a'
   }
 
-  if (CURRENT_USER !== 'Zairul Farishah') return (
+  if (!isZairul) return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: '16px' }}>
       <div style={{ width: '56px', height: '56px', borderRadius: '16px', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Lock size={24} color="#ef4444" />

@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import { ArrowUpRight, CheckCircle, Plus, Pencil, Sparkles, Camera } from 'lucide-react'
 import { calculateWorkload } from '../utils/workload'
 import { notify } from '../utils/notify'
+import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
 import 'leaflet/dist/leaflet.css'
 
@@ -53,8 +54,6 @@ const TYPE_COLORS = {
 }
 
 const SALESPERSONS = ['GH Tan', 'Chong Jie Yan', 'Jasmin', 'Darren', 'Wendy', 'Zairul']
-
-const CURRENT_USER = 'Zairul Farishah'
 
 const EMPTY_FORM = {
   site_type: 'site_scanning',
@@ -198,6 +197,7 @@ function getTrendText(value, kind = 'default') {
 }
 
 export default function Dashboard() {
+  const { fullName, firstName, isZairul } = useAuth()
   const [members, setMembers] = useState([])
   const [sites, setSites] = useState([])
   const [upcoming, setUpcoming] = useState([])
@@ -292,7 +292,7 @@ export default function Dashboard() {
       if (assignments.length > 0) await supabase.from('site_assignments').insert(assignments)
     }
 
-    await notify(`Added new site: ${form.site_name}`)
+    await notify(`Added new site: ${form.site_name}`, fullName)
     setSaving(false)
     setShowAdd(false)
     setForm(EMPTY_FORM)
@@ -301,7 +301,7 @@ export default function Dashboard() {
 
   async function handleStatusSave() {
     if (!updateSite) return
-    if (updateSite.report_status === 'approved' && CURRENT_USER !== 'Zairul Farishah') return
+    if (updateSite.report_status === 'approved' && !isZairul) return
     setSaving(true)
 
     const original = sites.find(s => s.id === updateSite.id)
@@ -314,7 +314,7 @@ export default function Dashboard() {
       })
       .eq('id', updateSite.id)
 
-    await notify(`Updated ${updateSite.site_name} → ${updateSite.site_status}`)
+    await notify(`Updated ${updateSite.site_name} → ${updateSite.site_status}`, fullName)
 
     if (original?.report_status !== updateSite.report_status) {
       if (updateSite.report_status === 'submitted')
@@ -504,7 +504,7 @@ export default function Dashboard() {
           >
             <div style={{ color: 'white', padding: '6px 0 4px' }}>
               <h1 style={{ margin: 0, fontSize: '30px', letterSpacing: '-.05em', fontWeight: '850' }}>
-                {getGreeting()}, Zairul!
+                {getGreeting()}, {firstName}!
               </h1>
               <p style={{ margin: '8px 0 0', color: '#b8c7dd', fontSize: '14px', lineHeight: 1.55 }}>
                 {new Date().toLocaleDateString('en-MY', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · Team command center
@@ -1453,7 +1453,7 @@ export default function Dashboard() {
                     {['pending', 'in_progress', 'submitted', 'approved'].map(option => {
                       const active = updateSite.report_status === option
                       const colors = { pending: '#64748b', in_progress: '#2563eb', submitted: '#7c3aed', approved: '#16a34a' }
-                      const locked = option === 'approved' && CURRENT_USER !== 'Zairul Farishah'
+                      const locked = option === 'approved' && !isZairul
 
                       return (
                         <button
