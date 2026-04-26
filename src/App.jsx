@@ -245,13 +245,18 @@ function AppShell() {
     const channel = supabase
       .channel('notifications-realtime')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, ({ new: n }) => {
-        // Show if broadcast (no recipient), or matches current member, or memberId unknown
         if (!n.recipient_id || !memberId || n.recipient_id === memberId) {
           setNotifs(prev => [n, ...prev].slice(0, 30))
         }
       })
       .subscribe()
-    return () => supabase.removeChannel(channel)
+    // Also re-fetch when Sites page saves a new site
+    const onSaved = () => fetchNotifs()
+    window.addEventListener('xyte:site-saved', onSaved)
+    return () => {
+      supabase.removeChannel(channel)
+      window.removeEventListener('xyte:site-saved', onSaved)
+    }
   }, [user, memberId])
 
   useEffect(() => {

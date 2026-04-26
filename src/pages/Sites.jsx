@@ -296,6 +296,7 @@ export default function Sites() {
         }
       }
       await notify(`${editSite?'Updated':'Added'} site: ${form.site_name}`, fullName)
+      window.dispatchEvent(new CustomEvent('xyte:site-saved'))
       setShowForm(false); setEditSite(null); fetchAll()
     } catch (err) {
       setUploadError(err.message||'Unable to save.')
