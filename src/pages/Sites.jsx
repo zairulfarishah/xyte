@@ -4,7 +4,7 @@ import { MapContainer, TileLayer, CircleMarker, useMapEvents } from 'react-leafl
 import { supabase } from '../supabase'
 import {
   Plus, Pencil, Trash2, Search, ArrowUpRight, MapPin, X, Camera,
-  Calendar, Clock, CheckCircle,
+  Calendar, Clock, CheckCircle, Activity, FileText, BadgeCheck, Layers,
 } from 'lucide-react'
 import { notify } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
@@ -13,18 +13,18 @@ import { getSiteHeaderImage } from '../utils/siteHeader'
 import 'leaflet/dist/leaflet.css'
 
 const STATUS_COLORS = {
-  upcoming:  { bg:'rgba(234,179,8,.14)',   text:'#fbbf24', border:'rgba(234,179,8,.3)'   },
-  ongoing:   { bg:'rgba(249,115,22,.14)',  text:'#fb923c', border:'rgba(249,115,22,.3)'  },
-  completed: { bg:'rgba(34,197,94,.14)',   text:'#4ade80', border:'rgba(34,197,94,.3)'   },
-  cancelled: { bg:'rgba(239,68,68,.14)',   text:'#f87171', border:'rgba(239,68,68,.3)'   },
-  postponed: { bg:'rgba(148,163,184,.12)', text:'#94a3b8', border:'rgba(148,163,184,.25)' },
+  upcoming:  { bg:'rgba(234,179,8,.15)',    text:'#fcd34d', border:'rgba(234,179,8,.35)'   },
+  ongoing:   { bg:'rgba(249,115,22,.15)',   text:'#fb923c', border:'rgba(249,115,22,.35)'  },
+  completed: { bg:'rgba(34,197,94,.15)',    text:'#4ade80', border:'rgba(34,197,94,.35)'   },
+  cancelled: { bg:'rgba(239,68,68,.15)',    text:'#f87171', border:'rgba(239,68,68,.35)'   },
+  postponed: { bg:'rgba(148,163,184,.13)',  text:'#94a3b8', border:'rgba(148,163,184,.28)' },
 }
 const REPORT_COLORS = {
-  pending:        { bg:'rgba(148,163,184,.1)',  text:'#94a3b8', border:'rgba(148,163,184,.2)'  },
-  in_progress:    { bg:'rgba(59,130,246,.14)',  text:'#60a5fa', border:'rgba(59,130,246,.3)'   },
-  submitted:      { bg:'rgba(167,139,250,.14)', text:'#a78bfa', border:'rgba(167,139,250,.3)'  },
-  approved:       { bg:'rgba(52,211,153,.14)',  text:'#34d399', border:'rgba(52,211,153,.3)'   },
-  not_applicable: { bg:'rgba(148,163,184,.07)', text:'#64748b', border:'rgba(148,163,184,.15)' },
+  pending:        { bg:'rgba(148,163,184,.12)', text:'#94a3b8', border:'rgba(148,163,184,.25)'  },
+  in_progress:    { bg:'rgba(59,130,246,.15)',  text:'#60a5fa', border:'rgba(59,130,246,.35)'   },
+  submitted:      { bg:'rgba(167,139,250,.15)', text:'#a78bfa', border:'rgba(167,139,250,.35)'  },
+  approved:       { bg:'rgba(52,211,153,.15)',  text:'#34d399', border:'rgba(52,211,153,.35)'   },
+  not_applicable: { bg:'rgba(100,116,139,.08)', text:'#64748b', border:'rgba(100,116,139,.18)'  },
 }
 const CARD_GRADIENTS = {
   site_scanning: 'linear-gradient(135deg,#0f2460 0%,#1a4b8c 55%,#0891b2 100%)',
@@ -40,9 +40,9 @@ const AVATAR_GRADIENTS = [
   'linear-gradient(135deg,#991b1b,#dc2626)',
 ]
 const TYPE_META = {
-  site_scanning: { label:'Site Scanning', color:'#60a5fa', chipBg:'rgba(59,130,246,0.12)' },
-  site_visit:    { label:'Site Visit',    color:'#2dd4bf', chipBg:'rgba(13,148,136,0.12)'  },
-  meeting:       { label:'Meeting',       color:'#a78bfa', chipBg:'rgba(124,58,237,0.12)'  },
+  site_scanning: { label:'Site Scanning', color:'#60a5fa', chipBg:'rgba(59,130,246,0.13)' },
+  site_visit:    { label:'Site Visit',    color:'#2dd4bf', chipBg:'rgba(13,148,136,0.13)'  },
+  meeting:       { label:'Meeting',       color:'#a78bfa', chipBg:'rgba(124,58,237,0.13)'  },
 }
 const SITE_TYPES   = [
   { value:'site_scanning', label:'Site Scanning' },
@@ -67,7 +67,7 @@ function Avatar({ name, size = 26, index = 0, avatarUrl = null }) {
       background: avatarUrl ? '#0f172a' : AVATAR_GRADIENTS[index % AVATAR_GRADIENTS.length],
       display:'flex', alignItems:'center', justifyContent:'center',
       color:'white', fontWeight:'700', fontSize:size * .36,
-      border:'2px solid rgba(255,255,255,0.12)',
+      border:'2px solid rgba(255,255,255,0.14)',
     }}>
       {avatarUrl ? <img src={avatarUrl} alt={name} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : initials}
     </div>
@@ -134,7 +134,7 @@ export default function Sites() {
   const [quickSaving, setQuickSaving]   = useState(null)
   const [draftStatus, setDraftStatus]   = useState(null)
   const photoInputRef = useRef(null)
-  const PER_PAGE = 6
+  const PER_PAGE = 8
 
   const location = useLocation()
   useEffect(() => { fetchAll() }, [])
@@ -275,8 +275,16 @@ export default function Sites() {
   const totalPages = Math.ceil(filtered.length / PER_PAGE)
   const paginated  = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE)
 
-  const pendingReports = sites.filter(s => s.report_status === 'in_progress' || s.report_status === 'pending').length
+  const pendingReports  = sites.filter(s => s.report_status === 'in_progress' || s.report_status === 'pending').length
   const approvedReports = sites.filter(s => s.report_status === 'approved').length
+
+  const STATS = [
+    { label:'Total Sites',     value:sites.length,    color:'#f1f5f9', iconBg:'rgba(241,245,249,0.1)',  icon:<Layers size={15}/>     },
+    { label:'Ongoing',         value:counts.Ongoing,  color:'#fb923c', iconBg:'rgba(249,115,22,0.13)',  icon:<Activity size={15}/>   },
+    { label:'Completed',       value:counts.Completed,color:'#4ade80', iconBg:'rgba(74,222,128,0.12)',  icon:<CheckCircle size={15}/> },
+    { label:'Pending Reports', value:pendingReports,  color:'#60a5fa', iconBg:'rgba(96,165,250,0.12)',  icon:<FileText size={15}/>   },
+    { label:'Approved',        value:approvedReports, color:'#34d399', iconBg:'rgba(52,211,153,0.12)',  icon:<BadgeCheck size={15}/> },
+  ]
 
   const darkInput = {
     width:'100%', padding:'9px 12px', borderRadius:'10px',
@@ -296,26 +304,27 @@ export default function Sites() {
   return (
     <div className="bg-[#06090f]" style={{ minHeight:'calc(100vh - 54px)', overflowY:'auto' }}>
 
-      {/* fixed bg */}
+      {/* fixed bg glows */}
       <div className="pointer-events-none fixed inset-0" style={{
         zIndex:0,
-        background:'radial-gradient(ellipse 55% 50% at 15% 20%,rgba(59,130,246,0.08) 0%,transparent 60%),radial-gradient(ellipse 40% 35% at 85% 10%,rgba(6,182,212,0.05) 0%,transparent 55%)',
+        background:'radial-gradient(ellipse 55% 50% at 15% 20%,rgba(59,130,246,0.07) 0%,transparent 60%),radial-gradient(ellipse 40% 35% at 85% 10%,rgba(6,182,212,0.04) 0%,transparent 55%)',
       }} />
+      {/* subtle grid */}
       <div className="pointer-events-none fixed inset-0" style={{
         zIndex:0,
-        backgroundImage:'linear-gradient(rgba(255,255,255,0.016) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.016) 1px,transparent 1px)',
-        backgroundSize:'44px 44px',
+        backgroundImage:'linear-gradient(rgba(255,255,255,0.012) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.012) 1px,transparent 1px)',
+        backgroundSize:'48px 48px',
       }} />
 
       <div className="relative px-10" style={{ zIndex:1 }}>
 
         {/* ── HEADER ── */}
-        <div className="flex items-center justify-between gap-4 pt-6 pb-5">
+        <div className="flex items-center justify-between gap-4 pt-8 pb-7">
           <div>
-            <h1 className="text-[22px] font-extrabold text-slate-100 tracking-tight leading-none">Sites</h1>
-            <p className="text-xs text-slate-500 mt-1 font-medium">Manage and track all site activities</p>
+            <h1 className="text-[22px] font-extrabold text-white tracking-tight leading-none">Sites</h1>
+            <p className="text-[12px] text-slate-500 mt-1.5 font-medium">Manage and track all site activities</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <div className="relative">
               <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
               <input
@@ -325,7 +334,7 @@ export default function Sites() {
                 style={{
                   background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.09)',
                   borderRadius:'10px', fontSize:'13px', fontFamily:'inherit',
-                  padding:'8px 14px 8px 32px', width:'210px', color:'#e2e8f0', outline:'none',
+                  padding:'9px 14px 9px 32px', width:'220px', color:'#e2e8f0', outline:'none',
                 }}
                 onFocus={e => e.target.style.borderColor='rgba(59,130,246,0.5)'}
                 onBlur={e => e.target.style.borderColor='rgba(255,255,255,0.09)'}
@@ -334,9 +343,9 @@ export default function Sites() {
             <button onClick={openAdd}
               className="flex items-center gap-2 text-white font-bold transition-all hover:-translate-y-px"
               style={{
-                padding:'9px 18px', borderRadius:'10px', fontSize:'13px', fontFamily:'inherit', border:'none', cursor:'pointer',
+                padding:'9px 20px', borderRadius:'10px', fontSize:'13px', fontFamily:'inherit', border:'none', cursor:'pointer',
                 background:'linear-gradient(135deg,#2563eb,#0ea5e9)',
-                boxShadow:'0 0 20px rgba(37,99,235,0.35),0 4px 14px rgba(0,0,0,0.3)',
+                boxShadow:'0 0 22px rgba(37,99,235,0.35),0 4px 14px rgba(0,0,0,0.3)',
               }}>
               <Plus size={14} /> Add Site
             </button>
@@ -344,39 +353,44 @@ export default function Sites() {
         </div>
 
         {/* ── STATS STRIP ── */}
-        <div className="grid grid-cols-5 gap-3 mb-5">
-          {[
-            { label:'Total Sites',     value:sites.length,                    color:'#f1f5f9' },
-            { label:'Ongoing',         value:counts.Ongoing,                  color:'#fb923c' },
-            { label:'Completed',       value:counts.Completed,                color:'#4ade80' },
-            { label:'Pending Reports', value:pendingReports,                  color:'#60a5fa' },
-            { label:'Approved',        value:approvedReports,                 color:'#34d399' },
-          ].map(({ label, value, color }) => (
+        <div className="grid grid-cols-5 gap-3 mb-7">
+          {STATS.map(({ label, value, color, iconBg, icon }) => (
             <div key={label} style={{
-              padding:'14px 18px', borderRadius:'14px',
-              border:'1px solid rgba(255,255,255,0.07)',
-              background:'rgba(255,255,255,0.03)',
+              padding:'16px 20px', borderRadius:'14px',
+              border:'1px solid rgba(255,255,255,0.08)',
+              background:'rgba(255,255,255,0.045)',
+              display:'flex', alignItems:'center', gap:'14px',
             }}>
-              <p style={{ fontSize:'10px', color:'#475569', textTransform:'uppercase', letterSpacing:'0.07em', fontWeight:'600', marginBottom:'8px' }}>{label}</p>
-              <p style={{ fontSize:'24px', fontWeight:'800', color, letterSpacing:'-0.02em', lineHeight:1 }}>{value}</p>
+              <div style={{
+                width:38, height:38, borderRadius:'11px', background:iconBg,
+                display:'flex', alignItems:'center', justifyContent:'center',
+                flexShrink:0, color,
+              }}>
+                {icon}
+              </div>
+              <div>
+                <p style={{ fontSize:'10px', color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.07em', fontWeight:'600', marginBottom:'5px' }}>{label}</p>
+                <p style={{ fontSize:'22px', fontWeight:'800', color, letterSpacing:'-0.03em', lineHeight:1 }}>{value}</p>
+              </div>
             </div>
           ))}
         </div>
 
-        {/* ── TABS ── */}
-        <div className="flex items-center gap-1.5 mb-5">
+        {/* ── FILTER TABS ── */}
+        <div className="flex items-center gap-2 mb-7">
           {TABS.map(t => {
             const active = tab === t
             return (
               <button key={t} onClick={() => { setTab(t); setPage(1) }}
                 style={{
-                  padding:'6px 14px', borderRadius:'8px', fontSize:'12px', fontWeight:'600',
-                  border:`1px solid ${active ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.07)'}`,
-                  background: active ? 'rgba(37,99,235,0.18)' : 'transparent',
-                  color: active ? '#60a5fa' : '#475569',
+                  padding:'7px 16px', borderRadius:'99px', fontSize:'12px', fontWeight:'600',
+                  border:`1px solid ${active ? 'rgba(59,130,246,0.55)' : 'rgba(255,255,255,0.09)'}`,
+                  background: active ? 'rgba(37,99,235,0.22)' : 'rgba(255,255,255,0.03)',
+                  color: active ? '#93c5fd' : '#64748b',
                   cursor:'pointer', fontFamily:'inherit', transition:'all .15s',
+                  boxShadow: active ? '0 0 16px rgba(37,99,235,0.28),inset 0 0 0 1px rgba(59,130,246,0.08)' : 'none',
                 }}>
-                {t} ({counts[t]})
+                {t} <span style={{ fontSize:'10px', opacity:0.65, marginLeft:'1px' }}>({counts[t]})</span>
               </button>
             )
           })}
@@ -390,7 +404,7 @@ export default function Sites() {
             <p className="text-sm font-medium">No sites found</p>
           </div>
         ) : (
-          <div className="grid grid-cols-3 gap-5 pb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 pb-8">
             {paginated.map(site => {
               const pic       = site.site_assignments?.find(a => a.assignment_role === 'PIC')
               const crew      = site.site_assignments?.filter(a => a.assignment_role === 'crew') || []
@@ -400,42 +414,45 @@ export default function Sites() {
 
               return (
                 <div key={site.id}
-                  className="rounded-2xl overflow-hidden transition-all duration-200"
+                  className="rounded-2xl overflow-hidden flex flex-col"
                   style={{
-                    border:`1px solid ${isExpanded ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.08)'}`,
-                    background:'rgba(10,17,32,0.9)',
-                    boxShadow: isExpanded ? '0 0 0 1px rgba(59,130,246,0.15),0 8px 32px rgba(0,0,0,0.5)' : '0 4px 20px rgba(0,0,0,0.3)',
+                    border:`1px solid ${isExpanded ? 'rgba(59,130,246,0.45)' : 'rgba(255,255,255,0.08)'}`,
+                    background:'rgba(10,17,32,0.92)',
+                    boxShadow: isExpanded
+                      ? '0 0 0 1px rgba(59,130,246,0.15),0 8px 32px rgba(0,0,0,0.5)'
+                      : '0 2px 16px rgba(0,0,0,0.35)',
+                    transition:'transform .2s ease, box-shadow .2s ease, border-color .2s ease',
                   }}
                   onMouseEnter={e => {
                     if (isExpanded) return
-                    e.currentTarget.style.transform = 'translateY(-4px)'
-                    e.currentTarget.style.borderColor = 'rgba(59,130,246,0.22)'
-                    e.currentTarget.style.boxShadow = '0 20px 48px rgba(0,0,0,0.55),0 0 0 1px rgba(59,130,246,0.12)'
+                    e.currentTarget.style.transform = 'translateY(-3px)'
+                    e.currentTarget.style.borderColor = 'rgba(59,130,246,0.28)'
+                    e.currentTarget.style.boxShadow = '0 16px 40px rgba(0,0,0,0.55),0 0 0 1px rgba(59,130,246,0.1)'
                   }}
                   onMouseLeave={e => {
                     if (isExpanded) return
                     e.currentTarget.style.transform = 'none'
                     e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'
-                    e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.3)'
+                    e.currentTarget.style.boxShadow = '0 2px 16px rgba(0,0,0,0.35)'
                   }}
                 >
-                  {/* Banner */}
-                  <div className="relative overflow-hidden" style={{ height:140, background:CARD_GRADIENTS[site.site_type]||CARD_GRADIENTS.site_scanning }}>
+                  {/* ── Banner ── */}
+                  <div className="relative overflow-hidden" style={{ height:130, flexShrink:0, background:CARD_GRADIENTS[site.site_type]||CARD_GRADIENTS.site_scanning }}>
                     {(site.site_photo_url || getSiteHeaderImage(site.site_type)) && (
                       <img src={site.site_photo_url||getSiteHeaderImage(site.site_type)} alt=""
-                        className="absolute inset-0 w-full h-full object-cover" style={{ opacity:0.4 }} />
+                        className="absolute inset-0 w-full h-full object-cover" style={{ opacity:0.5 }} />
                     )}
-                    <div className="absolute inset-0" style={{ background:'linear-gradient(160deg,rgba(0,0,0,0.05) 0%,rgba(5,10,22,0.82) 100%)' }} />
-                    <div className="absolute inset-0 flex flex-col justify-between" style={{ padding:'12px 14px' }}>
-                      {/* top: location + status */}
+                    <div className="absolute inset-0" style={{ background:'linear-gradient(175deg,rgba(0,0,0,0.08) 0%,rgba(5,10,22,0.62) 100%)' }} />
+                    <div className="absolute inset-0 flex flex-col justify-between" style={{ padding:'11px 13px' }}>
+                      {/* top row: location + status */}
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-1.5 min-w-0"
                           style={{
-                            background:'rgba(0,0,0,0.45)', backdropFilter:'blur(8px)',
-                            border:'1px solid rgba(255,255,255,0.14)',
-                            padding:'4px 10px', borderRadius:'99px',
-                            fontSize:'10px', color:'rgba(255,255,255,0.82)', fontWeight:'500',
-                            maxWidth:'60%',
+                            background:'rgba(0,0,0,0.48)', backdropFilter:'blur(10px)',
+                            border:'1px solid rgba(255,255,255,0.15)',
+                            padding:'3px 9px', borderRadius:'99px',
+                            fontSize:'10px', color:'rgba(255,255,255,0.88)', fontWeight:'500',
+                            maxWidth:'58%',
                           }}>
                           <MapPin size={9} style={{ flexShrink:0 }} />
                           <span style={{ whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{site.location}</span>
@@ -443,25 +460,34 @@ export default function Sites() {
                         <Pill status={site.site_status} colors={STATUS_COLORS} />
                       </div>
                       {/* bottom: site name */}
-                      <p style={{ fontSize:'15px', fontWeight:'800', color:'white', letterSpacing:'-0.02em', textShadow:'0 2px 8px rgba(0,0,0,0.6)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                      <p style={{
+                        fontSize:'15px', fontWeight:'800', color:'#ffffff',
+                        letterSpacing:'-0.02em', textShadow:'0 2px 12px rgba(0,0,0,0.8)',
+                        whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+                        lineHeight:1.2,
+                      }}>
                         {site.site_name}
                       </p>
                     </div>
                   </div>
 
-                  {/* Body */}
-                  <div style={{ padding:'14px 16px' }}>
+                  {/* ── Body ── */}
+                  <div style={{ padding:'15px 16px', display:'flex', flexDirection:'column', flex:1 }}>
 
                     {/* Type chip + report status */}
                     <div className="flex items-center gap-2 mb-3">
-                      <span style={{ fontSize:'10px', fontWeight:'600', padding:'3px 9px', borderRadius:'6px', background:typeMeta.chipBg, color:typeMeta.color }}>
+                      <span style={{
+                        fontSize:'10px', fontWeight:'700', padding:'3px 10px', borderRadius:'6px',
+                        background:typeMeta.chipBg, color:typeMeta.color, flexShrink:0,
+                        border:`1px solid ${typeMeta.color}22`,
+                      }}>
                         {typeMeta.label}
                       </span>
                       <Pill status={site.report_status} colors={REPORT_COLORS} />
                     </div>
 
                     {/* Info bar: date + duration */}
-                    <div className="flex items-center gap-4 mb-3 pb-3" style={{ borderBottom:'1px solid rgba(255,255,255,0.06)' }}>
+                    <div className="flex items-center gap-4 mb-3 pb-3" style={{ borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
                       <div className="flex items-center gap-1.5">
                         <Calendar size={11} color="#475569" />
                         <span style={{ fontSize:'11px', color:'#94a3b8', fontWeight:'500' }}>
@@ -474,29 +500,28 @@ export default function Sites() {
                       </div>
                     </div>
 
-                    {/* PIC row */}
+                    {/* PIC + crew */}
                     <div className="flex items-center gap-2 mb-3">
                       {pic
                         ? <Avatar name={pic.team_members?.full_name} size={26} index={memberIdx>=0?memberIdx:0} avatarUrl={pic.team_members?.avatar_url} />
                         : <div style={{ width:26, height:26, borderRadius:'50%', background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.1)', flexShrink:0 }} />
                       }
-                      <span style={{ fontSize:'12px', fontWeight:'500', color:'#cbd5e1', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', flex:1, minWidth:0 }}>
+                      <span style={{ fontSize:'12px', fontWeight:'600', color:'#dde3ec', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', flex:1, minWidth:0 }}>
                         {pic?.team_members?.full_name || '—'}
                       </span>
                       {pic && (
-                        <span style={{ fontSize:'9px', fontWeight:'700', padding:'2px 7px', borderRadius:'6px', background:'rgba(59,130,246,0.14)', color:'#60a5fa', border:'1px solid rgba(59,130,246,0.22)', flexShrink:0 }}>PIC</span>
+                        <span style={{ fontSize:'9px', fontWeight:'700', padding:'2px 7px', borderRadius:'5px', background:'rgba(59,130,246,0.15)', color:'#60a5fa', border:'1px solid rgba(59,130,246,0.28)', flexShrink:0 }}>PIC</span>
                       )}
-                      {/* crew stacked */}
                       {crew.length > 0 && (
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <div className="flex items-center flex-shrink-0">
                           <div className="flex">
                             {crew.slice(0,3).map((c,ci) => (
-                              <div key={ci} title={c.team_members?.full_name} style={{ marginLeft:ci>0?'-5px':0 }}>
+                              <div key={ci} title={c.team_members?.full_name} style={{ marginLeft:ci>0?'-6px':0 }}>
                                 <Avatar name={c.team_members?.full_name||'?'} size={20} index={ci+1} avatarUrl={c.team_members?.avatar_url} />
                               </div>
                             ))}
                             {crew.length > 3 && (
-                              <div style={{ width:20,height:20,borderRadius:'50%',marginLeft:'-5px',background:'rgba(255,255,255,0.08)',border:'1.5px solid rgba(255,255,255,0.1)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'7px',fontWeight:'700',color:'#64748b' }}>
+                              <div style={{ width:20,height:20,borderRadius:'50%',marginLeft:'-6px',background:'rgba(255,255,255,0.09)',border:'1.5px solid rgba(255,255,255,0.12)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'7px',fontWeight:'700',color:'#64748b' }}>
                                 +{crew.length-3}
                               </div>
                             )}
@@ -505,14 +530,14 @@ export default function Sites() {
                       )}
                     </div>
 
-                    {/* Actions */}
-                    <div className="flex items-center gap-2">
+                    {/* Action buttons — pinned to bottom */}
+                    <div className="flex items-center gap-1.5" style={{ marginTop:'auto', paddingTop:'10px' }}>
                       <Link to={`/sites/${site.id}`}
                         className="flex items-center justify-center gap-1.5 transition-all"
-                        style={{ flex:1, padding:'8px 0', borderRadius:'9px', fontSize:'11px', fontWeight:'700', color:'#60a5fa', background:'rgba(37,99,235,0.1)', border:'1px solid rgba(59,130,246,0.2)', textDecoration:'none' }}
+                        style={{ flex:1, padding:'8px 0', borderRadius:'9px', fontSize:'11px', fontWeight:'700', color:'#60a5fa', background:'rgba(37,99,235,0.1)', border:'1px solid rgba(59,130,246,0.22)', textDecoration:'none' }}
                         onMouseEnter={e => e.currentTarget.style.background='rgba(37,99,235,0.22)'}
                         onMouseLeave={e => e.currentTarget.style.background='rgba(37,99,235,0.1)'}>
-                        <ArrowUpRight size={12} /> View Details
+                        <ArrowUpRight size={12} /> View
                       </Link>
                       <button
                         onClick={() => {
@@ -530,16 +555,16 @@ export default function Sites() {
                       </button>
                       <button onClick={() => openEdit(site)}
                         className="flex items-center justify-center transition-all"
-                        style={{ width:33,height:33,borderRadius:'9px',cursor:'pointer',flexShrink:0,background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.09)',color:'#64748b' }}
+                        style={{ width:32,height:32,borderRadius:'9px',cursor:'pointer',flexShrink:0,background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.09)',color:'#64748b' }}
                         onMouseEnter={e => { e.currentTarget.style.color='#cbd5e1'; e.currentTarget.style.background='rgba(255,255,255,0.1)' }}
                         onMouseLeave={e => { e.currentTarget.style.color='#64748b'; e.currentTarget.style.background='rgba(255,255,255,0.05)' }}>
                         <Pencil size={11} />
                       </button>
                       <button onClick={() => handleDelete(site.id)}
                         className="flex items-center justify-center transition-all"
-                        style={{ width:33,height:33,borderRadius:'9px',cursor:'pointer',flexShrink:0,background:'rgba(239,68,68,0.06)',border:'1px solid rgba(239,68,68,0.15)',color:'rgba(239,68,68,0.6)' }}
-                        onMouseEnter={e => { e.currentTarget.style.background='rgba(239,68,68,0.16)'; e.currentTarget.style.color='#f87171' }}
-                        onMouseLeave={e => { e.currentTarget.style.background='rgba(239,68,68,0.06)'; e.currentTarget.style.color='rgba(239,68,68,0.6)' }}>
+                        style={{ width:32,height:32,borderRadius:'9px',cursor:'pointer',flexShrink:0,background:'rgba(239,68,68,0.07)',border:'1px solid rgba(239,68,68,0.18)',color:'rgba(239,68,68,0.65)' }}
+                        onMouseEnter={e => { e.currentTarget.style.background='rgba(239,68,68,0.18)'; e.currentTarget.style.color='#f87171' }}
+                        onMouseLeave={e => { e.currentTarget.style.background='rgba(239,68,68,0.07)'; e.currentTarget.style.color='rgba(239,68,68,0.65)' }}>
                         <Trash2 size={11} />
                       </button>
                     </div>
@@ -596,7 +621,7 @@ export default function Sites() {
 
         {/* ── PAGINATION ── */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-between pb-8">
+          <div className="flex items-center justify-between pb-10">
             <span style={{ fontSize:'12px', color:'#475569' }}>
               Showing {(page-1)*PER_PAGE+1}–{Math.min(page*PER_PAGE, filtered.length)} of {filtered.length} sites
             </span>
