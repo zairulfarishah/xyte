@@ -95,7 +95,7 @@ export default function CalendarPage() {
   const SHOW = 2 // max chips before "+X more"
 
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg,#071226 0 100px,#dde4ed 100px 100%)' }}>
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg,#071226 0 100px,#c8d4e3 100px 100%)' }}>
 
       {/* ── Header ── */}
       <div style={{ padding: '24px 40px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -154,9 +154,9 @@ export default function CalendarPage() {
                   key={idx}
                   style={{
                     minHeight: '116px',
-                    background:    day ? (todayCell ? '#eff6ff' : 'white') : 'transparent',
+                    background:    day ? (todayCell ? '#dbeafe' : '#f8fafc') : 'transparent',
                     borderRadius:  day ? '10px' : '0',
-                    border:        day ? (todayCell ? '2px solid #2563eb' : '1px solid #e2e8f0') : 'none',
+                    border:        day ? (todayCell ? '2px solid #2563eb' : '1px solid #cbd5e1') : 'none',
                     padding:       day ? '8px' : '0',
                     display:       'flex',
                     flexDirection: 'column',
