@@ -2,28 +2,28 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker, useMapEvents } from 'react-leaflet'
 import { supabase } from '../supabase'
-import { Plus, Pencil, Trash2, Search, ArrowUpRight, MapPin, Users, Activity, X, Camera, SlidersHorizontal } from 'lucide-react'
+import { Plus, Pencil, Trash2, Search, ArrowUpRight, MapPin, SlidersHorizontal, X, Camera } from 'lucide-react'
 import { notify } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
 import { getSiteHeaderImage } from '../utils/siteHeader'
 import 'leaflet/dist/leaflet.css'
 
-// ── colour tokens (dark mode) ──────────────────────────────────────
+// ── colour tokens ──────────────────────────────────────────────────
 const STATUS_COLORS = {
-  upcoming:  { bg: 'rgba(234,179,8,.15)',   text: '#fbbf24', border: 'rgba(234,179,8,.35)'   },
-  ongoing:   { bg: 'rgba(249,115,22,.15)',  text: '#fb923c', border: 'rgba(249,115,22,.35)'  },
-  completed: { bg: 'rgba(34,197,94,.15)',   text: '#4ade80', border: 'rgba(34,197,94,.35)'   },
-  cancelled: { bg: 'rgba(239,68,68,.15)',   text: '#f87171', border: 'rgba(239,68,68,.35)'   },
-  postponed: { bg: 'rgba(148,163,184,.12)', text: '#94a3b8', border: 'rgba(148,163,184,.25)' },
+  upcoming:  { bg:'rgba(234,179,8,.14)',   text:'#fbbf24', border:'rgba(234,179,8,.32)'   },
+  ongoing:   { bg:'rgba(249,115,22,.14)',  text:'#fb923c', border:'rgba(249,115,22,.32)'  },
+  completed: { bg:'rgba(34,197,94,.14)',   text:'#4ade80', border:'rgba(34,197,94,.32)'   },
+  cancelled: { bg:'rgba(239,68,68,.14)',   text:'#f87171', border:'rgba(239,68,68,.32)'   },
+  postponed: { bg:'rgba(148,163,184,.1)',  text:'#94a3b8', border:'rgba(148,163,184,.22)' },
 }
 
 const REPORT_COLORS = {
-  pending:        { bg: 'rgba(148,163,184,.1)',  text: '#94a3b8', border: 'rgba(148,163,184,.2)'  },
-  in_progress:    { bg: 'rgba(59,130,246,.13)',  text: '#60a5fa', border: 'rgba(59,130,246,.3)'   },
-  submitted:      { bg: 'rgba(167,139,250,.13)', text: '#a78bfa', border: 'rgba(167,139,250,.3)'  },
-  approved:       { bg: 'rgba(52,211,153,.13)',  text: '#34d399', border: 'rgba(52,211,153,.3)'   },
-  not_applicable: { bg: 'rgba(148,163,184,.08)', text: '#64748b', border: 'rgba(148,163,184,.15)' },
+  pending:        { bg:'rgba(148,163,184,.09)', text:'#94a3b8', border:'rgba(148,163,184,.18)' },
+  in_progress:    { bg:'rgba(59,130,246,.12)',  text:'#60a5fa', border:'rgba(59,130,246,.28)'  },
+  submitted:      { bg:'rgba(167,139,250,.12)', text:'#a78bfa', border:'rgba(167,139,250,.28)' },
+  approved:       { bg:'rgba(52,211,153,.12)',  text:'#34d399', border:'rgba(52,211,153,.28)'  },
+  not_applicable: { bg:'rgba(148,163,184,.06)', text:'#64748b', border:'rgba(148,163,184,.12)' },
 }
 
 const CARD_GRADIENTS = {
@@ -42,18 +42,18 @@ const AVATAR_GRADIENTS = [
 ]
 
 const TYPE_META = {
-  site_scanning: { label: 'Site Scanning', dot: '#3b82f6' },
-  site_visit:    { label: 'Site Visit',    dot: '#0d9488' },
-  meeting:       { label: 'Meeting',       dot: '#7c3aed' },
+  site_scanning: { label:'Site Scanning', dot:'#3b82f6' },
+  site_visit:    { label:'Site Visit',    dot:'#0d9488' },
+  meeting:       { label:'Meeting',       dot:'#7c3aed' },
 }
 
-const SITE_TYPES  = [
-  { value: 'site_scanning', label: 'Site Scanning' },
-  { value: 'site_visit',    label: 'Site Visit'     },
-  { value: 'meeting',       label: 'Meeting'        },
+const SITE_TYPES   = [
+  { value:'site_scanning', label:'Site Scanning' },
+  { value:'site_visit',    label:'Site Visit'    },
+  { value:'meeting',       label:'Meeting'       },
 ]
 const SALESPERSONS = ['GH Tan','Chong Jie Yan','Jasmin','Darren','Wendy','Zairul']
-const TABS = ['All','Upcoming','Ongoing','Completed','Cancelled','Postponed']
+const TABS         = ['All','Upcoming','Ongoing','Completed','Cancelled','Postponed']
 
 const EMPTY = {
   site_type:'site_scanning', site_name:'', location:'', latitude:'', longitude:'',
@@ -64,15 +64,15 @@ const EMPTY = {
 }
 
 // ── helpers ────────────────────────────────────────────────────────
-function Avatar({ name, size = 28, index = 0, avatarUrl = null }) {
+function Avatar({ name, size = 24, index = 0, avatarUrl = null }) {
   const initials = name?.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase() || '?'
   return (
     <div style={{
       width:size, height:size, borderRadius:'50%', flexShrink:0, overflow:'hidden',
       background: avatarUrl ? '#0f172a' : AVATAR_GRADIENTS[index % AVATAR_GRADIENTS.length],
       display:'flex', alignItems:'center', justifyContent:'center',
-      color:'white', fontWeight:'700', fontSize:size*.36,
-      border:'2px solid rgba(255,255,255,0.08)',
+      color:'white', fontWeight:'700', fontSize:size * .36,
+      border:'1.5px solid rgba(255,255,255,0.1)',
     }}>
       {avatarUrl
         ? <img src={avatarUrl} alt={name} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
@@ -81,16 +81,18 @@ function Avatar({ name, size = 28, index = 0, avatarUrl = null }) {
   )
 }
 
-function Pill({ status, colors, small = false }) {
+function StatusPill({ status, colors, small = false }) {
   const c = colors[status] || colors[Object.keys(colors)[0]]
   return (
     <span style={{
       background:c.bg, color:c.text, border:`1px solid ${c.border}`,
-      padding: small ? '2px 8px' : '3px 10px',
-      borderRadius:'99px', fontSize: small ? '10px' : '11px',
-      fontWeight:'600', textTransform:'capitalize', whiteSpace:'nowrap',
-      letterSpacing:'0.01em',
-    }}>{status?.replace(/_/g,' ')}</span>
+      padding: small ? '3px 8px' : '3px 10px',
+      borderRadius:'99px', fontSize:'10px',
+      fontWeight:'700', textTransform:'capitalize', whiteSpace:'nowrap',
+      letterSpacing:'0.01em', flexShrink:0,
+    }}>
+      {status?.replace(/_/g,' ')}
+    </span>
   )
 }
 
@@ -124,20 +126,20 @@ function LocationPicker({ lat, lng, onPick, mapKey }) {
 // ── main component ─────────────────────────────────────────────────
 export default function Sites() {
   const { fullName, isZairul } = useAuth()
-  const [sites, setSites]           = useState([])
-  const [members, setMembers]       = useState([])
-  const [loading, setLoading]       = useState(true)
-  const [tab, setTab]               = useState('All')
-  const [search, setSearch]         = useState('')
-  const [showForm, setShowForm]     = useState(false)
-  const [editSite, setEditSite]     = useState(null)
-  const [form, setForm]             = useState(EMPTY)
-  const [saving, setSaving]         = useState(false)
+  const [sites, setSites]             = useState([])
+  const [members, setMembers]         = useState([])
+  const [loading, setLoading]         = useState(true)
+  const [tab, setTab]                 = useState('All')
+  const [search, setSearch]           = useState('')
+  const [showForm, setShowForm]       = useState(false)
+  const [editSite, setEditSite]       = useState(null)
+  const [form, setForm]               = useState(EMPTY)
+  const [saving, setSaving]           = useState(false)
   const [uploadError, setUploadError] = useState(null)
-  const [page, setPage]             = useState(1)
-  const [expandedCard, setExpandedCard] = useState(null)
-  const [quickSaving, setQuickSaving]   = useState(null)
-  const [draftStatus, setDraftStatus]   = useState(null)
+  const [page, setPage]               = useState(1)
+  const [expandedCard, setExpandedCard]   = useState(null)
+  const [quickSaving, setQuickSaving]     = useState(null)
+  const [draftStatus, setDraftStatus]     = useState(null)
   const photoInputRef = useRef(null)
   const PER_PAGE = 6
 
@@ -230,11 +232,11 @@ export default function Sites() {
         notes:form.notes,
       }
       let siteId = editSite?.id
-      const origA = editSite?.site_assignments||[]
-      const origPic = origA.find(a => a.assignment_role==='PIC')?.team_members?.id||''
+      const origA    = editSite?.site_assignments||[]
+      const origPic  = origA.find(a => a.assignment_role==='PIC')?.team_members?.id||''
       const origCrew = origA.filter(a => a.assignment_role==='crew').map(a => a.team_members?.id).filter(Boolean).sort()
       const nextCrew = [...form.crew_ids].sort()
-      const changed = !editSite || origPic!==form.pic_id || origCrew.length!==nextCrew.length || origCrew.some((id,i) => id!==nextCrew[i])
+      const changed  = !editSite || origPic!==form.pic_id || origCrew.length!==nextCrew.length || origCrew.some((id,i) => id!==nextCrew[i])
       if (editSite) {
         const { error } = await supabase.from('sites').update(payload).eq('id', siteId)
         if (error) throw new Error(error.message)
@@ -280,7 +282,6 @@ export default function Sites() {
   const totalPages = Math.ceil(filtered.length / PER_PAGE)
   const paginated  = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE)
 
-  // ── shared input style for form ──
   const darkInput = {
     width:'100%', padding:'9px 12px', borderRadius:'10px',
     border:'1px solid rgba(255,255,255,0.1)', fontSize:'13px', outline:'none',
@@ -288,10 +289,10 @@ export default function Sites() {
   }
 
   if (loading) return (
-    <div className="flex items-center justify-center h-[calc(100vh-54px)] bg-[#060b14]">
-      <div className="flex items-center gap-3 text-slate-400">
-        <div className="w-5 h-5 rounded-full border-2 border-blue-800 border-t-blue-500 animate-spin" />
-        Loading sites...
+    <div className="flex items-center justify-center bg-[#060b14]" style={{ height:'calc(100vh - 54px)' }}>
+      <div className="flex items-center gap-3 text-slate-400 text-sm">
+        <div className="w-4 h-4 rounded-full border-2 border-blue-800 border-t-blue-500 animate-spin" />
+        Loading sites…
       </div>
     </div>
   )
@@ -299,351 +300,425 @@ export default function Sites() {
   return (
     <div className="relative bg-[#060b14]" style={{ minHeight:'calc(100vh - 54px)', overflowY:'auto' }}>
 
-      {/* Background effects — fixed so they stay in place while scrolling */}
+      {/* Fixed background glow */}
       <div className="pointer-events-none fixed inset-0" style={{
-        background:'radial-gradient(ellipse 60% 50% at 20% 15%, rgba(59,130,246,0.1) 0%, transparent 60%), radial-gradient(ellipse 50% 40% at 80% 5%, rgba(6,182,212,0.07) 0%, transparent 55%), radial-gradient(ellipse 40% 30% at 65% 85%, rgba(99,102,241,0.06) 0%, transparent 50%)',
         zIndex:0,
+        background:'radial-gradient(ellipse 55% 45% at 18% 18%,rgba(59,130,246,0.09) 0%,transparent 60%),radial-gradient(ellipse 45% 35% at 82% 8%,rgba(6,182,212,0.06) 0%,transparent 55%),radial-gradient(ellipse 35% 28% at 65% 88%,rgba(99,102,241,0.05) 0%,transparent 50%)',
       }} />
+      {/* Fixed background grid */}
       <div className="pointer-events-none fixed inset-0" style={{
-        backgroundImage:'linear-gradient(rgba(255,255,255,0.022) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.022) 1px, transparent 1px)',
-        backgroundSize:'40px 40px', zIndex:0,
+        zIndex:0,
+        backgroundImage:'linear-gradient(rgba(255,255,255,0.018) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.018) 1px,transparent 1px)',
+        backgroundSize:'44px 44px',
       }} />
 
-      {/* Content wrapper — wide side padding = buffer zones */}
-      <div className="relative flex flex-col" style={{ zIndex:1 }}>
+      {/* Content */}
+      <div className="relative px-16" style={{ zIndex:1 }}>
 
         {/* ── HEADER ── */}
-        <div className="px-16 pt-5 pb-0">
-          <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start justify-between gap-4 pt-7">
 
-            {/* Left */}
-            <div>
-              <h1 className="text-2xl font-extrabold text-slate-100 tracking-tight">Sites</h1>
-              <div className="flex items-center gap-2 mt-2 flex-wrap">
-                {[
-                  { label:`${counts.All} total`,     color:'rgba(148,163,184,0.12)', text:'#94a3b8', dot:null },
-                  { label:`${counts.Upcoming} upcoming`, color:'rgba(234,179,8,0.12)', text:'#fbbf24', dot:'#f59e0b' },
-                  { label:`${counts.Ongoing} ongoing`,   color:'rgba(249,115,22,0.12)', text:'#fb923c', dot:'#f97316' },
-                  { label:`${counts.Completed} done`,    color:'rgba(34,197,94,0.12)',  text:'#4ade80', dot:'#22c55e' },
-                ].map(({ label, color, text, dot }) => (
-                  <span key={label} style={{ background:color, color:text, border:`1px solid ${color}` }}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold">
-                    {dot && <span style={{ background:dot }} className="w-1.5 h-1.5 rounded-full flex-shrink-0" />}
-                    {label}
-                  </span>
-                ))}
-              </div>
+          {/* Left: title + stat pills */}
+          <div>
+            <h1 className="text-[22px] font-extrabold text-slate-100 tracking-tight leading-none">Sites</h1>
+            <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
+              {[
+                { label:`${counts.All} total`,          bg:'rgba(148,163,184,0.08)', text:'#94a3b8', border:'rgba(148,163,184,0.14)', dot:null },
+                { label:`${counts.Upcoming} upcoming`,  bg:'rgba(234,179,8,0.1)',    text:'#fbbf24', border:'rgba(234,179,8,0.2)',    dot:'#f59e0b' },
+                { label:`${counts.Ongoing} ongoing`,    bg:'rgba(249,115,22,0.1)',   text:'#fb923c', border:'rgba(249,115,22,0.2)',   dot:'#f97316' },
+                { label:`${counts.Completed} done`,     bg:'rgba(34,197,94,0.1)',    text:'#4ade80', border:'rgba(34,197,94,0.2)',    dot:'#22c55e' },
+              ].map(({ label, bg, text, border, dot }) => (
+                <span key={label} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                  style={{ background:bg, color:text, border:`1px solid ${border}` }}>
+                  {dot && <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background:dot }} />}
+                  {label}
+                </span>
+              ))}
             </div>
+          </div>
 
-            {/* Right */}
-            <div className="flex items-center gap-2 flex-shrink-0">
-              {/* Search */}
-              <div className="relative">
-                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
-                <input
-                  placeholder="Search sites..."
-                  value={search}
-                  onChange={e => { setSearch(e.target.value); setPage(1) }}
-                  className="bg-white/5 border border-white/10 rounded-xl text-slate-200 placeholder-slate-500 text-[13px] outline-none pl-8 pr-4 py-2 w-52 focus:border-blue-500/50 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.1)] transition-all"
-                />
-              </div>
-              {/* Filter btn */}
-              <button className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 hover:text-blue-400 hover:border-blue-500/30 transition-all">
-                <SlidersHorizontal size={14} />
-              </button>
-              {/* Add site */}
-              <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-[13px] font-semibold transition-all hover:-translate-y-px"
-                style={{ background:'linear-gradient(135deg,#2563eb,#0891b2)', boxShadow:'0 0 20px rgba(59,130,246,0.35),0 4px 12px rgba(0,0,0,0.3)' }}>
-                <Plus size={13} /> Add Site
-              </button>
+          {/* Right: search + filter + add */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="relative">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+              <input
+                placeholder="Search sites…"
+                value={search}
+                onChange={e => { setSearch(e.target.value); setPage(1) }}
+                className="text-slate-200 placeholder-slate-500 outline-none transition-all"
+                style={{
+                  background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.09)',
+                  borderRadius:'10px', fontSize:'13px', fontFamily:'inherit',
+                  padding:'8px 14px 8px 30px', width:'200px',
+                }}
+                onFocus={e => e.target.style.borderColor='rgba(59,130,246,0.4)'}
+                onBlur={e => e.target.style.borderColor='rgba(255,255,255,0.09)'}
+              />
             </div>
+            <button
+              className="flex items-center justify-center text-slate-500 hover:text-slate-300 transition-all"
+              style={{ width:36, height:36, borderRadius:'10px', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.09)', flexShrink:0 }}>
+              <SlidersHorizontal size={14} />
+            </button>
+            <button onClick={openAdd}
+              className="flex items-center gap-1.5 text-white font-semibold transition-all hover:-translate-y-px"
+              style={{
+                padding:'8px 16px', borderRadius:'10px', fontSize:'13px', fontFamily:'inherit', border:'none', cursor:'pointer',
+                background:'linear-gradient(135deg,#2563eb,#0891b2)',
+                boxShadow:'0 0 20px rgba(59,130,246,0.3),0 4px 12px rgba(0,0,0,0.25)',
+              }}>
+              <Plus size={13} /> Add Site
+            </button>
           </div>
         </div>
 
-        {/* ── FILTER TABS ── */}
-        <div className="px-16 pt-3 pb-2.5">
-          <div className="flex items-center gap-2">
-            {TABS.map(t => {
-              const active = tab === t
-              return (
-                <button key={t} onClick={() => { setTab(t); setPage(1) }}
-                  className="flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all border"
-                  style={{
-                    background: active ? 'linear-gradient(135deg,rgba(37,99,235,0.25),rgba(8,145,178,0.2))' : 'transparent',
-                    borderColor: active ? 'rgba(59,130,246,0.5)' : 'rgba(255,255,255,0.1)',
-                    color: active ? '#60a5fa' : '#64748b',
-                    boxShadow: active ? '0 0 14px rgba(59,130,246,0.2)' : 'none',
-                  }}>
-                  {t}
-                  <span className="px-1.5 py-px rounded-full text-[10px] font-bold"
-                    style={{
-                      background: active ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.06)',
-                      color: active ? '#93c5fd' : '#475569',
-                    }}>
-                    {counts[t]}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
+        {/* ── TABS ── */}
+        <div className="flex items-center gap-1.5 mt-3.5 mb-5"
+          style={{ borderBottom:'1px solid rgba(255,255,255,0.06)', paddingBottom:'14px' }}>
+          {TABS.map(t => {
+            const active = tab === t
+            return (
+              <button key={t} onClick={() => { setTab(t); setPage(1) }}
+                className="flex items-center gap-1.5 transition-all"
+                style={{
+                  padding:'6px 14px', borderRadius:'99px', fontSize:'12px', fontWeight:'600',
+                  border:`1px solid ${active ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                  background: active ? 'rgba(37,99,235,0.18)' : 'transparent',
+                  color: active ? '#60a5fa' : '#475569',
+                  boxShadow: active ? '0 0 14px rgba(59,130,246,0.15)' : 'none',
+                  cursor:'pointer', fontFamily:'inherit',
+                }}>
+                {t}
+                <span style={{
+                  padding:'1px 6px', borderRadius:'99px', fontSize:'10px', fontWeight:'700',
+                  background: active ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.06)',
+                  color: active ? '#93c5fd' : '#334155',
+                }}>
+                  {counts[t]}
+                </span>
+              </button>
+            )
+          })}
         </div>
 
         {/* ── CARDS GRID ── */}
-        <div className="px-16 pb-10">
+        {paginated.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-2xl text-slate-500 mb-10"
+            style={{ height:192, border:'1px solid rgba(255,255,255,0.07)', background:'rgba(255,255,255,0.02)' }}>
+            <MapPin size={28} className="mb-3 opacity-30" />
+            <p className="text-sm font-medium">No sites found</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-4 pb-6">
+            {paginated.map(site => {
+              const pic       = site.site_assignments?.find(a => a.assignment_role === 'PIC')
+              const crew      = site.site_assignments?.filter(a => a.assignment_role === 'crew') || []
+              const typeMeta  = TYPE_META[site.site_type] || TYPE_META.site_scanning
+              const memberIdx = members.findIndex(m => m.id === pic?.team_members?.id)
+              const isExpanded = expandedCard === site.id
 
-          {paginated.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-48 rounded-2xl border border-white/8 bg-white/3 text-slate-500">
-              <MapPin size={28} className="mb-3 opacity-40" />
-              <p className="text-sm font-medium">No sites found</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-3 gap-4">
-              {paginated.map(site => {
-                const pic      = site.site_assignments?.find(a => a.assignment_role==='PIC')
-                const crew     = site.site_assignments?.filter(a => a.assignment_role==='crew')||[]
-                const typeMeta = TYPE_META[site.site_type] || TYPE_META.site_scanning
-                const memberIdx = members.findIndex(m => m.id===pic?.team_members?.id)
-                const isExpanded = expandedCard === site.id
+              return (
+                <div key={site.id}
+                  className="rounded-2xl overflow-hidden transition-all duration-200"
+                  style={{
+                    border:`1px solid ${isExpanded ? 'rgba(59,130,246,0.35)' : 'rgba(255,255,255,0.08)'}`,
+                    background:'rgba(13,20,36,0.7)',
+                    backdropFilter:'blur(16px)', WebkitBackdropFilter:'blur(16px)',
+                    boxShadow: isExpanded ? '0 0 0 1px rgba(59,130,246,0.15),0 8px 32px rgba(0,0,0,0.4)' : 'none',
+                  }}
+                  onMouseEnter={e => {
+                    if (isExpanded) return
+                    e.currentTarget.style.transform = 'translateY(-3px)'
+                    e.currentTarget.style.borderColor = 'rgba(59,130,246,0.22)'
+                    e.currentTarget.style.boxShadow = '0 16px 40px rgba(0,0,0,0.5),0 0 0 1px rgba(59,130,246,0.12),0 0 30px rgba(59,130,246,0.06)'
+                  }}
+                  onMouseLeave={e => {
+                    if (isExpanded) return
+                    e.currentTarget.style.transform = 'none'
+                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'
+                    e.currentTarget.style.boxShadow = 'none'
+                  }}
+                >
 
-                return (
-                  <div key={site.id}
-                    className="group rounded-2xl border overflow-hidden transition-all duration-200 cursor-pointer"
-                    style={{
-                      background:'rgba(15,23,42,0.6)',
-                      backdropFilter:'blur(16px)', WebkitBackdropFilter:'blur(16px)',
-                      borderColor: isExpanded ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.08)',
-                      boxShadow: isExpanded ? '0 0 0 1px rgba(59,130,246,0.2),0 8px 32px rgba(0,0,0,0.4)' : 'none',
-                    }}
-                    onMouseEnter={e => {
-                      if (!isExpanded) {
-                        e.currentTarget.style.transform = 'translateY(-3px)'
-                        e.currentTarget.style.boxShadow = '0 12px 40px rgba(0,0,0,0.5),0 0 0 1px rgba(59,130,246,0.18),0 0 28px rgba(59,130,246,0.07)'
-                        e.currentTarget.style.borderColor = 'rgba(59,130,246,0.25)'
-                      }
-                    }}
-                    onMouseLeave={e => {
-                      if (!isExpanded) {
-                        e.currentTarget.style.transform = 'none'
-                        e.currentTarget.style.boxShadow = 'none'
-                        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'
-                      }
-                    }}
-                  >
-                    {/* Banner */}
-                    <div className="relative h-[80px] overflow-hidden" style={{ background:CARD_GRADIENTS[site.site_type]||CARD_GRADIENTS.site_scanning }}>
-                      {(site.site_photo_url || getSiteHeaderImage(site.site_type)) && (
-                        <img src={site.site_photo_url||getSiteHeaderImage(site.site_type)} alt=""
-                          className="absolute inset-0 w-full h-full object-cover opacity-40" />
-                      )}
-                      <div className="absolute inset-0" style={{ background:'linear-gradient(to bottom,rgba(0,0,0,0.05) 0%,rgba(0,0,0,0.55) 100%)' }} />
-                      <div className="absolute top-0 left-0 right-0 flex items-start justify-between p-3 z-10">
-                        <span className="flex items-center gap-1.5 text-[10px] text-white/80 font-medium px-2.5 py-1 rounded-full min-w-0"
-                          style={{ background:'rgba(0,0,0,0.35)', backdropFilter:'blur(8px)', border:'1px solid rgba(255,255,255,0.12)', maxWidth:'60%' }}>
-                          <MapPin size={8} className="flex-shrink-0" />
-                          <span className="truncate">{site.location}</span>
+                  {/* ── Banner ── */}
+                  <div className="relative overflow-hidden" style={{ height:76, background:CARD_GRADIENTS[site.site_type]||CARD_GRADIENTS.site_scanning }}>
+                    {(site.site_photo_url || getSiteHeaderImage(site.site_type)) && (
+                      <img src={site.site_photo_url||getSiteHeaderImage(site.site_type)} alt=""
+                        className="absolute inset-0 w-full h-full object-cover"
+                        style={{ opacity:0.35 }} />
+                    )}
+                    {/* gradient overlay */}
+                    <div className="absolute inset-0" style={{ background:'linear-gradient(to bottom,rgba(0,0,0,0) 0%,rgba(0,0,0,0.6) 100%)' }} />
+                    {/* banner row: location left, status right */}
+                    <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-2 z-10"
+                      style={{ padding:'10px 12px' }}>
+                      <div className="flex items-center gap-1.5 min-w-0"
+                        style={{
+                          background:'rgba(0,0,0,0.4)', backdropFilter:'blur(8px)',
+                          border:'1px solid rgba(255,255,255,0.12)',
+                          padding:'4px 10px', borderRadius:'99px',
+                          fontSize:'10px', color:'rgba(255,255,255,0.78)', fontWeight:'500',
+                          maxWidth:'58%',
+                        }}>
+                        <MapPin size={9} style={{ flexShrink:0 }} />
+                        <span style={{ whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                          {site.location}
                         </span>
-                        <Pill status={site.site_status} colors={STATUS_COLORS} small />
+                      </div>
+                      <StatusPill status={site.site_status} colors={STATUS_COLORS} small />
+                    </div>
+                  </div>
+
+                  {/* ── Body ── */}
+                  <div style={{ padding:'14px' }}>
+
+                    {/* Site name */}
+                    <p style={{ fontSize:'13px', fontWeight:'700', color:'#f1f5f9', lineHeight:'1.35', marginBottom:'4px', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                      {site.site_name}
+                    </p>
+
+                    {/* Type row */}
+                    <div className="flex items-center gap-1.5" style={{ fontSize:'10px', color:'#64748b', fontWeight:'500', marginBottom:'12px' }}>
+                      <span style={{ width:6, height:6, borderRadius:'50%', background:typeMeta.dot, flexShrink:0, display:'inline-block' }} />
+                      {typeMeta.label}
+                    </div>
+
+                    {/* Info grid: date + duration */}
+                    <div style={{
+                      display:'grid', gridTemplateColumns:'1fr 1fr',
+                      border:'1px solid rgba(255,255,255,0.07)',
+                      borderRadius:'10px', overflow:'hidden', marginBottom:'12px',
+                    }}>
+                      <div style={{ padding:'8px 10px', borderRight:'1px solid rgba(255,255,255,0.07)' }}>
+                        <p style={{ fontSize:'9px', color:'#475569', textTransform:'uppercase', letterSpacing:'0.08em', fontWeight:'600', marginBottom:'3px' }}>Scheduled</p>
+                        <p style={{ fontSize:'11px', fontWeight:'600', color:'#cbd5e1' }}>
+                          {new Date(site.scheduled_date).toLocaleDateString('en-MY',{ day:'numeric', month:'short', year:'numeric' })}
+                        </p>
+                      </div>
+                      <div style={{ padding:'8px 10px' }}>
+                        <p style={{ fontSize:'9px', color:'#475569', textTransform:'uppercase', letterSpacing:'0.08em', fontWeight:'600', marginBottom:'3px' }}>Duration</p>
+                        <p style={{ fontSize:'11px', fontWeight:'600', color:'#cbd5e1' }}>{site.site_duration_days}d</p>
                       </div>
                     </div>
 
-                    {/* Body */}
-                    <div className="p-3.5">
-
-                      {/* Name + type */}
-                      <h3 className="text-[13px] font-bold text-slate-100 leading-snug mb-1">{site.site_name}</h3>
-                      <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-medium mb-3">
-                        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background:typeMeta.dot }} />
-                        {typeMeta.label}
+                    {/* PIC row */}
+                    <div className="flex items-center justify-between" style={{ marginBottom: crew.length > 0 ? '8px' : '0', minHeight:'26px' }}>
+                      <div className="flex items-center gap-1.5" style={{ minWidth:0, flex:1 }}>
+                        {pic
+                          ? <Avatar name={pic.team_members?.full_name} size={24} index={memberIdx >= 0 ? memberIdx : 0} avatarUrl={pic.team_members?.avatar_url} />
+                          : <div style={{ width:24, height:24, borderRadius:'50%', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', flexShrink:0 }} />
+                        }
+                        <span style={{ fontSize:'11px', fontWeight:'500', color:'#cbd5e1', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:'100px' }}>
+                          {pic?.team_members?.full_name || '—'}
+                        </span>
+                        {pic && (
+                          <span style={{ fontSize:'9px', fontWeight:'700', padding:'2px 6px', borderRadius:'99px', background:'rgba(59,130,246,0.14)', color:'#60a5fa', border:'1px solid rgba(59,130,246,0.22)', flexShrink:0 }}>
+                            PIC
+                          </span>
+                        )}
                       </div>
+                      <StatusPill status={site.report_status} colors={REPORT_COLORS} small />
+                    </div>
 
-                      {/* Info grid */}
-                      <div className="grid grid-cols-2 rounded-lg overflow-hidden mb-3" style={{ border:'1px solid rgba(255,255,255,0.07)' }}>
-                        <div className="px-2.5 py-2" style={{ borderRight:'1px solid rgba(255,255,255,0.07)' }}>
-                          <p className="text-[9px] text-slate-600 uppercase tracking-widest font-semibold mb-0.5">Scheduled</p>
-                          <p className="text-[11px] font-semibold text-slate-200">
-                            {new Date(site.scheduled_date).toLocaleDateString('en-MY',{day:'numeric',month:'short',year:'numeric'})}
-                          </p>
+                    {/* Crew row */}
+                    {crew.length > 0 && (
+                      <div className="flex items-center gap-2" style={{ marginBottom:'0' }}>
+                        <div className="flex">
+                          {crew.slice(0,4).map((c, ci) => (
+                            <div key={ci} title={c.team_members?.full_name} style={{ marginLeft: ci > 0 ? '-5px' : 0 }}>
+                              <Avatar name={c.team_members?.full_name||'?'} size={22} index={ci+1} avatarUrl={c.team_members?.avatar_url} />
+                            </div>
+                          ))}
+                          {crew.length > 4 && (
+                            <div style={{
+                              width:22, height:22, borderRadius:'50%', marginLeft:'-5px',
+                              background:'rgba(255,255,255,0.08)', border:'1.5px solid rgba(255,255,255,0.1)',
+                              display:'flex', alignItems:'center', justifyContent:'center',
+                              fontSize:'8px', fontWeight:'700', color:'#64748b',
+                            }}>
+                              +{crew.length-4}
+                            </div>
+                          )}
                         </div>
-                        <div className="px-2.5 py-2">
-                          <p className="text-[9px] text-slate-600 uppercase tracking-widest font-semibold mb-0.5">Duration</p>
-                          <p className="text-[11px] font-semibold text-slate-200">{site.site_duration_days}d</p>
-                        </div>
+                        <span style={{ fontSize:'10px', color:'#475569' }}>{crew.length} crew</span>
                       </div>
+                    )}
 
-                      {/* PIC + report status */}
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-1.5">
-                          {pic
-                            ? <Avatar name={pic.team_members?.full_name} size={22} index={memberIdx>=0?memberIdx:0} avatarUrl={pic.team_members?.avatar_url} />
-                            : <div className="w-[22px] h-[22px] rounded-full" style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)' }} />
-                          }
-                          <span className="text-[11px] text-slate-300 font-medium truncate max-w-[110px]">{pic?.team_members?.full_name||'—'}</span>
-                          {pic && <span className="text-[9px] font-bold px-1.5 py-px rounded-full flex-shrink-0" style={{ background:'rgba(59,130,246,0.15)', color:'#60a5fa', border:'1px solid rgba(59,130,246,0.25)' }}>PIC</span>}
+                    {/* Action bar */}
+                    <div className="flex items-center gap-1.5"
+                      style={{ borderTop:'1px solid rgba(255,255,255,0.06)', marginTop:'10px', paddingTop:'10px' }}>
+                      <Link to={`/sites/${site.id}`}
+                        className="flex items-center justify-center gap-1 transition-all"
+                        style={{
+                          flex:1, padding:'7px 0', borderRadius:'8px',
+                          fontSize:'11px', fontWeight:'600', color:'#60a5fa',
+                          background:'rgba(37,99,235,0.1)', border:'1px solid rgba(59,130,246,0.18)',
+                          textDecoration:'none',
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background='rgba(37,99,235,0.2)'}
+                        onMouseLeave={e => e.currentTarget.style.background='rgba(37,99,235,0.1)'}>
+                        <ArrowUpRight size={11} /> View
+                      </Link>
+                      <button
+                        onClick={() => {
+                          if (isExpanded) { setExpandedCard(null); setDraftStatus(null) }
+                          else { setExpandedCard(site.id); setDraftStatus({ site_status:site.site_status, report_status:site.report_status }) }
+                        }}
+                        className="flex items-center justify-center gap-1 transition-all"
+                        style={{
+                          flex:1, padding:'7px 0', borderRadius:'8px',
+                          fontSize:'11px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit',
+                          background: isExpanded ? 'rgba(37,99,235,0.2)' : 'rgba(255,255,255,0.04)',
+                          border:`1px solid ${isExpanded ? 'rgba(59,130,246,0.35)' : 'rgba(255,255,255,0.09)'}`,
+                          color: isExpanded ? '#60a5fa' : '#94a3b8',
+                        }}>
+                        <Pencil size={10} /> Update
+                      </button>
+                      <button onClick={() => openEdit(site)}
+                        className="flex items-center justify-center transition-all"
+                        style={{
+                          width:30, height:30, borderRadius:'8px', cursor:'pointer',
+                          background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)',
+                          color:'#64748b',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.color='#cbd5e1'; e.currentTarget.style.background='rgba(255,255,255,0.09)' }}
+                        onMouseLeave={e => { e.currentTarget.style.color='#64748b'; e.currentTarget.style.background='rgba(255,255,255,0.04)' }}>
+                        <Pencil size={11} />
+                      </button>
+                      <button onClick={() => handleDelete(site.id)}
+                        className="flex items-center justify-center transition-all"
+                        style={{
+                          width:30, height:30, borderRadius:'8px', cursor:'pointer',
+                          background:'rgba(239,68,68,0.05)', border:'1px solid rgba(239,68,68,0.14)',
+                          color:'rgba(239,68,68,0.55)',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background='rgba(239,68,68,0.14)'; e.currentTarget.style.color='#f87171' }}
+                        onMouseLeave={e => { e.currentTarget.style.background='rgba(239,68,68,0.05)'; e.currentTarget.style.color='rgba(239,68,68,0.55)' }}>
+                        <Trash2 size={11} />
+                      </button>
+                    </div>
+
+                    {/* Inline update panel */}
+                    {isExpanded && draftStatus && (
+                      <div style={{ marginTop:'12px', padding:'12px', borderRadius:'12px', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)' }}>
+
+                        <p style={{ fontSize:'9px', fontWeight:'700', color:'#475569', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:'8px' }}>Site Status</p>
+                        <div className="flex flex-wrap gap-1.5" style={{ marginBottom:'12px' }}>
+                          {['upcoming','ongoing','completed','cancelled','postponed'].map(s => {
+                            const c = STATUS_COLORS[s]; const active = draftStatus.site_status === s
+                            return (
+                              <button key={s} onClick={() => setDraftStatus(d => ({...d, site_status:s}))}
+                                style={{
+                                  padding:'4px 10px', borderRadius:'99px', fontSize:'10px', fontWeight:'600',
+                                  cursor:'pointer', textTransform:'capitalize', fontFamily:'inherit',
+                                  border:`1px solid ${active ? c.border : 'rgba(255,255,255,0.08)'}`,
+                                  background: active ? c.bg : 'transparent',
+                                  color: active ? c.text : '#64748b',
+                                }}>
+                                {s}
+                              </button>
+                            )
+                          })}
                         </div>
-                        <Pill status={site.report_status} colors={REPORT_COLORS} small />
-                      </div>
 
-                      {/* Crew row */}
-                      {crew.length > 0 && (
-                        <div className="flex items-center gap-2 mb-2">
-                          <div className="flex">
-                            {crew.slice(0,4).map((c,ci) => (
-                              <div key={ci} title={c.team_members?.full_name} style={{ marginLeft:ci>0?'-6px':0 }}>
-                                <Avatar name={c.team_members?.full_name||'?'} size={20} index={ci+1} avatarUrl={c.team_members?.avatar_url} />
-                              </div>
-                            ))}
-                            {crew.length > 4 && (
-                              <div className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-slate-400" style={{ marginLeft:'-6px', background:'rgba(255,255,255,0.08)', border:'2px solid rgba(255,255,255,0.08)' }}>
-                                +{crew.length-4}
-                              </div>
-                            )}
-                          </div>
-                          <span className="text-[10px] text-slate-600">{crew.length} crew</span>
-                        </div>
-                      )}
-
-                      {/* Actions */}
-                      <div className="flex gap-1.5 pt-2.5" style={{ borderTop:'1px solid rgba(255,255,255,0.06)' }}>
-                        <Link to={`/sites/${site.id}`}
-                          className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-semibold text-blue-400 transition-all"
-                          style={{ background:'rgba(37,99,235,0.12)', border:'1px solid rgba(59,130,246,0.2)' }}
-                          onMouseEnter={e => { e.currentTarget.style.background='rgba(37,99,235,0.22)' }}
-                          onMouseLeave={e => { e.currentTarget.style.background='rgba(37,99,235,0.12)' }}>
-                          <ArrowUpRight size={11} /> View
-                        </Link>
-                        <button
-                          onClick={() => {
-                            if (isExpanded) { setExpandedCard(null); setDraftStatus(null) }
-                            else { setExpandedCard(site.id); setDraftStatus({ site_status:site.site_status, report_status:site.report_status }) }
-                          }}
-                          className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-semibold transition-all"
-                          style={{
-                            background: isExpanded ? 'rgba(37,99,235,0.25)' : 'rgba(255,255,255,0.05)',
-                            border: `1px solid ${isExpanded ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.1)'}`,
-                            color: isExpanded ? '#60a5fa' : '#94a3b8',
-                          }}>
-                          <Pencil size={10} /> Update
-                        </button>
-                        <button onClick={() => openEdit(site)}
-                          className="w-[28px] flex items-center justify-center rounded-lg transition-all text-slate-500 hover:text-slate-300"
-                          style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)' }}>
-                          <Pencil size={11} />
-                        </button>
-                        <button onClick={() => handleDelete(site.id)}
-                          className="w-[28px] flex items-center justify-center rounded-lg transition-all"
-                          style={{ background:'rgba(239,68,68,0.06)', border:'1px solid rgba(239,68,68,0.15)', color:'rgba(239,68,68,0.6)' }}
-                          onMouseEnter={e => { e.currentTarget.style.background='rgba(239,68,68,0.15)'; e.currentTarget.style.color='#f87171' }}
-                          onMouseLeave={e => { e.currentTarget.style.background='rgba(239,68,68,0.06)'; e.currentTarget.style.color='rgba(239,68,68,0.6)' }}>
-                          <Trash2 size={11} />
-                        </button>
-                      </div>
-
-                      {/* ── Inline update panel ── */}
-                      {isExpanded && draftStatus && (
-                        <div className="mt-3 p-3 rounded-xl" style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)' }}>
-
-                          <p className="text-[9px] font-bold text-slate-600 uppercase tracking-widest mb-2">Site Status</p>
-                          <div className="flex gap-1.5 flex-wrap mb-3">
-                            {['upcoming','ongoing','completed','cancelled','postponed'].map(s => {
-                              const c = STATUS_COLORS[s]; const active = draftStatus.site_status===s
+                        {(site.site_type === 'site_scanning' || site.site_type === 'site_visit') && (<>
+                          <p style={{ fontSize:'9px', fontWeight:'700', color:'#475569', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:'8px' }}>Report Status</p>
+                          <div className="flex flex-wrap gap-1.5" style={{ marginBottom:'12px' }}>
+                            {['pending','in_progress','submitted','approved','not_applicable'].map(s => {
+                              const c = REPORT_COLORS[s]; const active = draftStatus.report_status === s
+                              const locked = s === 'approved' && !isZairul
                               return (
-                                <button key={s} onClick={() => setDraftStatus(d => ({...d, site_status:s}))}
-                                  className="px-2.5 py-1 rounded-full text-[10px] font-semibold cursor-pointer transition-all capitalize"
-                                  style={{ border:`1px solid ${active?c.border:'rgba(255,255,255,0.08)'}`, background:active?c.bg:'transparent', color:active?c.text:'#64748b' }}>
-                                  {s}
+                                <button key={s} disabled={locked}
+                                  onClick={() => !locked && setDraftStatus(d => ({...d, report_status:s}))}
+                                  title={locked ? 'Only Zairul can approve' : undefined}
+                                  style={{
+                                    padding:'4px 10px', borderRadius:'99px', fontSize:'10px', fontWeight:'600',
+                                    cursor: locked ? 'not-allowed' : 'pointer', textTransform:'capitalize', fontFamily:'inherit',
+                                    border:`1px solid ${active ? c.border : 'rgba(255,255,255,0.08)'}`,
+                                    background: active ? c.bg : 'transparent',
+                                    color: active ? c.text : locked ? '#334155' : '#64748b',
+                                    opacity: locked ? 0.4 : 1,
+                                  }}>
+                                  {s.replace(/_/g,' ')}
                                 </button>
                               )
                             })}
                           </div>
+                        </>)}
 
-                          {(site.site_type==='site_scanning'||site.site_type==='site_visit') && (<>
-                            <p className="text-[9px] font-bold text-slate-600 uppercase tracking-widest mb-2">Report Status</p>
-                            <div className="flex gap-1.5 flex-wrap mb-3">
-                              {['pending','in_progress','submitted','approved','not_applicable'].map(s => {
-                                const c = REPORT_COLORS[s]; const active = draftStatus.report_status===s
-                                const locked = s==='approved' && !isZairul
-                                return (
-                                  <button key={s} disabled={locked} onClick={() => !locked && setDraftStatus(d => ({...d, report_status:s}))}
-                                    title={locked?'Only Zairul can approve':undefined}
-                                    className="px-2.5 py-1 rounded-full text-[10px] font-semibold transition-all capitalize"
-                                    style={{
-                                      border:`1px solid ${active?c.border:'rgba(255,255,255,0.08)'}`,
-                                      background:active?c.bg:'transparent',
-                                      color:active?c.text:locked?'#334155':'#64748b',
-                                      opacity:locked?0.4:1, cursor:locked?'not-allowed':'pointer',
-                                    }}>
-                                    {s.replace(/_/g,' ')}
-                                  </button>
-                                )
-                              })}
-                            </div>
-                          </>)}
-
-                          <div className="flex gap-2 pt-2" style={{ borderTop:'1px solid rgba(255,255,255,0.06)' }}>
-                            <button onClick={() => handleQuickSave(site)} disabled={!!quickSaving}
-                              className="flex-1 py-1.5 rounded-xl text-[11px] font-semibold text-white transition-all"
-                              style={{ background:'linear-gradient(135deg,#2563eb,#0891b2)', opacity:quickSaving?0.6:1 }}>
-                              {quickSaving===site.id ? 'Saving…' : 'Save'}
-                            </button>
-                            <button onClick={() => { setExpandedCard(null); setDraftStatus(null) }}
-                              className="flex-1 py-1.5 rounded-xl text-[11px] font-semibold text-slate-400 transition-all hover:text-slate-300"
-                              style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)' }}>
-                              Cancel
-                            </button>
-                          </div>
+                        <div className="flex gap-2" style={{ borderTop:'1px solid rgba(255,255,255,0.06)', paddingTop:'10px' }}>
+                          <button onClick={() => handleQuickSave(site)} disabled={!!quickSaving}
+                            style={{
+                              flex:1, padding:'7px 0', borderRadius:'10px', fontSize:'11px', fontWeight:'600',
+                              color:'white', cursor:'pointer', border:'none', fontFamily:'inherit',
+                              background:'linear-gradient(135deg,#2563eb,#0891b2)',
+                              opacity: quickSaving ? 0.6 : 1,
+                            }}>
+                            {quickSaving === site.id ? 'Saving…' : 'Save'}
+                          </button>
+                          <button onClick={() => { setExpandedCard(null); setDraftStatus(null) }}
+                            style={{
+                              flex:1, padding:'7px 0', borderRadius:'10px', fontSize:'11px', fontWeight:'600',
+                              color:'#94a3b8', cursor:'pointer', fontFamily:'inherit',
+                              background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)',
+                            }}>
+                            Cancel
+                          </button>
                         </div>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
+                      </div>
+                    )}
 
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-4">
-              <span className="text-xs text-slate-600">
-                Showing {(page-1)*PER_PAGE+1}–{Math.min(page*PER_PAGE,filtered.length)} of {filtered.length}
-              </span>
-              <div className="flex gap-1.5">
-                <button onClick={() => setPage(p => Math.max(1,p-1))} disabled={page===1}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-                  style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', color:page===1?'#334155':'#94a3b8' }}>
-                  Prev
-                </button>
-                {Array.from({length:totalPages},(_,i) => i+1).map(p => (
-                  <button key={p} onClick={() => setPage(p)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-                    style={{ background:page===p?'#2563eb':'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', color:page===p?'white':'#94a3b8' }}>
-                    {p}
-                  </button>
-                ))}
-                <button onClick={() => setPage(p => Math.min(totalPages,p+1))} disabled={page===totalPages}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-                  style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', color:page===totalPages?'#334155':'#94a3b8' }}>
-                  Next
-                </button>
-              </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* ── PAGINATION ── */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between pb-8">
+            <span style={{ fontSize:'12px', color:'#475569' }}>
+              Showing {(page-1)*PER_PAGE+1}–{Math.min(page*PER_PAGE, filtered.length)} of {filtered.length} sites
+            </span>
+            <div className="flex gap-1">
+              <button onClick={() => setPage(p => Math.max(1,p-1))} disabled={page===1}
+                style={{
+                  padding:'5px 12px', borderRadius:'8px', fontSize:'12px', fontWeight:'500',
+                  background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)',
+                  color: page===1 ? '#334155' : '#94a3b8', cursor: page===1 ? 'default' : 'pointer', fontFamily:'inherit',
+                }}>Prev</button>
+              {Array.from({ length:totalPages }, (_,i) => i+1).map(p => (
+                <button key={p} onClick={() => setPage(p)}
+                  style={{
+                    padding:'5px 12px', borderRadius:'8px', fontSize:'12px', fontWeight:'500',
+                    background: page===p ? '#2563eb' : 'rgba(255,255,255,0.04)',
+                    border:`1px solid ${page===p ? '#2563eb' : 'rgba(255,255,255,0.08)'}`,
+                    color: page===p ? 'white' : '#94a3b8', cursor:'pointer', fontFamily:'inherit',
+                  }}>{p}</button>
+              ))}
+              <button onClick={() => setPage(p => Math.min(totalPages,p+1))} disabled={page===totalPages}
+                style={{
+                  padding:'5px 12px', borderRadius:'8px', fontSize:'12px', fontWeight:'500',
+                  background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)',
+                  color: page===totalPages ? '#334155' : '#94a3b8', cursor: page===totalPages ? 'default' : 'pointer', fontFamily:'inherit',
+                }}>Next</button>
             </div>
-          )}
-        </div>
-      </div>
+          </div>
+        )}
+
+      </div>{/* /content */}
 
       {/* ── MODAL ── */}
       {showForm && (
         <div className="fixed inset-0 flex items-center justify-center z-50 p-4"
           style={{ background:'rgba(0,0,0,0.7)', backdropFilter:'blur(6px)' }}
           onClick={e => e.target===e.currentTarget && setShowForm(false)}>
-          <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-2xl"
-            style={{ background:'rgba(10,16,30,0.95)', border:'1px solid rgba(255,255,255,0.1)', backdropFilter:'blur(24px)' }}>
+          <div className="w-full max-w-2xl overflow-y-auto rounded-2xl" style={{ maxHeight:'92vh', background:'rgba(10,16,30,0.95)', border:'1px solid rgba(255,255,255,0.1)', backdropFilter:'blur(24px)' }}>
 
-            {/* Modal header */}
             <div className="flex items-center justify-between px-7 py-5" style={{ borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
               <h3 className="text-lg font-bold text-slate-100">{editSite ? 'Edit Site' : 'Add New Site'}</h3>
-              <button onClick={() => setShowForm(false)} className="text-slate-500 hover:text-slate-300 transition-colors">
-                <X size={18} />
-              </button>
+              <button onClick={() => setShowForm(false)} className="text-slate-500 hover:text-slate-300 transition-colors"><X size={18} /></button>
             </div>
 
             <div className="px-7 py-5 flex flex-col gap-5">
@@ -684,15 +759,16 @@ export default function Sites() {
                 <label className="block text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Site Type</label>
                 <div className="flex gap-2">
                   {SITE_TYPES.map(({value,label}) => {
-                    const active = form.site_type===value
-                    const dot = TYPE_META[value]?.dot||'#3b82f6'
+                    const active = form.site_type === value
+                    const dot = TYPE_META[value]?.dot || '#3b82f6'
                     return (
-                      <button key={value} type="button" onClick={() => setForm(f => ({...f, site_type:value, site_duration_days:value==='site_visit'?'0.5':f.site_duration_days}))}
+                      <button key={value} type="button"
+                        onClick={() => setForm(f => ({...f, site_type:value, site_duration_days:value==='site_visit'?'0.5':f.site_duration_days}))}
                         className="flex-1 py-2 rounded-xl text-xs font-semibold transition-all"
                         style={{
                           background:active?`rgba(${dot==='#3b82f6'?'59,130,246':dot==='#0d9488'?'13,148,136':'124,58,237'},.15)`:'rgba(255,255,255,0.04)',
                           border:`1px solid ${active?dot+'66':'rgba(255,255,255,0.08)'}`,
-                          color:active?dot:'#64748b',
+                          color:active?dot:'#64748b', fontFamily:'inherit', cursor:'pointer',
                         }}>
                         {label}
                       </button>
@@ -724,13 +800,11 @@ export default function Sites() {
                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     Pin on Map <span className="text-slate-700 text-[10px] normal-case tracking-normal">(click to place)</span>
                   </label>
-                  {form.latitude!=='' && (
+                  {form.latitude !== '' && (
                     <div className="flex items-center gap-1.5">
                       <MapPin size={10} className="text-blue-400" />
                       <span className="text-[11px] text-blue-400 font-medium">{Number(form.latitude).toFixed(5)}, {Number(form.longitude).toFixed(5)}</span>
-                      <button onClick={() => setForm(f => ({...f, latitude:'', longitude:''}))} className="text-slate-600 hover:text-slate-400">
-                        <X size={11} />
-                      </button>
+                      <button onClick={() => setForm(f => ({...f, latitude:'', longitude:''}))} className="text-slate-600 hover:text-slate-400"><X size={11} /></button>
                     </div>
                   )}
                 </div>
@@ -773,7 +847,7 @@ export default function Sites() {
               </div>
 
               {/* Duration */}
-              {form.site_type==='site_scanning' && (
+              {form.site_type === 'site_scanning' && (
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Site Duration (Days)</label>
@@ -785,12 +859,12 @@ export default function Sites() {
                   </div>
                 </div>
               )}
-              {form.site_type==='site_visit' && (
+              {form.site_type === 'site_visit' && (
                 <div className="px-4 py-3 rounded-xl text-xs font-medium text-teal-400" style={{ background:'rgba(13,148,136,0.1)', border:'1px solid rgba(13,148,136,0.25)' }}>
                   Duration: Half Day (0.5) — fixed for site visits
                 </div>
               )}
-              {form.site_type==='meeting' && (
+              {form.site_type === 'meeting' && (
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Meeting Duration</label>
                   <select style={darkInput} value={form.site_duration_days} onChange={e => setForm(f => ({...f, site_duration_days:e.target.value}))}>
@@ -809,7 +883,7 @@ export default function Sites() {
                     {['upcoming','ongoing','completed','cancelled','postponed'].map(o => <option key={o} value={o}>{o}</option>)}
                   </select>
                 </div>
-                {form.site_type==='site_scanning' && (
+                {form.site_type === 'site_scanning' && (
                   <div>
                     <label className="block text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Report Status</label>
                     <select style={darkInput} value={form.report_status} onChange={e => setForm(f => ({...f, report_status:e.target.value}))}>
@@ -834,8 +908,7 @@ export default function Sites() {
                 <div className="flex flex-col gap-2">
                   {members.map(m => (
                     <label key={m.id} className="flex items-center gap-3 cursor-pointer group">
-                      <input type="checkbox" checked={form.crew_ids.includes(m.id)} onChange={() => toggleCrew(m.id)}
-                        className="w-4 h-4 rounded accent-blue-500" />
+                      <input type="checkbox" checked={form.crew_ids.includes(m.id)} onChange={() => toggleCrew(m.id)} className="w-4 h-4 rounded accent-blue-500" />
                       <span className="text-sm text-slate-400 group-hover:text-slate-300 transition-colors">{m.full_name}</span>
                     </label>
                   ))}
@@ -852,19 +925,21 @@ export default function Sites() {
               <div className="flex gap-3 pt-1" style={{ borderTop:'1px solid rgba(255,255,255,0.07)' }}>
                 <button onClick={handleSave} disabled={saving}
                   className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all"
-                  style={{ background:'linear-gradient(135deg,#2563eb,#0891b2)', opacity:saving?0.6:1, boxShadow:'0 0 16px rgba(59,130,246,0.3)' }}>
+                  style={{ background:'linear-gradient(135deg,#2563eb,#0891b2)', opacity:saving?0.6:1, boxShadow:'0 0 16px rgba(59,130,246,0.3)', border:'none', cursor:'pointer', fontFamily:'inherit' }}>
                   {saving ? 'Saving…' : editSite ? 'Save Changes' : 'Add Site'}
                 </button>
                 <button onClick={() => setShowForm(false)}
                   className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-slate-400 hover:text-slate-200 transition-all"
-                  style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)' }}>
+                  style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', cursor:'pointer', fontFamily:'inherit' }}>
                   Cancel
                 </button>
               </div>
+
             </div>
           </div>
         </div>
       )}
+
     </div>
   )
 }
