@@ -17,6 +17,7 @@ const REPORT_COLORS = {
   in_progress: { bg: '#eff6ff', text: '#1d4ed8', border: '#93c5fd' },
   submitted:   { bg: '#faf5ff', text: '#6d28d9', border: '#c4b5fd' },
   approved:    { bg: '#dcfce7', text: '#166534', border: '#4ade80' },
+  not_applicable: { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' },
 }
 
 const AVATAR_COLORS = ['#2563eb', '#7c3aed', '#db2777', '#059669', '#d97706', '#dc2626']
