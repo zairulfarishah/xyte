@@ -124,7 +124,7 @@ export default function CalendarPage() {
       </div>
 
       {/* ── Grid ── */}
-      <div style={{ padding: '20px 40px 48px' }}>
+      <div style={{ padding: '32px 40px 48px' }}>
 
         {/* Day headers */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '4px', background: '#1e3a5f', borderRadius: '10px', padding: '2px' }}>
