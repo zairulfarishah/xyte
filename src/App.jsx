@@ -318,9 +318,16 @@ function AppShell() {
         borderBottom: '1px solid #1e293b',
       }}>
         {/* Logo */}
-        <NavLink to="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
-          <div style={{ width: '30px', height: '30px', background: '#2563eb', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '700', fontSize: '15px' }}>X</div>
-          <span style={{ color: 'white', fontWeight: '700', fontSize: '15px' }}>Xyte</span>
+        <NavLink to="/" style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1 }}>
+            <span style={{ fontSize: '20px', fontWeight: '900', color: '#22c55e', letterSpacing: '-0.03em', lineHeight: 1, textShadow: '0 0 12px rgba(34,197,94,0.5), 0 0 32px rgba(34,197,94,0.15)' }}>X</span>
+            <span style={{ fontSize: '20px', fontWeight: '200', color: 'rgba(255,255,255,0.88)', letterSpacing: '0.02em', lineHeight: 1 }}>yte</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginTop: '4px' }}>
+            <div style={{ height: '1.5px', width: '44px', borderRadius: '99px', background: 'linear-gradient(90deg,#22c55e,rgba(34,197,94,0))', opacity: 0.95 }} />
+            <div style={{ height: '1.5px', width: '28px', borderRadius: '99px', background: 'linear-gradient(90deg,#22c55e,rgba(34,197,94,0))', opacity: 0.55 }} />
+            <div style={{ height: '1.5px', width: '14px', borderRadius: '99px', background: 'linear-gradient(90deg,#22c55e,rgba(34,197,94,0))', opacity: 0.28 }} />
+          </div>
         </NavLink>
 
         {/* Nav links — centered floating pill */}

@@ -48,9 +48,19 @@ export default function LoginPage() {
       <div style={{ width: '100%', maxWidth: '400px' }}>
 
         {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', justifyContent: 'center', marginBottom: '32px' }}>
-          <div style={{ width: '38px', height: '38px', background: '#2563eb', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '800', fontSize: '18px' }}>X</div>
-          <span style={{ color: 'white', fontWeight: '800', fontSize: '22px', letterSpacing: '-0.03em' }}>Xyte</span>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', marginBottom: '36px' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1 }}>
+            <span style={{ fontSize: '54px', fontWeight: '900', color: '#22c55e', letterSpacing: '-0.03em', lineHeight: 1, textShadow: '0 0 18px rgba(34,197,94,0.55), 0 0 48px rgba(34,197,94,0.18)' }}>X</span>
+            <span style={{ fontSize: '54px', fontWeight: '200', color: 'rgba(255,255,255,0.88)', letterSpacing: '0.02em', lineHeight: 1 }}>yte</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '10px' }}>
+            <div style={{ height: '1.5px', width: '116px', borderRadius: '99px', background: 'linear-gradient(90deg,#22c55e,rgba(34,197,94,0))', opacity: 0.95 }} />
+            <div style={{ height: '1.5px', width: '76px',  borderRadius: '99px', background: 'linear-gradient(90deg,#22c55e,rgba(34,197,94,0))', opacity: 0.55 }} />
+            <div style={{ height: '1.5px', width: '40px',  borderRadius: '99px', background: 'linear-gradient(90deg,#22c55e,rgba(34,197,94,0))', opacity: 0.28 }} />
+          </div>
+          <p style={{ marginTop: '14px', fontSize: '10px', fontWeight: '500', letterSpacing: '0.16em', textTransform: 'uppercase', color: 'rgba(148,163,184,0.55)', whiteSpace: 'nowrap' }}>
+            Xradar · GPR Operations Intelligence
+          </p>
         </div>
 
         {/* Card */}
