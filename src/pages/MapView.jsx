@@ -7,7 +7,7 @@ import PlaceSearchBox from '../components/PlaceSearchBox'
 import 'leaflet/dist/leaflet.css'
 
 function xIcon(color, selected = false) {
-  const size = selected ? 34 : 26
+  const size = selected ? 22 : 16
   return L.divIcon({
     html: `<div style="
       font-family:Inter,Arial,sans-serif;
@@ -16,8 +16,8 @@ function xIcon(color, selected = false) {
       color:${color};
       line-height:1;
       letter-spacing:-0.03em;
-      text-shadow:0 0 12px ${color}99,0 0 28px ${color}44;
-      filter:${selected ? 'brightness(1.25)' : 'none'};
+      -webkit-text-stroke:2px #111827;
+      paint-order:stroke fill;
       display:flex;align-items:center;justify-content:center;
       width:${size}px;height:${size}px;
     ">X</div>`,
