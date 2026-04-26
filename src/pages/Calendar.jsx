@@ -127,9 +127,9 @@ export default function CalendarPage() {
       <div style={{ padding: '20px 40px 48px' }}>
 
         {/* Day headers */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '4px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '4px', background: '#1e3a5f', borderRadius: '10px', padding: '2px' }}>
           {DAYS.map(d => (
-            <div key={d} style={{ padding: '8px 0', textAlign: 'center', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{d}</div>
+            <div key={d} style={{ padding: '10px 0', textAlign: 'center', fontSize: '11px', fontWeight: '700', color: '#93c5fd', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{d}</div>
           ))}
         </div>
 
