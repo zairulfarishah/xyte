@@ -424,36 +424,6 @@ export default function Sites() {
                       <Pill status={site.report_status} colors={REPORT_COLORS} />
                     </div>
 
-                    {/* Progress bars */}
-                    {(() => {
-                      const sp = SITE_PROGRESS[site.site_status] || SITE_PROGRESS.upcoming
-                      const rp = REPORT_PROGRESS[site.report_status] || REPORT_PROGRESS.pending
-                      const showReport = site.site_type !== 'meeting' && site.report_status !== 'not_applicable'
-                      return (
-                        <div style={{ marginBottom:'12px', display:'flex', flexDirection:'column', gap:'7px' }}>
-                          <div>
-                            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'4px' }}>
-                              <span style={{ fontSize:'10px', fontWeight:'600', color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.04em' }}>Site</span>
-                              <span style={{ fontSize:'10px', fontWeight:'700', color:sp.color }}>{sp.pct}%</span>
-                            </div>
-                            <div style={{ height:'5px', borderRadius:'999px', background:'#f1f5f9', overflow:'hidden' }}>
-                              <div style={{ height:'100%', width:`${sp.pct}%`, borderRadius:'999px', background:sp.color, transition:'width .4s ease' }} />
-                            </div>
-                          </div>
-                          {showReport && (
-                            <div>
-                              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'4px' }}>
-                                <span style={{ fontSize:'10px', fontWeight:'600', color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.04em' }}>Report</span>
-                                <span style={{ fontSize:'10px', fontWeight:'700', color:rp.color }}>{rp.pct}%</span>
-                              </div>
-                              <div style={{ height:'5px', borderRadius:'999px', background:'#f1f5f9', overflow:'hidden' }}>
-                                <div style={{ height:'100%', width:`${rp.pct}%`, borderRadius:'999px', background:rp.color, transition:'width .4s ease' }} />
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })()}
 
                     {/* Info bar */}
                     <div style={{ display:'flex', alignItems:'center', gap:'16px', marginBottom:'12px', paddingBottom:'12px', borderBottom:'1px solid #f1f5f9' }}>
