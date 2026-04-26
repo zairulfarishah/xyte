@@ -139,7 +139,7 @@ export default function LoginPage() {
         </div>
 
         <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '11px', marginTop: '20px' }}>
-          GPR Team Manager · Sonicon
+          Xyte · Xradar Internal System
         </p>
       </div>
     </div>

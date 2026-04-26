@@ -113,7 +113,7 @@ export default function SettingsPage() {
               <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
                 <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9' }}>
                   <h2 style={{ fontSize: '15px', fontWeight: '600', color: '#0f172a' }}>Team Members</h2>
-                  <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>Your current GPR team</p>
+                  <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>Your current Xradar team</p>
                 </div>
                 <div style={{ padding: '8px' }}>
                   {members.map((m, i) => (
@@ -209,7 +209,7 @@ export default function SettingsPage() {
                   <div style={{ width: '52px', height: '52px', background: '#2563eb', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '700', fontSize: '22px' }}>X</div>
                   <div>
                     <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a' }}>Xyte</h2>
-                    <p style={{ fontSize: '13px', color: '#64748b' }}>GPR Team Manager · Version 1.0.0</p>
+                    <p style={{ fontSize: '13px', color: '#64748b' }}>Xradar Internal System · Version 1.0.0</p>
                   </div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
