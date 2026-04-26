@@ -276,7 +276,8 @@ function AppShell() {
     if (memberId) {
       query = query.or(`recipient_id.is.null,recipient_id.eq.${memberId}`)
     }
-    const { data } = await query
+    const { data, error } = await query
+    if (error) console.error('fetchNotifs error:', error)
     setNotifs(data || [])
   }
 
