@@ -313,7 +313,7 @@ export default function Sites() {
       }} />
 
       {/* Content */}
-      <div className="relative px-16" style={{ zIndex:1 }}>
+      <div className="relative px-24" style={{ zIndex:1 }}>
 
         {/* ── HEADER ── */}
         <div className="flex items-start justify-between gap-4 pt-7">
