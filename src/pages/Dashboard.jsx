@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../supabase'
-import { MapContainer, TileLayer, CircleMarker, Tooltip, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Tooltip, useMapEvents } from 'react-leaflet'
+import L from 'leaflet'
 import { Link } from 'react-router-dom'
 import { ArrowUpRight, CheckCircle, Plus, Pencil, Sparkles, Camera } from 'lucide-react'
 import { calculateWorkload } from '../utils/workload'
@@ -8,6 +9,17 @@ import { notify } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
 import 'leaflet/dist/leaflet.css'
+
+function xIcon(color, selected = false) {
+  const size = selected ? 22 : 16
+  return L.divIcon({
+    html: `<div style="font-family:Inter,Arial,sans-serif;font-size:${size}px;font-weight:900;color:${color};line-height:1;letter-spacing:-0.03em;-webkit-text-stroke:2px #111827;paint-order:stroke fill;display:flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;">X</div>`,
+    className: '',
+    iconSize:      [size, size],
+    iconAnchor:    [size / 2, size / 2],
+    tooltipAnchor: [0, -(size / 2) - 4],
+  })
+}
 
 function getGreeting() {
   const h = new Date().getHours()
@@ -112,10 +124,9 @@ function LocationPicker({ lat, lng, onPick, mapKey }) {
       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="" />
       <MapClickHandler onPick={onPick} />
       {hasPin && (
-        <CircleMarker
-          center={[parseFloat(lat), parseFloat(lng)]}
-          radius={9}
-          pathOptions={{ color: 'white', fillColor: '#2563eb', fillOpacity: 1, weight: 3 }}
+        <Marker
+          position={[parseFloat(lat), parseFloat(lng)]}
+          icon={xIcon('#2563eb', true)}
         />
       )}
     </MapContainer>
@@ -874,18 +885,12 @@ export default function Dashboard() {
                   <MapContainer key={`dashboard-map-${mapCenter[0]}-${mapCenter[1]}-${mapFilter}`} center={mapCenter} zoom={10} style={{ height: '100%', width: '100%' }} zoomControl={false}>
                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                     {filteredMapSites.map(site => (
-                      <CircleMarker
+                      <Marker
                         key={site.id}
-                        center={[site.latitude, site.longitude]}
-                        radius={9}
-                        pathOptions={{
-                          color: 'white',
-                          weight: 3,
-                          fillColor: MAP_COLORS[site.site_status] || '#2563eb',
-                          fillOpacity: 0.95,
-                        }}
+                        position={[site.latitude, site.longitude]}
+                        icon={xIcon(MAP_COLORS[site.site_status] || '#2563eb')}
                       >
-                        <Tooltip direction="top" offset={[0, -10]} opacity={1}>
+                        <Tooltip direction="top" offset={[0, -4]} opacity={1}>
                           <div style={{ minWidth: '180px' }}>
                             <div style={{ fontWeight: '800', fontSize: '13px', color: '#0f172a' }}>{site.site_name}</div>
                             <div style={{ marginTop: '4px', fontSize: '11px', color: '#475569' }}>{site.location}</div>
@@ -898,7 +903,7 @@ export default function Dashboard() {
                             </div>
                           </div>
                         </Tooltip>
-                      </CircleMarker>
+                      </Marker>
                     ))}
                   </MapContainer>
                 </div>
