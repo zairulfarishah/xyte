@@ -128,15 +128,15 @@ export default function Reports() {
   )
 
   return (
-    <div style={{ minHeight:'100vh', background:'linear-gradient(180deg,#071226 0 120px,#dde4ed 120px 100%)' }}>
+    <div style={{ minHeight:'100vh', background:'linear-gradient(180deg,#071226 0 88px,#dde4ed 88px 100%)' }}>
 
       {/* ── Header ── */}
-      <div style={{ padding:'24px 40px 0' }}>
+      <div style={{ padding:'18px 40px 0' }}>
         <h1 style={{ fontSize:'22px', fontWeight:'700', color:'white' }}>Reports</h1>
         <p style={{ color:'#94a3b8', fontSize:'13px', marginTop:'2px' }}>Track and update report status for all sites</p>
       </div>
 
-      <div style={{ padding:'20px 40px 48px', display:'flex', flexDirection:'column', gap:'20px' }}>
+      <div style={{ padding:'28px 40px 48px', display:'flex', flexDirection:'column', gap:'20px' }}>
 
         {updateError && (
           <div style={{ background:'#fee2e2', border:'1px solid #fecaca', borderRadius:'10px', padding:'12px 16px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
