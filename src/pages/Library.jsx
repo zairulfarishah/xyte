@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
-import { Download, Upload, ChevronDown, ChevronRight, FileText, File, X, Trash2 } from 'lucide-react'
+import { Download, Upload, ChevronDown, ChevronRight, FileText, File, X, Trash2, Eye } from 'lucide-react'
+import mammoth from 'mammoth'
 
 const SECTIONS = [
   { key: 'xradar_namelist',  label: 'Xradar Namelist',  type: 'single', color: '#2563eb', bg: '#eff6ff' },
@@ -41,6 +42,8 @@ export default function Library() {
   const [form, setForm]               = useState({ section: '', member_id: '', subcategory: '', file_type: 'pdf' })
   const [file, setFile]               = useState(null)
   const [uploadError, setUploadError] = useState(null)
+  const [preview, setPreview]         = useState(null) // { doc, url, html }
+  const [previewing, setPreviewing]   = useState(false)
   const fileRef = useRef(null)
 
   useEffect(() => { fetchAll() }, [])
@@ -121,6 +124,31 @@ export default function Library() {
     if (data?.signedUrl) window.open(data.signedUrl, '_blank')
   }
 
+  async function handlePreview(doc) {
+    const type = doc.file_type?.toLowerCase()
+    if (type === 'zip') { handleDownload(doc); return }
+    setPreviewing(true)
+    const { data } = await supabase.storage.from('library').createSignedUrl(doc.file_path, 300)
+    const url = data?.signedUrl
+    if (!url) { setPreviewing(false); return }
+    if (type === 'pdf') {
+      setPreview({ doc, url, html: null })
+      setPreviewing(false)
+      return
+    }
+    if (type === 'docx') {
+      const resp     = await fetch(url)
+      const buf      = await resp.arrayBuffer()
+      const result   = await mammoth.convertToHtml({ arrayBuffer: buf })
+      setPreview({ doc, url, html: result.value })
+      setPreviewing(false)
+      return
+    }
+    // fallback — just open
+    window.open(url, '_blank')
+    setPreviewing(false)
+  }
+
   async function handleDelete(doc) {
     if (!confirm('Delete this file?')) return
     await supabase.storage.from('library').remove([doc.file_path])
@@ -141,9 +169,10 @@ export default function Library() {
   )
 
   /* ── shared mini styles ── */
-  const uploadBtn = { display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 12px', borderRadius: '8px', background: '#f1f5f9', border: '1px solid #e2e8f0', fontSize: '12px', fontWeight: '600', color: '#475569', cursor: 'pointer' }
-  const dlBtn = color => ({ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 14px', borderRadius: '8px', background: color, color: 'white', border: 'none', fontSize: '12px', fontWeight: '600', cursor: 'pointer' })
-  const delBtn = { padding: '5px', borderRadius: '6px', background: '#fee2e2', border: 'none', cursor: 'pointer', color: '#ef4444', display: 'flex' }
+  const uploadBtn  = { display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 12px', borderRadius: '8px', background: '#f1f5f9', border: '1px solid #e2e8f0', fontSize: '12px', fontWeight: '600', color: '#475569', cursor: 'pointer' }
+  const dlBtn      = color => ({ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 14px', borderRadius: '8px', background: color, color: 'white', border: 'none', fontSize: '12px', fontWeight: '600', cursor: 'pointer' })
+  const prevBtn    = { display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px', borderRadius: '8px', background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#475569', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }
+  const delBtn     = { padding: '5px', borderRadius: '6px', background: '#fee2e2', border: 'none', cursor: 'pointer', color: '#ef4444', display: 'flex' }
 
   function TypeBadge({ type }) {
     const b = TYPE_BADGE[type] || { bg: '#f1f5f9', text: '#475569' }
@@ -197,6 +226,11 @@ export default function Library() {
                     {doc ? (
                       <>
                         <TypeBadge type={doc.file_type} />
+                        {doc.file_type !== 'zip' && (
+                          <button onClick={() => handlePreview(doc)} style={prevBtn} disabled={previewing}>
+                            <Eye size={12} /> Preview
+                          </button>
+                        )}
                         <button onClick={() => handleDownload(doc)} style={dlBtn(sec.color)}>
                           <Download size={12} /> Download
                         </button>
@@ -259,6 +293,11 @@ export default function Library() {
                             {doc ? (
                               <>
                                 <TypeBadge type={doc.file_type} />
+                                {doc.file_type !== 'zip' && (
+                                  <button onClick={() => handlePreview(doc)} style={prevBtn} disabled={previewing}>
+                                    <Eye size={11} /> Preview
+                                  </button>
+                                )}
                                 <button onClick={() => handleDownload(doc)} style={dlBtn(sec.color)}>
                                   <Download size={11} /> Download
                                 </button>
@@ -321,15 +360,25 @@ export default function Library() {
                           <p style={{ fontSize: '14px', fontWeight: '600', color: '#0f172a' }}>{sub}</p>
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                             {pdfDoc ? (
-                              <button onClick={() => handleDownload(pdfDoc)} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 14px', borderRadius: '8px', background: '#fee2e2', color: '#991b1b', border: 'none', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-                                <Download size={11} /> PDF
-                              </button>
+                              <>
+                                <button onClick={() => handlePreview(pdfDoc)} style={prevBtn} disabled={previewing}>
+                                  <Eye size={11} /> PDF
+                                </button>
+                                <button onClick={() => handleDownload(pdfDoc)} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 14px', borderRadius: '8px', background: '#fee2e2', color: '#991b1b', border: 'none', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                                  <Download size={11} /> PDF
+                                </button>
+                              </>
                             ) : ghostBtn('PDF')}
 
                             {docxDoc ? (
-                              <button onClick={() => handleDownload(docxDoc)} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 14px', borderRadius: '8px', background: '#eff6ff', color: '#1d4ed8', border: 'none', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-                                <Download size={11} /> Word
-                              </button>
+                              <>
+                                <button onClick={() => handlePreview(docxDoc)} style={prevBtn} disabled={previewing}>
+                                  <Eye size={11} /> Word
+                                </button>
+                                <button onClick={() => handleDownload(docxDoc)} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 14px', borderRadius: '8px', background: '#eff6ff', color: '#1d4ed8', border: 'none', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                                  <Download size={11} /> Word
+                                </button>
+                              </>
                             ) : ghostBtn('Word')}
 
                             {isZairul && (
@@ -351,6 +400,61 @@ export default function Library() {
           return null
         })}
       </div>
+
+      {/* Preview Modal */}
+      {(preview || previewing) && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: '24px' }}
+          onClick={e => e.target === e.currentTarget && setPreview(null)}
+        >
+          <div style={{ background: 'white', borderRadius: '20px', width: '100%', maxWidth: '860px', height: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 32px 80px rgba(0,0,0,0.3)' }}>
+            {/* Header */}
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ fontWeight: '700', fontSize: '15px', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {previewing ? 'Loading preview…' : preview?.doc?.file_name}
+                </p>
+                {!previewing && preview && (
+                  <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', textTransform: 'uppercase' }}>{preview.doc.file_type}</p>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+                {preview && (
+                  <button onClick={() => handleDownload(preview.doc)} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 14px', borderRadius: '8px', background: '#2563eb', color: 'white', border: 'none', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                    <Download size={13} /> Download
+                  </button>
+                )}
+                <button onClick={() => setPreview(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', padding: '4px' }}>
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div style={{ flex: 1, overflow: 'hidden', background: '#f8fafc' }}>
+              {previewing && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '12px', color: '#64748b', fontSize: '14px' }}>
+                  <div style={{ width: '18px', height: '18px', borderRadius: '50%', border: '2px solid #e2e8f0', borderTopColor: '#2563eb', animation: 'spin 0.7s linear infinite' }} />
+                  Loading…
+                </div>
+              )}
+              {!previewing && preview?.doc?.file_type === 'pdf' && (
+                <iframe
+                  src={preview.url}
+                  style={{ width: '100%', height: '100%', border: 'none' }}
+                  title={preview.doc.file_name}
+                />
+              )}
+              {!previewing && preview?.html != null && (
+                <div
+                  style={{ height: '100%', overflowY: 'auto', padding: '32px 40px', background: 'white', fontSize: '14px', lineHeight: '1.7', color: '#0f172a', fontFamily: 'Georgia, serif' }}
+                  dangerouslySetInnerHTML={{ __html: preview.html }}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Upload Modal */}
       {showUpload && (
