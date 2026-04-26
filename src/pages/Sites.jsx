@@ -297,22 +297,23 @@ export default function Sites() {
   )
 
   return (
-    <div className="relative bg-[#060b14] overflow-hidden" style={{ height:'calc(100vh - 54px)' }}>
+    <div className="relative bg-[#060b14]" style={{ minHeight:'calc(100vh - 54px)', overflowY:'auto' }}>
 
-      {/* Background effects */}
-      <div className="pointer-events-none absolute inset-0" style={{
+      {/* Background effects — fixed so they stay in place while scrolling */}
+      <div className="pointer-events-none fixed inset-0" style={{
         background:'radial-gradient(ellipse 60% 50% at 20% 15%, rgba(59,130,246,0.1) 0%, transparent 60%), radial-gradient(ellipse 50% 40% at 80% 5%, rgba(6,182,212,0.07) 0%, transparent 55%), radial-gradient(ellipse 40% 30% at 65% 85%, rgba(99,102,241,0.06) 0%, transparent 50%)',
+        zIndex:0,
       }} />
-      <div className="pointer-events-none absolute inset-0" style={{
+      <div className="pointer-events-none fixed inset-0" style={{
         backgroundImage:'linear-gradient(rgba(255,255,255,0.022) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.022) 1px, transparent 1px)',
-        backgroundSize:'40px 40px',
+        backgroundSize:'40px 40px', zIndex:0,
       }} />
 
-      {/* Content wrapper */}
-      <div className="relative z-10 flex flex-col h-full">
+      {/* Content wrapper — wide side padding = buffer zones */}
+      <div className="relative flex flex-col" style={{ zIndex:1 }}>
 
         {/* ── HEADER ── */}
-        <div className="flex-shrink-0 px-7 pt-5 pb-0">
+        <div className="px-16 pt-5 pb-0">
           <div className="flex items-start justify-between gap-4">
 
             {/* Left */}
@@ -360,7 +361,7 @@ export default function Sites() {
         </div>
 
         {/* ── FILTER TABS ── */}
-        <div className="flex-shrink-0 px-7 pt-3 pb-2.5">
+        <div className="px-16 pt-3 pb-2.5">
           <div className="flex items-center gap-2">
             {TABS.map(t => {
               const active = tab === t
@@ -388,7 +389,7 @@ export default function Sites() {
         </div>
 
         {/* ── CARDS GRID ── */}
-        <div className="flex-1 overflow-y-auto px-7 pb-5 min-h-0" style={{ scrollbarWidth:'thin', scrollbarColor:'rgba(255,255,255,0.1) transparent' }}>
+        <div className="px-16 pb-10">
 
           {paginated.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-48 rounded-2xl border border-white/8 bg-white/3 text-slate-500">
@@ -429,7 +430,7 @@ export default function Sites() {
                     }}
                   >
                     {/* Banner */}
-                    <div className="relative h-[108px] overflow-hidden" style={{ background:CARD_GRADIENTS[site.site_type]||CARD_GRADIENTS.site_scanning }}>
+                    <div className="relative h-[80px] overflow-hidden" style={{ background:CARD_GRADIENTS[site.site_type]||CARD_GRADIENTS.site_scanning }}>
                       {(site.site_photo_url || getSiteHeaderImage(site.site_type)) && (
                         <img src={site.site_photo_url||getSiteHeaderImage(site.site_type)} alt=""
                           className="absolute inset-0 w-full h-full object-cover opacity-40" />
@@ -446,94 +447,94 @@ export default function Sites() {
                     </div>
 
                     {/* Body */}
-                    <div className="p-4">
+                    <div className="p-3.5">
 
                       {/* Name + type */}
-                      <h3 className="text-[14px] font-bold text-slate-100 leading-snug mb-1.5">{site.site_name}</h3>
-                      <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium mb-4">
+                      <h3 className="text-[13px] font-bold text-slate-100 leading-snug mb-1">{site.site_name}</h3>
+                      <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-medium mb-3">
                         <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background:typeMeta.dot }} />
                         {typeMeta.label}
                       </div>
 
                       {/* Info grid */}
-                      <div className="grid grid-cols-2 rounded-xl overflow-hidden mb-4" style={{ border:'1px solid rgba(255,255,255,0.07)' }}>
-                        <div className="px-3 py-3" style={{ borderRight:'1px solid rgba(255,255,255,0.07)' }}>
-                          <p className="text-[9px] text-slate-600 uppercase tracking-widest font-semibold mb-1">Scheduled</p>
-                          <p className="text-[12px] font-semibold text-slate-200">
+                      <div className="grid grid-cols-2 rounded-lg overflow-hidden mb-3" style={{ border:'1px solid rgba(255,255,255,0.07)' }}>
+                        <div className="px-2.5 py-2" style={{ borderRight:'1px solid rgba(255,255,255,0.07)' }}>
+                          <p className="text-[9px] text-slate-600 uppercase tracking-widest font-semibold mb-0.5">Scheduled</p>
+                          <p className="text-[11px] font-semibold text-slate-200">
                             {new Date(site.scheduled_date).toLocaleDateString('en-MY',{day:'numeric',month:'short',year:'numeric'})}
                           </p>
                         </div>
-                        <div className="px-3 py-3">
-                          <p className="text-[9px] text-slate-600 uppercase tracking-widest font-semibold mb-1">Duration</p>
-                          <p className="text-[12px] font-semibold text-slate-200">{site.site_duration_days}d</p>
+                        <div className="px-2.5 py-2">
+                          <p className="text-[9px] text-slate-600 uppercase tracking-widest font-semibold mb-0.5">Duration</p>
+                          <p className="text-[11px] font-semibold text-slate-200">{site.site_duration_days}d</p>
                         </div>
                       </div>
 
                       {/* PIC + report status */}
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-1.5">
                           {pic
-                            ? <Avatar name={pic.team_members?.full_name} size={26} index={memberIdx>=0?memberIdx:0} avatarUrl={pic.team_members?.avatar_url} />
-                            : <div className="w-[26px] h-[26px] rounded-full" style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)' }} />
+                            ? <Avatar name={pic.team_members?.full_name} size={22} index={memberIdx>=0?memberIdx:0} avatarUrl={pic.team_members?.avatar_url} />
+                            : <div className="w-[22px] h-[22px] rounded-full" style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)' }} />
                           }
-                          <span className="text-[12px] text-slate-300 font-semibold">{pic?.team_members?.full_name||'—'}</span>
-                          {pic && <span className="text-[9px] font-bold px-1.5 py-px rounded-full" style={{ background:'rgba(59,130,246,0.15)', color:'#60a5fa', border:'1px solid rgba(59,130,246,0.25)' }}>PIC</span>}
+                          <span className="text-[11px] text-slate-300 font-medium truncate max-w-[110px]">{pic?.team_members?.full_name||'—'}</span>
+                          {pic && <span className="text-[9px] font-bold px-1.5 py-px rounded-full flex-shrink-0" style={{ background:'rgba(59,130,246,0.15)', color:'#60a5fa', border:'1px solid rgba(59,130,246,0.25)' }}>PIC</span>}
                         </div>
                         <Pill status={site.report_status} colors={REPORT_COLORS} small />
                       </div>
 
                       {/* Crew row */}
                       {crew.length > 0 && (
-                        <div className="flex items-center gap-2 mb-3">
+                        <div className="flex items-center gap-2 mb-2">
                           <div className="flex">
                             {crew.slice(0,4).map((c,ci) => (
-                              <div key={ci} title={c.team_members?.full_name} style={{ marginLeft:ci>0?'-7px':0 }}>
-                                <Avatar name={c.team_members?.full_name||'?'} size={24} index={ci+1} avatarUrl={c.team_members?.avatar_url} />
+                              <div key={ci} title={c.team_members?.full_name} style={{ marginLeft:ci>0?'-6px':0 }}>
+                                <Avatar name={c.team_members?.full_name||'?'} size={20} index={ci+1} avatarUrl={c.team_members?.avatar_url} />
                               </div>
                             ))}
                             {crew.length > 4 && (
-                              <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-slate-400" style={{ marginLeft:'-7px', background:'rgba(255,255,255,0.08)', border:'2px solid rgba(255,255,255,0.08)' }}>
+                              <div className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-slate-400" style={{ marginLeft:'-6px', background:'rgba(255,255,255,0.08)', border:'2px solid rgba(255,255,255,0.08)' }}>
                                 +{crew.length-4}
                               </div>
                             )}
                           </div>
-                          <span className="text-[11px] text-slate-600">{crew.length} crew</span>
+                          <span className="text-[10px] text-slate-600">{crew.length} crew</span>
                         </div>
                       )}
 
                       {/* Actions */}
-                      <div className="flex gap-2 pt-3" style={{ borderTop:'1px solid rgba(255,255,255,0.06)' }}>
+                      <div className="flex gap-1.5 pt-2.5" style={{ borderTop:'1px solid rgba(255,255,255,0.06)' }}>
                         <Link to={`/sites/${site.id}`}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-semibold text-blue-400 transition-all hover:text-blue-300"
+                          className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-semibold text-blue-400 transition-all"
                           style={{ background:'rgba(37,99,235,0.12)', border:'1px solid rgba(59,130,246,0.2)' }}
-                          onMouseEnter={e => { e.currentTarget.style.background='rgba(37,99,235,0.22)'; e.currentTarget.style.boxShadow='0 0 12px rgba(59,130,246,0.15)' }}
-                          onMouseLeave={e => { e.currentTarget.style.background='rgba(37,99,235,0.12)'; e.currentTarget.style.boxShadow='none' }}>
-                          <ArrowUpRight size={12} /> View Details
+                          onMouseEnter={e => { e.currentTarget.style.background='rgba(37,99,235,0.22)' }}
+                          onMouseLeave={e => { e.currentTarget.style.background='rgba(37,99,235,0.12)' }}>
+                          <ArrowUpRight size={11} /> View
                         </Link>
                         <button
                           onClick={() => {
                             if (isExpanded) { setExpandedCard(null); setDraftStatus(null) }
                             else { setExpandedCard(site.id); setDraftStatus({ site_status:site.site_status, report_status:site.report_status }) }
                           }}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-semibold transition-all"
+                          className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-semibold transition-all"
                           style={{
                             background: isExpanded ? 'rgba(37,99,235,0.25)' : 'rgba(255,255,255,0.05)',
                             border: `1px solid ${isExpanded ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.1)'}`,
                             color: isExpanded ? '#60a5fa' : '#94a3b8',
                           }}>
-                          <Pencil size={11} /> Update
+                          <Pencil size={10} /> Update
                         </button>
                         <button onClick={() => openEdit(site)}
-                          className="w-[34px] flex items-center justify-center rounded-xl transition-all text-slate-500 hover:text-slate-300"
+                          className="w-[28px] flex items-center justify-center rounded-lg transition-all text-slate-500 hover:text-slate-300"
                           style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)' }}>
-                          <Pencil size={12} />
+                          <Pencil size={11} />
                         </button>
                         <button onClick={() => handleDelete(site.id)}
-                          className="w-[34px] flex items-center justify-center rounded-xl transition-all"
+                          className="w-[28px] flex items-center justify-center rounded-lg transition-all"
                           style={{ background:'rgba(239,68,68,0.06)', border:'1px solid rgba(239,68,68,0.15)', color:'rgba(239,68,68,0.6)' }}
-                          onMouseEnter={e => { e.currentTarget.style.background='rgba(239,68,68,0.15)'; e.currentTarget.style.borderColor='rgba(239,68,68,0.35)'; e.currentTarget.style.color='#f87171' }}
-                          onMouseLeave={e => { e.currentTarget.style.background='rgba(239,68,68,0.06)'; e.currentTarget.style.borderColor='rgba(239,68,68,0.15)'; e.currentTarget.style.color='rgba(239,68,68,0.6)' }}>
-                          <Trash2 size={12} />
+                          onMouseEnter={e => { e.currentTarget.style.background='rgba(239,68,68,0.15)'; e.currentTarget.style.color='#f87171' }}
+                          onMouseLeave={e => { e.currentTarget.style.background='rgba(239,68,68,0.06)'; e.currentTarget.style.color='rgba(239,68,68,0.6)' }}>
+                          <Trash2 size={11} />
                         </button>
                       </div>
 
