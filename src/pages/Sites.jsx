@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker, useMapEvents } from 'react-leaflet'
 import { supabase } from '../supabase'
-import { Plus, Pencil, Trash2, Search, ArrowUpRight, MapPin, SlidersHorizontal, X, Camera } from 'lucide-react'
+import {
+  Plus, Pencil, Trash2, Search, ArrowUpRight, MapPin, SlidersHorizontal, X, Camera,
+  Calendar, Clock, CheckCircle, XCircle, LayoutGrid, TrendingUp, PauseCircle,
+} from 'lucide-react'
 import { notify } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
@@ -11,19 +14,19 @@ import 'leaflet/dist/leaflet.css'
 
 // ── colour tokens ──────────────────────────────────────────────────
 const STATUS_COLORS = {
-  upcoming:  { bg:'rgba(234,179,8,.14)',   text:'#fbbf24', border:'rgba(234,179,8,.32)'   },
-  ongoing:   { bg:'rgba(249,115,22,.14)',  text:'#fb923c', border:'rgba(249,115,22,.32)'  },
-  completed: { bg:'rgba(34,197,94,.14)',   text:'#4ade80', border:'rgba(34,197,94,.32)'   },
-  cancelled: { bg:'rgba(239,68,68,.14)',   text:'#f87171', border:'rgba(239,68,68,.32)'   },
-  postponed: { bg:'rgba(148,163,184,.1)',  text:'#94a3b8', border:'rgba(148,163,184,.22)' },
+  upcoming:  { bg:'rgba(234,179,8,.15)',   text:'#fbbf24', border:'rgba(234,179,8,.3)'   },
+  ongoing:   { bg:'rgba(249,115,22,.15)',  text:'#fb923c', border:'rgba(249,115,22,.3)'  },
+  completed: { bg:'rgba(34,197,94,.15)',   text:'#4ade80', border:'rgba(34,197,94,.3)'   },
+  cancelled: { bg:'rgba(239,68,68,.15)',   text:'#f87171', border:'rgba(239,68,68,.3)'   },
+  postponed: { bg:'rgba(148,163,184,.12)', text:'#94a3b8', border:'rgba(148,163,184,.25)' },
 }
 
 const REPORT_COLORS = {
-  pending:        { bg:'rgba(148,163,184,.09)', text:'#94a3b8', border:'rgba(148,163,184,.18)' },
-  in_progress:    { bg:'rgba(59,130,246,.12)',  text:'#60a5fa', border:'rgba(59,130,246,.28)'  },
-  submitted:      { bg:'rgba(167,139,250,.12)', text:'#a78bfa', border:'rgba(167,139,250,.28)' },
-  approved:       { bg:'rgba(52,211,153,.12)',  text:'#34d399', border:'rgba(52,211,153,.28)'  },
-  not_applicable: { bg:'rgba(148,163,184,.06)', text:'#64748b', border:'rgba(148,163,184,.12)' },
+  pending:        { bg:'rgba(148,163,184,.1)',  text:'#94a3b8', border:'rgba(148,163,184,.2)'  },
+  in_progress:    { bg:'rgba(59,130,246,.14)',  text:'#60a5fa', border:'rgba(59,130,246,.3)'   },
+  submitted:      { bg:'rgba(167,139,250,.14)', text:'#a78bfa', border:'rgba(167,139,250,.3)'  },
+  approved:       { bg:'rgba(52,211,153,.14)',  text:'#34d399', border:'rgba(52,211,153,.3)'   },
+  not_applicable: { bg:'rgba(148,163,184,.07)', text:'#64748b', border:'rgba(148,163,184,.15)' },
 }
 
 const CARD_GRADIENTS = {
@@ -42,9 +45,18 @@ const AVATAR_GRADIENTS = [
 ]
 
 const TYPE_META = {
-  site_scanning: { label:'Site Scanning', dot:'#3b82f6' },
-  site_visit:    { label:'Site Visit',    dot:'#0d9488' },
-  meeting:       { label:'Meeting',       dot:'#7c3aed' },
+  site_scanning: { label:'Site Scanning', dot:'#3b82f6', color:'#60a5fa' },
+  site_visit:    { label:'Site Visit',    dot:'#0d9488', color:'#2dd4bf' },
+  meeting:       { label:'Meeting',       dot:'#7c3aed', color:'#a78bfa' },
+}
+
+const TAB_META = {
+  All:       { icon: LayoutGrid },
+  Upcoming:  { icon: Calendar },
+  Ongoing:   { icon: TrendingUp },
+  Completed: { icon: CheckCircle },
+  Cancelled: { icon: XCircle },
+  Postponed: { icon: PauseCircle },
 }
 
 const SITE_TYPES   = [
@@ -64,7 +76,7 @@ const EMPTY = {
 }
 
 // ── helpers ────────────────────────────────────────────────────────
-function Avatar({ name, size = 24, index = 0, avatarUrl = null }) {
+function Avatar({ name, size = 26, index = 0, avatarUrl = null }) {
   const initials = name?.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase() || '?'
   return (
     <div style={{
@@ -72,7 +84,7 @@ function Avatar({ name, size = 24, index = 0, avatarUrl = null }) {
       background: avatarUrl ? '#0f172a' : AVATAR_GRADIENTS[index % AVATAR_GRADIENTS.length],
       display:'flex', alignItems:'center', justifyContent:'center',
       color:'white', fontWeight:'700', fontSize:size * .36,
-      border:'1.5px solid rgba(255,255,255,0.1)',
+      border:'2px solid rgba(255,255,255,0.12)',
     }}>
       {avatarUrl
         ? <img src={avatarUrl} alt={name} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
@@ -81,17 +93,19 @@ function Avatar({ name, size = 24, index = 0, avatarUrl = null }) {
   )
 }
 
-function StatusPill({ status, colors, small = false }) {
+function StatusPill({ status, colors }) {
   const c = colors[status] || colors[Object.keys(colors)[0]]
+  const isDone = status === 'completed' || status === 'approved'
   return (
     <span style={{
+      display:'inline-flex', alignItems:'center', gap:'4px',
       background:c.bg, color:c.text, border:`1px solid ${c.border}`,
-      padding: small ? '3px 8px' : '3px 10px',
-      borderRadius:'99px', fontSize:'10px',
+      padding:'4px 10px', borderRadius:'99px', fontSize:'11px',
       fontWeight:'700', textTransform:'capitalize', whiteSpace:'nowrap',
       letterSpacing:'0.01em', flexShrink:0,
     }}>
       {status?.replace(/_/g,' ')}
+      {isDone && <CheckCircle size={10} />}
     </span>
   )
 }
@@ -141,7 +155,7 @@ export default function Sites() {
   const [quickSaving, setQuickSaving]     = useState(null)
   const [draftStatus, setDraftStatus]     = useState(null)
   const photoInputRef = useRef(null)
-  const PER_PAGE = 8
+  const PER_PAGE = 6
 
   const location = useLocation()
   useEffect(() => { fetchAll() }, [])
@@ -300,12 +314,11 @@ export default function Sites() {
   return (
     <div className="relative bg-[#060b14]" style={{ minHeight:'calc(100vh - 54px)', overflowY:'auto' }}>
 
-      {/* Fixed background glow */}
+      {/* Fixed bg glow */}
       <div className="pointer-events-none fixed inset-0" style={{
         zIndex:0,
         background:'radial-gradient(ellipse 55% 45% at 18% 18%,rgba(59,130,246,0.09) 0%,transparent 60%),radial-gradient(ellipse 45% 35% at 82% 8%,rgba(6,182,212,0.06) 0%,transparent 55%),radial-gradient(ellipse 35% 28% at 65% 88%,rgba(99,102,241,0.05) 0%,transparent 50%)',
       }} />
-      {/* Fixed background grid */}
       <div className="pointer-events-none fixed inset-0" style={{
         zIndex:0,
         backgroundImage:'linear-gradient(rgba(255,255,255,0.018) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.018) 1px,transparent 1px)',
@@ -313,124 +326,75 @@ export default function Sites() {
       }} />
 
       {/* Content */}
-      <div className="relative px-44" style={{ zIndex:1 }}>
+      <div className="relative px-10" style={{ zIndex:1 }}>
 
         {/* ── HEADER ── */}
-        <div className="flex items-start justify-between gap-4 pt-7">
-          {/* Left: title */}
-          <div>
-            <h1 className="text-[22px] font-extrabold text-slate-100 tracking-tight leading-none">Sites</h1>
+        <div className="flex items-center justify-between gap-4 pt-6 pb-5">
+
+          {/* Left: icon + title + subtitle */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center rounded-xl"
+              style={{ width:42, height:42, background:'linear-gradient(135deg,#2563eb,#0891b2)', boxShadow:'0 0 20px rgba(37,99,235,0.4)' }}>
+              <MapPin size={20} color="white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-extrabold text-slate-100 tracking-tight leading-none">Sites</h1>
+              <p className="text-xs text-slate-500 mt-0.5 font-medium">{sites.length} total sites</p>
+            </div>
           </div>
 
           {/* Right: search + filter + add */}
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-2">
             <div className="relative">
-              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
               <input
                 placeholder="Search sites…"
                 value={search}
                 onChange={e => { setSearch(e.target.value); setPage(1) }}
-                className="text-slate-200 placeholder-slate-500 outline-none transition-all"
                 style={{
                   background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.09)',
                   borderRadius:'10px', fontSize:'13px', fontFamily:'inherit',
-                  padding:'8px 14px 8px 30px', width:'200px',
+                  padding:'8px 14px 8px 32px', width:'220px', color:'#e2e8f0', outline:'none',
                 }}
-                onFocus={e => e.target.style.borderColor='rgba(59,130,246,0.4)'}
+                onFocus={e => e.target.style.borderColor='rgba(59,130,246,0.5)'}
                 onBlur={e => e.target.style.borderColor='rgba(255,255,255,0.09)'}
               />
             </div>
             <button
-              className="flex items-center justify-center text-slate-500 hover:text-slate-300 transition-all"
-              style={{ width:36, height:36, borderRadius:'10px', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.09)', flexShrink:0 }}>
-              <SlidersHorizontal size={14} />
+              className="flex items-center justify-center text-slate-400 transition-all"
+              style={{ width:38, height:38, borderRadius:'10px', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.09)' }}>
+              <SlidersHorizontal size={15} />
             </button>
             <button onClick={openAdd}
-              className="flex items-center gap-1.5 text-white font-semibold transition-all hover:-translate-y-px"
+              className="flex items-center gap-2 text-white font-semibold transition-all hover:-translate-y-px"
               style={{
-                padding:'8px 16px', borderRadius:'10px', fontSize:'13px', fontFamily:'inherit', border:'none', cursor:'pointer',
+                padding:'9px 18px', borderRadius:'10px', fontSize:'13px', fontFamily:'inherit', border:'none', cursor:'pointer',
                 background:'linear-gradient(135deg,#2563eb,#0891b2)',
-                boxShadow:'0 0 20px rgba(59,130,246,0.3),0 4px 12px rgba(0,0,0,0.25)',
+                boxShadow:'0 0 20px rgba(59,130,246,0.35),0 4px 12px rgba(0,0,0,0.3)',
               }}>
-              <Plus size={13} /> Add Site
+              <Plus size={14} /> Add Site
             </button>
           </div>
         </div>
 
         {/* ── TABS ── */}
-        <div className="flex items-center gap-1.5 mt-3.5 mb-5"
-          style={{ borderBottom:'1px solid rgba(255,255,255,0.06)', paddingBottom:'14px' }}>
+        <div className="flex items-center gap-2 mb-6">
           {TABS.map(t => {
-            const active = tab === t;
-            // Color for each tab
-            let tabColor = '';
-            let tabBg = 'transparent';
-            let tabBorder = 'rgba(255,255,255,0.08)';
-            let countBg = 'rgba(255,255,255,0.06)';
-            let countColor = '#334155';
-            if (active) {
-              tabColor = '#fff';
-              tabBg = 'linear-gradient(90deg,#2563eb,#0891b2)';
-              tabBorder = 'rgba(59,130,246,0.4)';
-              countBg = 'rgba(59,130,246,0.2)';
-              countColor = '#fff';
-            } else if (t === 'Upcoming') {
-              tabColor = '#fbbf24';
-              tabBg = 'rgba(234,179,8,0.08)';
-              tabBorder = 'rgba(234,179,8,0.2)';
-              countBg = 'rgba(234,179,8,0.13)';
-              countColor = '#fbbf24';
-            } else if (t === 'Ongoing') {
-              tabColor = '#fb923c';
-              tabBg = 'rgba(249,115,22,0.08)';
-              tabBorder = 'rgba(249,115,22,0.2)';
-              countBg = 'rgba(249,115,22,0.13)';
-              countColor = '#fb923c';
-            } else if (t === 'Completed') {
-              tabColor = '#4ade80';
-              tabBg = 'rgba(34,197,94,0.08)';
-              tabBorder = 'rgba(34,197,94,0.2)';
-              countBg = 'rgba(34,197,94,0.13)';
-              countColor = '#4ade80';
-            } else if (t === 'Cancelled') {
-              tabColor = '#f87171';
-              tabBg = 'rgba(239,68,68,0.08)';
-              tabBorder = 'rgba(239,68,68,0.2)';
-              countBg = 'rgba(239,68,68,0.13)';
-              countColor = '#f87171';
-            } else if (t === 'Postponed') {
-              tabColor = '#94a3b8';
-              tabBg = 'rgba(148,163,184,0.08)';
-              tabBorder = 'rgba(148,163,184,0.14)';
-              countBg = 'rgba(148,163,184,0.13)';
-              countColor = '#94a3b8';
-            } else if (t === 'All') {
-              tabColor = '#60a5fa';
-              tabBg = 'rgba(37,99,235,0.08)';
-              tabBorder = 'rgba(59,130,246,0.15)';
-              countBg = 'rgba(59,130,246,0.08)';
-              countColor = '#60a5fa';
-            }
+            const active = tab === t
+            const Icon = TAB_META[t].icon
             return (
               <button key={t} onClick={() => { setTab(t); setPage(1) }}
                 className="flex items-center gap-1.5 transition-all"
                 style={{
-                  padding:'6px 14px', borderRadius:'99px', fontSize:'12px', fontWeight:'600',
-                  border:`1px solid ${tabBorder}`,
-                  background: tabBg,
-                  color: tabColor,
-                  boxShadow: active ? '0 0 14px rgba(59,130,246,0.15)' : 'none',
+                  padding:'7px 16px', borderRadius:'99px', fontSize:'13px', fontWeight:'600',
+                  border:`1px solid ${active ? 'rgba(59,130,246,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                  background: active ? 'rgba(37,99,235,0.2)' : 'rgba(255,255,255,0.04)',
+                  color: active ? '#60a5fa' : '#64748b',
+                  boxShadow: active ? '0 0 16px rgba(59,130,246,0.2)' : 'none',
                   cursor:'pointer', fontFamily:'inherit',
-                  marginRight:'2px',
                 }}>
+                <Icon size={13} />
                 {t}
-                <span style={{
-                  padding:'1px 6px', borderRadius:'99px', fontSize:'10px', fontWeight:'700',
-                  background: countBg,
-                  color: countColor,
-                }}>
-                  {counts[t]}
-                </span>
               </button>
             )
           })}
@@ -439,12 +403,12 @@ export default function Sites() {
         {/* ── CARDS GRID ── */}
         {paginated.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl text-slate-500 mb-10"
-            style={{ height:192, border:'1px solid rgba(255,255,255,0.07)', background:'rgba(255,255,255,0.02)' }}>
+            style={{ height:200, border:'1px solid rgba(255,255,255,0.07)', background:'rgba(255,255,255,0.02)' }}>
             <MapPin size={28} className="mb-3 opacity-30" />
             <p className="text-sm font-medium">No sites found</p>
           </div>
         ) : (
-          <div className="grid grid-cols-4 gap-4 pb-6">
+          <div className="grid grid-cols-3 gap-5 pb-6">
             {paginated.map(site => {
               const pic       = site.site_assignments?.find(a => a.assignment_role === 'PIC')
               const crew      = site.site_assignments?.filter(a => a.assignment_role === 'crew') || []
@@ -456,103 +420,104 @@ export default function Sites() {
                 <div key={site.id}
                   className="rounded-2xl overflow-hidden transition-all duration-200"
                   style={{
-                    border:`1px solid ${isExpanded ? 'rgba(59,130,246,0.35)' : 'rgba(255,255,255,0.08)'}`,
-                    background:'rgba(13,20,36,0.7)',
-                    backdropFilter:'blur(16px)', WebkitBackdropFilter:'blur(16px)',
-                    boxShadow: isExpanded ? '0 0 0 1px rgba(59,130,246,0.15),0 8px 32px rgba(0,0,0,0.4)' : 'none',
+                    border:`1px solid ${isExpanded ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.09)'}`,
+                    background:'rgba(13,20,40,0.85)',
+                    backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)',
+                    boxShadow: isExpanded ? '0 0 0 1px rgba(59,130,246,0.2),0 8px 32px rgba(0,0,0,0.5)' : '0 4px 24px rgba(0,0,0,0.3)',
                   }}
                   onMouseEnter={e => {
                     if (isExpanded) return
-                    e.currentTarget.style.transform = 'translateY(-3px)'
-                    e.currentTarget.style.borderColor = 'rgba(59,130,246,0.22)'
-                    e.currentTarget.style.boxShadow = '0 16px 40px rgba(0,0,0,0.5),0 0 0 1px rgba(59,130,246,0.12),0 0 30px rgba(59,130,246,0.06)'
+                    e.currentTarget.style.transform = 'translateY(-4px)'
+                    e.currentTarget.style.borderColor = 'rgba(59,130,246,0.25)'
+                    e.currentTarget.style.boxShadow = '0 20px 48px rgba(0,0,0,0.5),0 0 0 1px rgba(59,130,246,0.15)'
                   }}
                   onMouseLeave={e => {
                     if (isExpanded) return
                     e.currentTarget.style.transform = 'none'
-                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'
-                    e.currentTarget.style.boxShadow = 'none'
+                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.09)'
+                    e.currentTarget.style.boxShadow = '0 4px 24px rgba(0,0,0,0.3)'
                   }}
                 >
 
                   {/* ── Banner ── */}
-                  <div className="relative overflow-hidden" style={{ height:76, background:CARD_GRADIENTS[site.site_type]||CARD_GRADIENTS.site_scanning }}>
+                  <div className="relative overflow-hidden" style={{ height:175, background:CARD_GRADIENTS[site.site_type]||CARD_GRADIENTS.site_scanning }}>
                     {(site.site_photo_url || getSiteHeaderImage(site.site_type)) && (
                       <img src={site.site_photo_url||getSiteHeaderImage(site.site_type)} alt=""
                         className="absolute inset-0 w-full h-full object-cover"
-                        style={{ opacity:0.35 }} />
+                        style={{ opacity:0.45 }} />
                     )}
-                    {/* gradient overlay */}
-                    <div className="absolute inset-0" style={{ background:'linear-gradient(to bottom,rgba(0,0,0,0) 0%,rgba(0,0,0,0.6) 100%)' }} />
-                    {/* banner row: location left, status right */}
-                    <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-2 z-10"
-                      style={{ padding:'10px 12px' }}>
+                    <div className="absolute inset-0" style={{ background:'linear-gradient(to bottom,rgba(0,0,0,0) 30%,rgba(0,0,0,0.65) 100%)' }} />
+                    {/* top row */}
+                    <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-2 z-10" style={{ padding:'12px 14px' }}>
                       <div className="flex items-center gap-1.5 min-w-0"
                         style={{
-                          background:'rgba(0,0,0,0.4)', backdropFilter:'blur(8px)',
-                          border:'1px solid rgba(255,255,255,0.12)',
-                          padding:'4px 10px', borderRadius:'99px',
-                          fontSize:'10px', color:'rgba(255,255,255,0.78)', fontWeight:'500',
-                          maxWidth:'58%',
+                          background:'rgba(0,0,0,0.45)', backdropFilter:'blur(8px)',
+                          border:'1px solid rgba(255,255,255,0.15)',
+                          padding:'5px 11px', borderRadius:'99px',
+                          fontSize:'11px', color:'rgba(255,255,255,0.85)', fontWeight:'500',
+                          maxWidth:'62%',
                         }}>
-                        <MapPin size={9} style={{ flexShrink:0 }} />
-                        <span style={{ whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-                          {site.location}
-                        </span>
+                        <MapPin size={10} style={{ flexShrink:0 }} />
+                        <span style={{ whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{site.location}</span>
                       </div>
-                      <StatusPill status={site.site_status} colors={STATUS_COLORS} small />
+                      <StatusPill status={site.site_status} colors={STATUS_COLORS} />
                     </div>
                   </div>
 
                   {/* ── Body ── */}
-                  <div style={{ padding:'14px' }}>
+                  <div style={{ padding:'16px 18px' }}>
 
                     {/* Site name */}
-                    <p style={{ fontSize:'13px', fontWeight:'700', color:'#f1f5f9', lineHeight:'1.35', marginBottom:'4px', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                    <h3 style={{ fontSize:'15px', fontWeight:'700', color:'#f1f5f9', lineHeight:'1.3', marginBottom:'4px', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
                       {site.site_name}
+                    </h3>
+
+                    {/* Type */}
+                    <p style={{ fontSize:'12px', color:'#64748b', marginBottom:'14px' }}>
+                      Type: <span style={{ color:typeMeta.color, fontWeight:'600' }}>{typeMeta.label}</span>
                     </p>
 
-                    {/* Type row */}
-                    <div className="flex items-center gap-1.5" style={{ fontSize:'10px', color:'#64748b', fontWeight:'500', marginBottom:'12px' }}>
-                      <span style={{ width:6, height:6, borderRadius:'50%', background:typeMeta.dot, flexShrink:0, display:'inline-block' }} />
-                      {typeMeta.label}
-                    </div>
-
-                    {/* Info grid: date + duration */}
+                    {/* Info row: date + duration */}
                     <div style={{
                       display:'grid', gridTemplateColumns:'1fr 1fr',
                       border:'1px solid rgba(255,255,255,0.07)',
-                      borderRadius:'10px', overflow:'hidden', marginBottom:'12px',
+                      borderRadius:'10px', overflow:'hidden', marginBottom:'14px',
                     }}>
-                      <div style={{ padding:'8px 10px', borderRight:'1px solid rgba(255,255,255,0.07)' }}>
-                        <p style={{ fontSize:'9px', color:'#475569', textTransform:'uppercase', letterSpacing:'0.08em', fontWeight:'600', marginBottom:'3px' }}>Scheduled</p>
-                        <p style={{ fontSize:'11px', fontWeight:'600', color:'#cbd5e1' }}>
+                      <div style={{ padding:'9px 12px', borderRight:'1px solid rgba(255,255,255,0.07)' }}>
+                        <div className="flex items-center gap-1.5" style={{ marginBottom:'4px' }}>
+                          <Calendar size={10} color="#475569" />
+                          <p style={{ fontSize:'10px', color:'#475569', textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:'600' }}>Scheduled</p>
+                        </div>
+                        <p style={{ fontSize:'12px', fontWeight:'600', color:'#cbd5e1' }}>
                           {new Date(site.scheduled_date).toLocaleDateString('en-MY',{ day:'numeric', month:'short', year:'numeric' })}
                         </p>
                       </div>
-                      <div style={{ padding:'8px 10px' }}>
-                        <p style={{ fontSize:'9px', color:'#475569', textTransform:'uppercase', letterSpacing:'0.08em', fontWeight:'600', marginBottom:'3px' }}>Duration</p>
-                        <p style={{ fontSize:'11px', fontWeight:'600', color:'#cbd5e1' }}>{site.site_duration_days}d</p>
+                      <div style={{ padding:'9px 12px' }}>
+                        <div className="flex items-center gap-1.5" style={{ marginBottom:'4px' }}>
+                          <Clock size={10} color="#475569" />
+                          <p style={{ fontSize:'10px', color:'#475569', textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:'600' }}>Duration</p>
+                        </div>
+                        <p style={{ fontSize:'12px', fontWeight:'600', color:'#cbd5e1' }}>{site.site_duration_days}d</p>
                       </div>
                     </div>
 
                     {/* PIC row */}
-                    <div className="flex items-center justify-between" style={{ marginBottom: crew.length > 0 ? '8px' : '0', minHeight:'26px' }}>
-                      <div className="flex items-center gap-1.5" style={{ minWidth:0, flex:1 }}>
+                    <div className="flex items-center justify-between" style={{ marginBottom:'8px', minHeight:'28px' }}>
+                      <div className="flex items-center gap-2" style={{ minWidth:0, flex:1 }}>
                         {pic
-                          ? <Avatar name={pic.team_members?.full_name} size={24} index={memberIdx >= 0 ? memberIdx : 0} avatarUrl={pic.team_members?.avatar_url} />
-                          : <div style={{ width:24, height:24, borderRadius:'50%', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', flexShrink:0 }} />
+                          ? <Avatar name={pic.team_members?.full_name} size={26} index={memberIdx >= 0 ? memberIdx : 0} avatarUrl={pic.team_members?.avatar_url} />
+                          : <div style={{ width:26, height:26, borderRadius:'50%', background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.12)', flexShrink:0 }} />
                         }
-                        <span style={{ fontSize:'11px', fontWeight:'500', color:'#cbd5e1', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:'100px' }}>
+                        <span style={{ fontSize:'12px', fontWeight:'500', color:'#cbd5e1', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:'110px' }}>
                           {pic?.team_members?.full_name || '—'}
                         </span>
                         {pic && (
-                          <span style={{ fontSize:'9px', fontWeight:'700', padding:'2px 6px', borderRadius:'99px', background:'rgba(59,130,246,0.14)', color:'#60a5fa', border:'1px solid rgba(59,130,246,0.22)', flexShrink:0 }}>
+                          <span style={{ fontSize:'10px', fontWeight:'700', padding:'2px 7px', borderRadius:'99px', background:'rgba(59,130,246,0.15)', color:'#60a5fa', border:'1px solid rgba(59,130,246,0.25)', flexShrink:0 }}>
                             PIC
                           </span>
                         )}
                       </div>
-                      <StatusPill status={site.report_status} colors={REPORT_COLORS} small />
+                      <StatusPill status={site.report_status} colors={REPORT_COLORS} />
                     </div>
 
                     {/* Crew row */}
@@ -560,82 +525,80 @@ export default function Sites() {
                       <div className="flex items-center gap-2" style={{ marginBottom:'0' }}>
                         <div className="flex">
                           {crew.slice(0,4).map((c, ci) => (
-                            <div key={ci} title={c.team_members?.full_name} style={{ marginLeft: ci > 0 ? '-5px' : 0 }}>
+                            <div key={ci} title={c.team_members?.full_name} style={{ marginLeft: ci > 0 ? '-6px' : 0 }}>
                               <Avatar name={c.team_members?.full_name||'?'} size={22} index={ci+1} avatarUrl={c.team_members?.avatar_url} />
                             </div>
                           ))}
                           {crew.length > 4 && (
                             <div style={{
-                              width:22, height:22, borderRadius:'50%', marginLeft:'-5px',
-                              background:'rgba(255,255,255,0.08)', border:'1.5px solid rgba(255,255,255,0.1)',
+                              width:22, height:22, borderRadius:'50%', marginLeft:'-6px',
+                              background:'rgba(255,255,255,0.08)', border:'2px solid rgba(255,255,255,0.1)',
                               display:'flex', alignItems:'center', justifyContent:'center',
                               fontSize:'8px', fontWeight:'700', color:'#64748b',
-                            }}>
-                              +{crew.length-4}
-                            </div>
+                            }}>+{crew.length-4}</div>
                           )}
                         </div>
-                        <span style={{ fontSize:'10px', color:'#475569' }}>{crew.length} crew</span>
+                        <span style={{ fontSize:'11px', color:'#475569' }}>{crew.length} crew</span>
                       </div>
                     )}
 
                     {/* Action bar */}
-                    <div className="flex items-center gap-1.5"
-                      style={{ borderTop:'1px solid rgba(255,255,255,0.06)', marginTop:'10px', paddingTop:'10px' }}>
+                    <div className="flex items-center gap-2"
+                      style={{ borderTop:'1px solid rgba(255,255,255,0.07)', marginTop:'14px', paddingTop:'12px' }}>
                       <Link to={`/sites/${site.id}`}
-                        className="flex items-center justify-center gap-1 transition-all"
+                        className="flex items-center justify-center gap-1.5 transition-all"
                         style={{
-                          flex:1, padding:'7px 0', borderRadius:'8px',
-                          fontSize:'11px', fontWeight:'600', color:'#60a5fa',
-                          background:'rgba(37,99,235,0.1)', border:'1px solid rgba(59,130,246,0.18)',
+                          flex:1, padding:'8px 0', borderRadius:'9px',
+                          fontSize:'12px', fontWeight:'600', color:'#60a5fa',
+                          background:'rgba(37,99,235,0.1)', border:'1px solid rgba(59,130,246,0.2)',
                           textDecoration:'none',
                         }}
-                        onMouseEnter={e => e.currentTarget.style.background='rgba(37,99,235,0.2)'}
+                        onMouseEnter={e => e.currentTarget.style.background='rgba(37,99,235,0.22)'}
                         onMouseLeave={e => e.currentTarget.style.background='rgba(37,99,235,0.1)'}>
-                        <ArrowUpRight size={11} /> View
+                        <ArrowUpRight size={12} /> View Details
                       </Link>
                       <button
                         onClick={() => {
                           if (isExpanded) { setExpandedCard(null); setDraftStatus(null) }
                           else { setExpandedCard(site.id); setDraftStatus({ site_status:site.site_status, report_status:site.report_status }) }
                         }}
-                        className="flex items-center justify-center gap-1 transition-all"
+                        className="flex items-center justify-center gap-1.5 transition-all"
                         style={{
-                          flex:1, padding:'7px 0', borderRadius:'8px',
-                          fontSize:'11px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit',
-                          background: isExpanded ? 'rgba(37,99,235,0.2)' : 'rgba(255,255,255,0.04)',
-                          border:`1px solid ${isExpanded ? 'rgba(59,130,246,0.35)' : 'rgba(255,255,255,0.09)'}`,
+                          flex:1, padding:'8px 0', borderRadius:'9px',
+                          fontSize:'12px', fontWeight:'600', cursor:'pointer', fontFamily:'inherit',
+                          background: isExpanded ? 'rgba(37,99,235,0.2)' : 'rgba(255,255,255,0.05)',
+                          border:`1px solid ${isExpanded ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.1)'}`,
                           color: isExpanded ? '#60a5fa' : '#94a3b8',
                         }}>
-                        <Pencil size={10} /> Update
+                        <Pencil size={11} /> Update
                       </button>
                       <button onClick={() => openEdit(site)}
                         className="flex items-center justify-center transition-all"
                         style={{
-                          width:30, height:30, borderRadius:'8px', cursor:'pointer',
-                          background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)',
+                          width:34, height:34, borderRadius:'9px', cursor:'pointer', flexShrink:0,
+                          background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.09)',
                           color:'#64748b',
                         }}
-                        onMouseEnter={e => { e.currentTarget.style.color='#cbd5e1'; e.currentTarget.style.background='rgba(255,255,255,0.09)' }}
-                        onMouseLeave={e => { e.currentTarget.style.color='#64748b'; e.currentTarget.style.background='rgba(255,255,255,0.04)' }}>
-                        <Pencil size={11} />
+                        onMouseEnter={e => { e.currentTarget.style.color='#cbd5e1'; e.currentTarget.style.background='rgba(255,255,255,0.1)' }}
+                        onMouseLeave={e => { e.currentTarget.style.color='#64748b'; e.currentTarget.style.background='rgba(255,255,255,0.05)' }}>
+                        <Pencil size={12} />
                       </button>
                       <button onClick={() => handleDelete(site.id)}
                         className="flex items-center justify-center transition-all"
                         style={{
-                          width:30, height:30, borderRadius:'8px', cursor:'pointer',
-                          background:'rgba(239,68,68,0.05)', border:'1px solid rgba(239,68,68,0.14)',
-                          color:'rgba(239,68,68,0.55)',
+                          width:34, height:34, borderRadius:'9px', cursor:'pointer', flexShrink:0,
+                          background:'rgba(239,68,68,0.06)', border:'1px solid rgba(239,68,68,0.15)',
+                          color:'rgba(239,68,68,0.6)',
                         }}
-                        onMouseEnter={e => { e.currentTarget.style.background='rgba(239,68,68,0.14)'; e.currentTarget.style.color='#f87171' }}
-                        onMouseLeave={e => { e.currentTarget.style.background='rgba(239,68,68,0.05)'; e.currentTarget.style.color='rgba(239,68,68,0.55)' }}>
-                        <Trash2 size={11} />
+                        onMouseEnter={e => { e.currentTarget.style.background='rgba(239,68,68,0.16)'; e.currentTarget.style.color='#f87171' }}
+                        onMouseLeave={e => { e.currentTarget.style.background='rgba(239,68,68,0.06)'; e.currentTarget.style.color='rgba(239,68,68,0.6)' }}>
+                        <Trash2 size={12} />
                       </button>
                     </div>
 
                     {/* Inline update panel */}
                     {isExpanded && draftStatus && (
-                      <div style={{ marginTop:'12px', padding:'12px', borderRadius:'12px', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)' }}>
+                      <div style={{ marginTop:'12px', padding:'14px', borderRadius:'12px', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)' }}>
 
                         <p style={{ fontSize:'9px', fontWeight:'700', color:'#475569', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:'8px' }}>Site Status</p>
                         <div className="flex flex-wrap gap-1.5" style={{ marginBottom:'12px' }}>
@@ -684,7 +647,7 @@ export default function Sites() {
                         <div className="flex gap-2" style={{ borderTop:'1px solid rgba(255,255,255,0.06)', paddingTop:'10px' }}>
                           <button onClick={() => handleQuickSave(site)} disabled={!!quickSaving}
                             style={{
-                              flex:1, padding:'7px 0', borderRadius:'10px', fontSize:'11px', fontWeight:'600',
+                              flex:1, padding:'8px 0', borderRadius:'10px', fontSize:'12px', fontWeight:'600',
                               color:'white', cursor:'pointer', border:'none', fontFamily:'inherit',
                               background:'linear-gradient(135deg,#2563eb,#0891b2)',
                               opacity: quickSaving ? 0.6 : 1,
@@ -693,7 +656,7 @@ export default function Sites() {
                           </button>
                           <button onClick={() => { setExpandedCard(null); setDraftStatus(null) }}
                             style={{
-                              flex:1, padding:'7px 0', borderRadius:'10px', fontSize:'11px', fontWeight:'600',
+                              flex:1, padding:'8px 0', borderRadius:'10px', fontSize:'12px', fontWeight:'600',
                               color:'#94a3b8', cursor:'pointer', fontFamily:'inherit',
                               background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)',
                             }}>
@@ -716,28 +679,28 @@ export default function Sites() {
             <span style={{ fontSize:'12px', color:'#475569' }}>
               Showing {(page-1)*PER_PAGE+1}–{Math.min(page*PER_PAGE, filtered.length)} of {filtered.length} sites
             </span>
-            <div className="flex gap-1">
+            <div className="flex gap-1.5">
               <button onClick={() => setPage(p => Math.max(1,p-1))} disabled={page===1}
                 style={{
-                  padding:'5px 12px', borderRadius:'8px', fontSize:'12px', fontWeight:'500',
-                  background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)',
+                  padding:'6px 14px', borderRadius:'8px', fontSize:'12px', fontWeight:'500',
+                  background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.09)',
                   color: page===1 ? '#334155' : '#94a3b8', cursor: page===1 ? 'default' : 'pointer', fontFamily:'inherit',
-                }}>Prev</button>
+                }}>‹</button>
               {Array.from({ length:totalPages }, (_,i) => i+1).map(p => (
                 <button key={p} onClick={() => setPage(p)}
                   style={{
-                    padding:'5px 12px', borderRadius:'8px', fontSize:'12px', fontWeight:'500',
-                    background: page===p ? '#2563eb' : 'rgba(255,255,255,0.04)',
-                    border:`1px solid ${page===p ? '#2563eb' : 'rgba(255,255,255,0.08)'}`,
+                    padding:'6px 12px', borderRadius:'8px', fontSize:'12px', fontWeight:'600',
+                    background: page===p ? '#2563eb' : 'rgba(255,255,255,0.05)',
+                    border:`1px solid ${page===p ? '#2563eb' : 'rgba(255,255,255,0.09)'}`,
                     color: page===p ? 'white' : '#94a3b8', cursor:'pointer', fontFamily:'inherit',
                   }}>{p}</button>
               ))}
               <button onClick={() => setPage(p => Math.min(totalPages,p+1))} disabled={page===totalPages}
                 style={{
-                  padding:'5px 12px', borderRadius:'8px', fontSize:'12px', fontWeight:'500',
-                  background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)',
+                  padding:'6px 14px', borderRadius:'8px', fontSize:'12px', fontWeight:'500',
+                  background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.09)',
                   color: page===totalPages ? '#334155' : '#94a3b8', cursor: page===totalPages ? 'default' : 'pointer', fontFamily:'inherit',
-                }}>Next</button>
+                }}>›</button>
             </div>
           </div>
         )}
@@ -747,9 +710,9 @@ export default function Sites() {
       {/* ── MODAL ── */}
       {showForm && (
         <div className="fixed inset-0 flex items-center justify-center z-50 p-4"
-          style={{ background:'rgba(0,0,0,0.7)', backdropFilter:'blur(6px)' }}
+          style={{ background:'rgba(0,0,0,0.75)', backdropFilter:'blur(6px)' }}
           onClick={e => e.target===e.currentTarget && setShowForm(false)}>
-          <div className="w-full max-w-2xl overflow-y-auto rounded-2xl" style={{ maxHeight:'92vh', background:'rgba(10,16,30,0.95)', border:'1px solid rgba(255,255,255,0.1)', backdropFilter:'blur(24px)' }}>
+          <div className="w-full max-w-2xl overflow-y-auto rounded-2xl" style={{ maxHeight:'92vh', background:'rgba(10,16,30,0.96)', border:'1px solid rgba(255,255,255,0.1)', backdropFilter:'blur(24px)' }}>
 
             <div className="flex items-center justify-between px-7 py-5" style={{ borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
               <h3 className="text-lg font-bold text-slate-100">{editSite ? 'Edit Site' : 'Add New Site'}</h3>
