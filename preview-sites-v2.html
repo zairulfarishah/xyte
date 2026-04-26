@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sites — Preview v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', sans-serif;
+    background: #060b14;
+    color: #f1f5f9;
+    min-height: 100vh;
+  }
+
+  /* ── fake nav ── */
+  .nav {
+    height: 54px;
+    background: rgba(6,11,20,0.9);
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    display: flex; align-items: center; padding: 0 24px;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .nav-brand { font-size: 15px; font-weight: 800; color: #f1f5f9; letter-spacing: -0.02em; }
+  .nav-links { display: flex; gap: 4px; margin-left: 32px; }
+  .nav-link {
+    padding: 5px 14px; border-radius: 8px; font-size: 13px; font-weight: 500;
+    color: #64748b; cursor: pointer; transition: all .15s;
+  }
+  .nav-link.active { background: rgba(255,255,255,0.07); color: #cbd5e1; }
+
+  /* ── page wrapper ── */
+  .page {
+    position: relative;
+    min-height: calc(100vh - 54px);
+    overflow-y: auto;
+  }
+
+  /* ── fixed bg effects ── */
+  .bg-glow {
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background:
+      radial-gradient(ellipse 55% 45% at 18% 18%, rgba(59,130,246,0.09) 0%, transparent 60%),
+      radial-gradient(ellipse 45% 35% at 82% 8%,  rgba(6,182,212,0.06) 0%, transparent 55%),
+      radial-gradient(ellipse 35% 28% at 65% 88%, rgba(99,102,241,0.05) 0%, transparent 50%);
+  }
+  .bg-grid {
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+
+  /* ── content ── */
+  .content {
+    position: relative; z-index: 1;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 64px;          /* ← buffer zones */
+  }
+
+  /* ── header ── */
+  .header {
+    padding-top: 28px;
+    padding-bottom: 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .header-left h1 {
+    font-size: 22px; font-weight: 800; color: #f1f5f9;
+    letter-spacing: -0.03em; line-height: 1;
+  }
+  .stat-pills {
+    display: flex; align-items: center; gap: 6px; margin-top: 10px; flex-wrap: wrap;
+  }
+  .stat-pill {
+    display: flex; align-items: center; gap: 5px;
+    padding: 4px 10px; border-radius: 99px;
+    font-size: 11px; font-weight: 600;
+    border: 1px solid transparent;
+  }
+  .stat-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+  .header-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .search-wrap { position: relative; }
+  .search-wrap svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #475569; }
+  .search-input {
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 10px; color: #cbd5e1; font-size: 13px; font-family: inherit;
+    padding: 8px 14px 8px 32px; outline: none; width: 200px;
+    transition: border-color .15s;
+  }
+  .search-input::placeholder { color: #475569; }
+  .search-input:focus { border-color: rgba(59,130,246,0.4); }
+  .icon-btn {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.09);
+    display: flex; align-items: center; justify-content: center;
+    color: #64748b; cursor: pointer; transition: all .15s; flex-shrink: 0;
+  }
+  .add-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 16px; border-radius: 10px;
+    background: linear-gradient(135deg, #2563eb, #0891b2);
+    box-shadow: 0 0 20px rgba(59,130,246,0.3), 0 4px 12px rgba(0,0,0,0.25);
+    color: white; font-size: 13px; font-weight: 600;
+    cursor: pointer; border: none; font-family: inherit;
+    transition: transform .15s;
+  }
+  .add-btn:hover { transform: translateY(-1px); }
+
+  /* ── tabs ── */
+  .tabs {
+    display: flex; align-items: center; gap: 6px;
+    padding: 14px 0 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    margin-bottom: 20px;
+  }
+  .tab {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 99px;
+    font-size: 12px; font-weight: 600;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: transparent; color: #475569;
+    cursor: pointer; transition: all .15s;
+  }
+  .tab.active {
+    background: rgba(37,99,235,0.18);
+    border-color: rgba(59,130,246,0.4);
+    color: #60a5fa;
+    box-shadow: 0 0 14px rgba(59,130,246,0.15);
+  }
+  .tab-count {
+    padding: 1px 6px; border-radius: 99px;
+    font-size: 10px; font-weight: 700;
+    background: rgba(255,255,255,0.06); color: #334155;
+  }
+  .tab.active .tab-count { background: rgba(59,130,246,0.2); color: #93c5fd; }
+
+  /* ── grid ── */
+  .cards-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    padding-bottom: 40px;
+  }
+
+  /* ── card ── */
+  .card {
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(13,20,36,0.7);
+    backdrop-filter: blur(16px);
+    overflow: hidden;
+    transition: transform .2s, box-shadow .2s, border-color .2s;
+    cursor: pointer;
+  }
+  .card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(59,130,246,0.22);
+    box-shadow:
+      0 16px 40px rgba(0,0,0,0.5),
+      0 0 0 1px rgba(59,130,246,0.12),
+      0 0 30px rgba(59,130,246,0.06);
+  }
+
+  /* banner */
+  .card-banner {
+    position: relative;
+    height: 76px;
+    overflow: hidden;
+  }
+  .card-banner img {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%; object-fit: cover; opacity: 0.35;
+  }
+  .card-banner-overlay {
+    position: absolute; inset: 0;
+    background: linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.6) 100%);
+  }
+  /* banner row: location left, status right — stays at top */
+  .card-banner-row {
+    position: absolute; top: 0; left: 0; right: 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 10px 12px;
+    gap: 8px;
+    z-index: 2;
+  }
+  .location-pill {
+    display: flex; align-items: center; gap: 5px;
+    background: rgba(0,0,0,0.4); backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.12);
+    padding: 4px 10px; border-radius: 99px;
+    font-size: 10px; color: rgba(255,255,255,0.78); font-weight: 500;
+    max-width: 58%; min-width: 0;
+  }
+  .location-pill span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .location-pill svg { flex-shrink: 0; }
+
+  /* status pill (top-right of banner) */
+  .status-pill {
+    padding: 4px 10px; border-radius: 99px;
+    font-size: 10px; font-weight: 700;
+    white-space: nowrap; flex-shrink: 0;
+    text-transform: capitalize; letter-spacing: 0.01em;
+    border: 1px solid transparent;
+  }
+
+  /* ── card body ── */
+  .card-body { padding: 14px; }
+
+  /* site name */
+  .card-name {
+    font-size: 13px; font-weight: 700; color: #f1f5f9;
+    line-height: 1.35; margin-bottom: 4px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* type row */
+  .card-type {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 10px; color: #64748b; font-weight: 500;
+    margin-bottom: 12px;
+  }
+  .type-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+  /* info grid (date + duration) */
+  .info-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 10px; overflow: hidden;
+    margin-bottom: 12px;
+  }
+  .info-cell {
+    padding: 8px 10px;
+  }
+  .info-cell:first-child {
+    border-right: 1px solid rgba(255,255,255,0.07);
+  }
+  .info-label {
+    font-size: 9px; color: #475569;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    font-weight: 600; margin-bottom: 3px;
+  }
+  .info-value {
+    font-size: 11px; font-weight: 600; color: #cbd5e1;
+  }
+
+  /* PIC row */
+  .pic-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    min-height: 26px;
+  }
+  .pic-left {
+    display: flex; align-items: center; gap: 7px;
+    min-width: 0; flex: 1;
+  }
+  .avatar {
+    width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 700; color: white;
+    border: 1.5px solid rgba(255,255,255,0.1);
+    overflow: hidden;
+  }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .pic-name {
+    font-size: 11px; font-weight: 500; color: #cbd5e1;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 100px;
+  }
+  .pic-badge {
+    font-size: 9px; font-weight: 700;
+    padding: 2px 6px; border-radius: 99px;
+    background: rgba(59,130,246,0.14);
+    color: #60a5fa;
+    border: 1px solid rgba(59,130,246,0.22);
+    flex-shrink: 0;
+  }
+  .report-pill {
+    padding: 3px 8px; border-radius: 99px;
+    font-size: 10px; font-weight: 600;
+    white-space: nowrap; flex-shrink: 0;
+    text-transform: capitalize; letter-spacing: 0.01em;
+    border: 1px solid transparent;
+  }
+
+  /* crew row */
+  .crew-row {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 8px;
+  }
+  .crew-avatars { display: flex; }
+  .crew-avatars .avatar { margin-left: -5px; }
+  .crew-avatars .avatar:first-child { margin-left: 0; }
+  .crew-count { font-size: 10px; color: #475569; }
+
+  /* action bar */
+  .action-bar {
+    display: flex; align-items: center; gap: 6px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    margin-top: 2px;
+  }
+  .btn-view {
+    flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px;
+    padding: 7px 0; border-radius: 8px;
+    font-size: 11px; font-weight: 600; color: #60a5fa;
+    background: rgba(37,99,235,0.1); border: 1px solid rgba(59,130,246,0.18);
+    cursor: pointer; transition: background .15s;
+    text-decoration: none;
+  }
+  .btn-view:hover { background: rgba(37,99,235,0.2); }
+  .btn-update {
+    flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px;
+    padding: 7px 0; border-radius: 8px;
+    font-size: 11px; font-weight: 600; color: #94a3b8;
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);
+    cursor: pointer; transition: background .15s;
+  }
+  .btn-update:hover { background: rgba(255,255,255,0.08); color: #cbd5e1; }
+  .btn-icon {
+    width: 30px; height: 30px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: all .15s; flex-shrink: 0;
+  }
+  .btn-edit {
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    color: #64748b;
+  }
+  .btn-edit:hover { color: #cbd5e1; background: rgba(255,255,255,0.09); }
+  .btn-del {
+    background: rgba(239,68,68,0.05); border: 1px solid rgba(239,68,68,0.14);
+    color: rgba(239,68,68,0.55);
+  }
+  .btn-del:hover { background: rgba(239,68,68,0.14); color: #f87171; }
+
+  /* ── SVG helpers (inline) ── */
+  svg { display: inline-block; }
+
+  /* ── colour tokens ── */
+  /* Site status */
+  .s-upcoming  { background: rgba(234,179,8,.14);  color: #fbbf24; border-color: rgba(234,179,8,.32);  }
+  .s-ongoing   { background: rgba(249,115,22,.14); color: #fb923c; border-color: rgba(249,115,22,.32); }
+  .s-completed { background: rgba(34,197,94,.14);  color: #4ade80; border-color: rgba(34,197,94,.32);  }
+  .s-cancelled { background: rgba(239,68,68,.14);  color: #f87171; border-color: rgba(239,68,68,.32);  }
+  .s-postponed { background: rgba(148,163,184,.1); color: #94a3b8; border-color: rgba(148,163,184,.22); }
+
+  /* Report status */
+  .r-pending        { background: rgba(148,163,184,.09); color: #94a3b8; border-color: rgba(148,163,184,.18); }
+  .r-in_progress    { background: rgba(59,130,246,.12);  color: #60a5fa; border-color: rgba(59,130,246,.28);  }
+  .r-submitted      { background: rgba(167,139,250,.12); color: #a78bfa; border-color: rgba(167,139,250,.28); }
+  .r-approved       { background: rgba(52,211,153,.12);  color: #34d399; border-color: rgba(52,211,153,.28);  }
+  .r-not_applicable { background: rgba(148,163,184,.06); color: #64748b; border-color: rgba(148,163,184,.12); }
+
+  /* Card banner gradients */
+  .g-scanning { background: linear-gradient(135deg,#0f2460 0%,#1a4b8c 55%,#0891b2 100%); }
+  .g-visit    { background: linear-gradient(135deg,#042f2e 0%,#065f46 55%,#0d9488 100%); }
+  .g-meeting  { background: linear-gradient(135deg,#1e0a3c 0%,#4c1d95 55%,#7c3aed 100%); }
+
+  /* Avatar gradients */
+  .av0 { background: linear-gradient(135deg,#1d4ed8,#0891b2); }
+  .av1 { background: linear-gradient(135deg,#6d28d9,#7c3aed); }
+  .av2 { background: linear-gradient(135deg,#be185d,#db2777); }
+  .av3 { background: linear-gradient(135deg,#047857,#059669); }
+  .av4 { background: linear-gradient(135deg,#b45309,#d97706); }
+
+  /* pagination */
+  .pagination {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-bottom: 32px;
+  }
+  .page-info { font-size: 12px; color: #475569; }
+  .page-btns { display: flex; gap: 4px; }
+  .page-btn {
+    padding: 5px 12px; border-radius: 8px; font-size: 12px; font-weight: 500;
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    color: #94a3b8; cursor: pointer; transition: all .15s;
+  }
+  .page-btn.active { background: #2563eb; border-color: #2563eb; color: white; }
+  .page-btn:disabled { color: #334155; cursor: default; }
+
+</style>
+</head>
+<body>
+
+<!-- fake nav -->
+<div class="nav">
+  <span class="nav-brand">xyte</span>
+  <div class="nav-links">
+    <span class="nav-link">Dashboard</span>
+    <span class="nav-link active">Sites</span>
+    <span class="nav-link">Reports</span>
+    <span class="nav-link">Team</span>
+  </div>
+</div>
+
+<!-- bg effects -->
+<div class="bg-glow"></div>
+<div class="bg-grid"></div>
+
+<!-- page -->
+<div class="page">
+<div class="content">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-left">
+      <h1>Sites</h1>
+      <div class="stat-pills">
+        <span class="stat-pill" style="background:rgba(148,163,184,0.08);color:#94a3b8;border-color:rgba(148,163,184,0.14)">
+          12 total
+        </span>
+        <span class="stat-pill" style="background:rgba(234,179,8,0.1);color:#fbbf24;border-color:rgba(234,179,8,0.2)">
+          <span class="stat-dot" style="background:#f59e0b"></span> 4 upcoming
+        </span>
+        <span class="stat-pill" style="background:rgba(249,115,22,0.1);color:#fb923c;border-color:rgba(249,115,22,0.2)">
+          <span class="stat-dot" style="background:#f97316"></span> 3 ongoing
+        </span>
+        <span class="stat-pill" style="background:rgba(34,197,94,0.1);color:#4ade80;border-color:rgba(34,197,94,0.2)">
+          <span class="stat-dot" style="background:#22c55e"></span> 5 done
+        </span>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="search-wrap">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#475569">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        <input class="search-input" placeholder="Search sites…" />
+      </div>
+      <div class="icon-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="14" y2="12"/><line x1="4" y1="18" x2="9" y2="18"/></svg>
+      </div>
+      <button class="add-btn">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+        Add Site
+      </button>
+    </div>
+  </div>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <div class="tab active">All <span class="tab-count">12</span></div>
+    <div class="tab">Upcoming <span class="tab-count">4</span></div>
+    <div class="tab">Ongoing <span class="tab-count">3</span></div>
+    <div class="tab">Completed <span class="tab-count">5</span></div>
+    <div class="tab">Cancelled <span class="tab-count">0</span></div>
+    <div class="tab">Postponed <span class="tab-count">0</span></div>
+  </div>
+
+  <!-- CARDS -->
+  <div class="cards-grid">
+
+    <!-- Card 1 — Site Scanning, Upcoming -->
+    <div class="card">
+      <div class="card-banner g-scanning">
+        <div class="card-banner-overlay"></div>
+        <div class="card-banner-row">
+          <div class="location-pill">
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 10c0 6-8 13-8 13s-8-7-8-13a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+            <span>Jalan Ampang, KL</span>
+          </div>
+          <span class="status-pill s-upcoming">upcoming</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-name">TNB Substation Wangsa Maju</div>
+        <div class="card-type">
+          <span class="type-dot" style="background:#3b82f6"></span>
+          Site Scanning
+        </div>
+        <div class="info-grid">
+          <div class="info-cell">
+            <div class="info-label">Scheduled</div>
+            <div class="info-value">5 May 2025</div>
+          </div>
+          <div class="info-cell">
+            <div class="info-label">Duration</div>
+            <div class="info-value">2 days</div>
+          </div>
+        </div>
+        <div class="pic-row">
+          <div class="pic-left">
+            <div class="avatar av0">AH</div>
+            <span class="pic-name">Ahmad Hazwan</span>
+            <span class="pic-badge">PIC</span>
+          </div>
+          <span class="report-pill r-pending">pending</span>
+        </div>
+        <div class="crew-row">
+          <div class="crew-avatars">
+            <div class="avatar av1">FH</div>
+            <div class="avatar av2">NR</div>
+            <div class="avatar av3">ZF</div>
+          </div>
+          <span class="crew-count">3 crew</span>
+        </div>
+        <div class="action-bar">
+          <a class="btn-view">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 17 17 7M7 7h10v10"/></svg>
+            View
+          </a>
+          <button class="btn-update">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+            Update
+          </button>
+          <div class="btn-icon btn-edit">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+          </div>
+          <div class="btn-icon btn-del">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 2 — Site Visit, Ongoing -->
+    <div class="card">
+      <div class="card-banner g-visit">
+        <div class="card-banner-overlay"></div>
+        <div class="card-banner-row">
+          <div class="location-pill">
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 10c0 6-8 13-8 13s-8-7-8-13a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+            <span>Putrajaya</span>
+          </div>
+          <span class="status-pill s-ongoing">ongoing</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-name">Wisma Putra Data Centre</div>
+        <div class="card-type">
+          <span class="type-dot" style="background:#0d9488"></span>
+          Site Visit
+        </div>
+        <div class="info-grid">
+          <div class="info-cell">
+            <div class="info-label">Scheduled</div>
+            <div class="info-value">28 Apr 2025</div>
+          </div>
+          <div class="info-cell">
+            <div class="info-label">Duration</div>
+            <div class="info-value">0.5 days</div>
+          </div>
+        </div>
+        <div class="pic-row">
+          <div class="pic-left">
+            <div class="avatar av2">ZF</div>
+            <span class="pic-name">Zairul Farishah</span>
+            <span class="pic-badge">PIC</span>
+          </div>
+          <span class="report-pill r-in_progress">in progress</span>
+        </div>
+        <div class="crew-row">
+          <div class="crew-avatars">
+            <div class="avatar av3">GH</div>
+            <div class="avatar av4">CJ</div>
+          </div>
+          <span class="crew-count">2 crew</span>
+        </div>
+        <div class="action-bar">
+          <a class="btn-view">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 17 17 7M7 7h10v10"/></svg>
+            View
+          </a>
+          <button class="btn-update">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+            Update
+          </button>
+          <div class="btn-icon btn-edit">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+          </div>
+          <div class="btn-icon btn-del">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 3 — Meeting, Completed -->
+    <div class="card">
+      <div class="card-banner g-meeting">
+        <div class="card-banner-overlay"></div>
+        <div class="card-banner-row">
+          <div class="location-pill">
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 10c0 6-8 13-8 13s-8-7-8-13a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+            <span>Shah Alam, Selangor</span>
+          </div>
+          <span class="status-pill s-completed">completed</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-name">Client Kickoff — Gamuda Bhd</div>
+        <div class="card-type">
+          <span class="type-dot" style="background:#7c3aed"></span>
+          Meeting
+        </div>
+        <div class="info-grid">
+          <div class="info-cell">
+            <div class="info-label">Scheduled</div>
+            <div class="info-value">20 Apr 2025</div>
+          </div>
+          <div class="info-cell">
+            <div class="info-label">Duration</div>
+            <div class="info-value">1 day</div>
+          </div>
+        </div>
+        <div class="pic-row">
+          <div class="pic-left">
+            <div class="avatar av1">NR</div>
+            <span class="pic-name">Nur Rina</span>
+            <span class="pic-badge">PIC</span>
+          </div>
+          <span class="report-pill r-not_applicable">N/A</span>
+        </div>
+        <!-- no crew row -->
+        <div class="action-bar" style="margin-top:8px">
+          <a class="btn-view">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 17 17 7M7 7h10v10"/></svg>
+            View
+          </a>
+          <button class="btn-update">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+            Update
+          </button>
+          <div class="btn-icon btn-edit">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+          </div>
+          <div class="btn-icon btn-del">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 4 — Site Scanning, Upcoming, submitted -->
+    <div class="card">
+      <div class="card-banner g-scanning">
+        <div class="card-banner-overlay"></div>
+        <div class="card-banner-row">
+          <div class="location-pill">
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 10c0 6-8 13-8 13s-8-7-8-13a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+            <span>Cyberjaya</span>
+          </div>
+          <span class="status-pill s-upcoming">upcoming</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-name">MSC Malaysia HQ Survey</div>
+        <div class="card-type">
+          <span class="type-dot" style="background:#3b82f6"></span>
+          Site Scanning
+        </div>
+        <div class="info-grid">
+          <div class="info-cell">
+            <div class="info-label">Scheduled</div>
+            <div class="info-value">10 May 2025</div>
+          </div>
+          <div class="info-cell">
+            <div class="info-label">Duration</div>
+            <div class="info-value">3 days</div>
+          </div>
+        </div>
+        <div class="pic-row">
+          <div class="pic-left">
+            <div class="avatar av3">GH</div>
+            <span class="pic-name">GH Tan</span>
+            <span class="pic-badge">PIC</span>
+          </div>
+          <span class="report-pill r-submitted">submitted</span>
+        </div>
+        <div class="crew-row">
+          <div class="crew-avatars">
+            <div class="avatar av0">AH</div>
+            <div class="avatar av1">FH</div>
+            <div class="avatar av4">WY</div>
+            <div class="avatar av2">JM</div>
+            <div class="avatar" style="background:rgba(255,255,255,0.08);color:#64748b;font-size:8px;font-weight:700;margin-left:-5px">+2</div>
+          </div>
+          <span class="crew-count">6 crew</span>
+        </div>
+        <div class="action-bar">
+          <a class="btn-view">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 17 17 7M7 7h10v10"/></svg>
+            View
+          </a>
+          <button class="btn-update">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+            Update
+          </button>
+          <div class="btn-icon btn-edit">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+          </div>
+          <div class="btn-icon btn-del">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 5 — Site Visit, Completed, approved -->
+    <div class="card">
+      <div class="card-banner g-visit">
+        <div class="card-banner-overlay"></div>
+        <div class="card-banner-row">
+          <div class="location-pill">
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 10c0 6-8 13-8 13s-8-7-8-13a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+            <span>Iskandar Puteri, JB</span>
+          </div>
+          <span class="status-pill s-completed">completed</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-name">Forest City Smart Grid</div>
+        <div class="card-type">
+          <span class="type-dot" style="background:#0d9488"></span>
+          Site Visit
+        </div>
+        <div class="info-grid">
+          <div class="info-cell">
+            <div class="info-label">Scheduled</div>
+            <div class="info-value">15 Apr 2025</div>
+          </div>
+          <div class="info-cell">
+            <div class="info-label">Duration</div>
+            <div class="info-value">0.5 days</div>
+          </div>
+        </div>
+        <div class="pic-row">
+          <div class="pic-left">
+            <div class="avatar av4">DL</div>
+            <span class="pic-name">Darren Lim</span>
+            <span class="pic-badge">PIC</span>
+          </div>
+          <span class="report-pill r-approved">approved</span>
+        </div>
+        <!-- no crew -->
+        <div class="action-bar" style="margin-top:8px">
+          <a class="btn-view">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 17 17 7M7 7h10v10"/></svg>
+            View
+          </a>
+          <button class="btn-update">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+            Update
+          </button>
+          <div class="btn-icon btn-edit">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+          </div>
+          <div class="btn-icon btn-del">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 6 — Site Scanning, Postponed -->
+    <div class="card">
+      <div class="card-banner g-scanning">
+        <div class="card-banner-overlay"></div>
+        <div class="card-banner-row">
+          <div class="location-pill">
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 10c0 6-8 13-8 13s-8-7-8-13a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+            <span>KLIA, Sepang</span>
+          </div>
+          <span class="status-pill s-postponed">postponed</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-name">MAHB Terminal 2 Expansion</div>
+        <div class="card-type">
+          <span class="type-dot" style="background:#3b82f6"></span>
+          Site Scanning
+        </div>
+        <div class="info-grid">
+          <div class="info-cell">
+            <div class="info-label">Scheduled</div>
+            <div class="info-value">1 Jun 2025</div>
+          </div>
+          <div class="info-cell">
+            <div class="info-label">Duration</div>
+            <div class="info-value">5 days</div>
+          </div>
+        </div>
+        <div class="pic-row">
+          <div class="pic-left">
+            <div class="avatar av0">WY</div>
+            <span class="pic-name">Wendy Yap</span>
+            <span class="pic-badge">PIC</span>
+          </div>
+          <span class="report-pill r-pending">pending</span>
+        </div>
+        <div class="crew-row">
+          <div class="crew-avatars">
+            <div class="avatar av2">CJ</div>
+            <div class="avatar av3">JM</div>
+          </div>
+          <span class="crew-count">2 crew</span>
+        </div>
+        <div class="action-bar">
+          <a class="btn-view">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 17 17 7M7 7h10v10"/></svg>
+            View
+          </a>
+          <button class="btn-update">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+            Update
+          </button>
+          <div class="btn-icon btn-edit">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+          </div>
+          <div class="btn-icon btn-del">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /cards-grid -->
+
+  <!-- PAGINATION -->
+  <div class="pagination">
+    <span class="page-info">Showing 1–6 of 12 sites</span>
+    <div class="page-btns">
+      <button class="page-btn" disabled>Prev</button>
+      <button class="page-btn active">1</button>
+      <button class="page-btn">2</button>
+      <button class="page-btn">Next</button>
+    </div>
+  </div>
+
+</div><!-- /content -->
+</div><!-- /page -->
+
+</body>
+</html>
