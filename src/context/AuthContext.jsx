@@ -36,7 +36,7 @@ export function AuthProvider({ children }) {
     supabase.auth.getSession().then(({ data: { session } }) => {
       const u = session?.user ?? null
       setUser(u)
-      fetchMember(u?.email).then(() => setLoading(false))
+      fetchMember(u?.email).finally(() => setLoading(false))
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       const u = session?.user ?? null
