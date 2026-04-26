@@ -207,7 +207,7 @@ function PageLoader() {
 function AppShell() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { user, loading: authLoading, fullName, avatarUrl } = useAuth()
+  const { user, loading: authLoading, fullName, avatarUrl, memberId } = useAuth()
   const [searchOpen, setSearchOpen] = useState(false)
   const [notifOpen, setNotifOpen]   = useState(false)
   const [notifs, setNotifs]         = useState([])
@@ -237,16 +237,22 @@ function AppShell() {
   }
 
   useEffect(() => {
+    if (memberId) fetchNotifs()
+  }, [memberId])
+
+  useEffect(() => {
     if (!user) return undefined
-    fetchNotifs()
     const channel = supabase
       .channel('notifications-realtime')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, ({ new: n }) => {
-        setNotifs(prev => [n, ...prev].slice(0, 30))
+        // Show if broadcast (no recipient) or addressed to current member
+        if (!n.recipient_id || n.recipient_id === memberId) {
+          setNotifs(prev => [n, ...prev].slice(0, 30))
+        }
       })
       .subscribe()
     return () => supabase.removeChannel(channel)
-  }, [user])
+  }, [user, memberId])
 
   useEffect(() => {
     function handle(e) {
@@ -257,9 +263,11 @@ function AppShell() {
   }, [])
 
   async function fetchNotifs() {
+    if (!memberId) return
     const { data } = await supabase
       .from('notifications')
       .select('*')
+      .or(`recipient_id.is.null,recipient_id.eq.${memberId}`)
       .order('created_at', { ascending: false })
       .limit(30)
     setNotifs(data || [])

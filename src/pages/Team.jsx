@@ -261,12 +261,15 @@ export default function Team() {
     [selectedSites]
   )
 
-  const upcomingSites = useMemo(
-    () => selectedSites
-      .filter(site => ['upcoming', 'ongoing'].includes(String(site.site_status || '').toLowerCase()))
-      .slice(0, 5),
-    [selectedSites]
-  )
+  const assignmentBoardSites = useMemo(() => {
+    return selectedSites.filter(site => {
+      const status = String(site.site_status || '').toLowerCase()
+      const report = String(site.report_status || '').toLowerCase()
+      const hasActiveWork = ['upcoming', 'ongoing'].includes(status)
+      const hasOpenReport = ['pending', 'in_progress', 'submitted'].includes(report)
+      return hasActiveWork || hasOpenReport
+    }).sort((a, b) => new Date(a.scheduled_date) - new Date(b.scheduled_date))
+  }, [selectedSites])
 
   const completedSites = selectedSites.filter(site => String(site.site_status || '').toLowerCase() === 'completed')
   const reportQueue = selectedSites.filter(site => ['pending', 'in_progress', 'submitted', 'report_pending'].includes(String(site.report_status || '').toLowerCase()))
@@ -638,58 +641,79 @@ export default function Team() {
                   <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(148,163,184,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
                     <div>
                       <p style={{ color: 'white', fontSize: '14px', fontWeight: '700' }}>Assignment Board</p>
-                      <p style={{ color: '#64748b', fontSize: '11px', marginTop: '4px' }}>Live and upcoming work for the selected member.</p>
+                      <p style={{ color: '#64748b', fontSize: '11px', marginTop: '4px' }}>Active sites and open reports for this member.</p>
                     </div>
                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#93c5fd', fontSize: '11px', fontWeight: '700', padding: '6px 10px', borderRadius: '999px', background: 'rgba(37,99,235,0.14)', border: '1px solid rgba(96,165,250,0.22)' }}>
                       <Clock size={13} />
-                      {upcomingSites.length} scheduled
+                      {assignmentBoardSites.length} active
                     </div>
                   </div>
 
-                  <div style={{ padding: '14px' }}>
-                    {upcomingSites.length === 0 ? (
-                      <p style={{ padding: '24px', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>No scheduled assignments yet.</p>
-                    ) : upcomingSites.map(site => {
+                  <div style={{ padding: '14px', maxHeight: '420px', overflowY: 'auto' }}>
+                    {assignmentBoardSites.length === 0 ? (
+                      <p style={{ padding: '24px', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>No active assignments or open reports.</p>
+                    ) : assignmentBoardSites.map(site => {
                       const role = getMemberRole(selected.id, site.site_assignments)
                       const roleTone = getRoleTone(role)
                       const typeTone = getSiteTypeTone(site.site_type)
+                      const siteStatus = String(site.site_status || '').toLowerCase()
+                      const reportStatus = String(site.report_status || '').toLowerCase()
+                      const hasOpenReport = ['pending', 'in_progress', 'submitted'].includes(reportStatus)
+                      const isActive = ['upcoming', 'ongoing'].includes(siteStatus)
+
+                      const REPORT_COLORS = {
+                        pending:     { bg: 'rgba(239,68,68,0.16)',  text: '#fca5a5', border: 'rgba(239,68,68,0.3)'  },
+                        in_progress: { bg: 'rgba(245,158,11,0.16)', text: '#fcd34d', border: 'rgba(245,158,11,0.3)' },
+                        submitted:   { bg: 'rgba(168,85,247,0.16)', text: '#d8b4fe', border: 'rgba(168,85,247,0.3)' },
+                      }
+                      const SITE_STATUS_COLORS = {
+                        upcoming: { bg: 'rgba(56,189,248,0.14)', text: '#7dd3fc', border: 'rgba(56,189,248,0.28)' },
+                        ongoing:  { bg: 'rgba(34,197,94,0.14)',  text: '#86efac', border: 'rgba(34,197,94,0.28)'  },
+                      }
+                      const statusChip = SITE_STATUS_COLORS[siteStatus]
+                      const reportChip = REPORT_COLORS[reportStatus]
 
                       return (
                         <div
                           key={site.id}
                           style={{
-                            display: 'grid',
-                            gridTemplateColumns: '86px minmax(0, 1fr) auto',
-                            gap: '14px',
-                            alignItems: 'center',
                             padding: '13px',
-                            borderRadius: '20px',
+                            borderRadius: '18px',
                             background: 'linear-gradient(135deg, rgba(15,23,42,0.84), rgba(15,23,42,0.64))',
                             border: '1px solid rgba(148,163,184,0.10)',
                             marginBottom: '10px',
                           }}
                         >
-                          <div style={{ padding: '11px 10px', borderRadius: '16px', background: 'rgba(37,99,235,0.10)', border: '1px solid rgba(96,165,250,0.16)', textAlign: 'center' }}>
-                            <p style={{ color: '#93c5fd', fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '.08em' }}>Next</p>
-                            <p style={{ color: 'white', fontSize: '13px', fontWeight: '700', marginTop: '5px' }}>{getDayLabel(site.scheduled_date)}</p>
+                          {/* Top row: name + type + role */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                            <p style={{ color: 'white', fontSize: '13px', fontWeight: '700', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{site.site_name}</p>
+                            <span style={{ background: typeTone.bg, color: typeTone.text, border: `1px solid ${typeTone.border}`, borderRadius: '999px', padding: '2px 8px', fontSize: '10px', fontWeight: '700', flexShrink: 0 }}>
+                              {SITE_TYPE_LABELS[String(site.site_type || '').toLowerCase()] || 'Site'}
+                            </span>
+                            <span style={{ background: roleTone.bg, color: roleTone.text, border: `1px solid ${roleTone.border}`, padding: '2px 8px', borderRadius: '999px', fontSize: '10px', fontWeight: '700', flexShrink: 0 }}>{role}</span>
                           </div>
 
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                              <p style={{ color: 'white', fontSize: '14px', fontWeight: '700', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{site.site_name}</p>
-                              <span style={{ background: typeTone.bg, color: typeTone.text, border: `1px solid ${typeTone.border}`, borderRadius: '999px', padding: '2px 8px', fontSize: '10px', fontWeight: '700' }}>
-                                {SITE_TYPE_LABELS[String(site.site_type || '').toLowerCase()] || 'Site'}
+                          {/* Location + date */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '10px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', minWidth: 0, flex: 1 }}>
+                              <MapPin size={11} color="#64748b" style={{ flexShrink: 0 }} />
+                              <span style={{ fontSize: '11px', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{site.location || '—'}</span>
+                            </div>
+                            <span style={{ fontSize: '11px', color: '#475569', flexShrink: 0 }}>{formatDate(site.scheduled_date)}</span>
+                          </div>
+
+                          {/* Status chips */}
+                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                            {statusChip && (
+                              <span style={{ background: statusChip.bg, color: statusChip.text, border: `1px solid ${statusChip.border}`, padding: '2px 9px', borderRadius: '999px', fontSize: '10px', fontWeight: '700', textTransform: 'capitalize' }}>
+                                {siteStatus}
                               </span>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', color: '#94a3b8', minWidth: 0 }}>
-                              <MapPin size={13} />
-                              <span style={{ fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{site.location || 'Location unavailable'}</span>
-                            </div>
-                          </div>
-
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
-                            <span style={{ background: roleTone.bg, color: roleTone.text, border: `1px solid ${roleTone.border}`, padding: '3px 9px', borderRadius: '999px', fontSize: '10px', fontWeight: '700' }}>{role}</span>
-                            <span style={{ color: '#64748b', fontSize: '11px' }}>{formatDate(site.scheduled_date)}</span>
+                            )}
+                            {hasOpenReport && reportChip && (
+                              <span style={{ background: reportChip.bg, color: reportChip.text, border: `1px solid ${reportChip.border}`, padding: '2px 9px', borderRadius: '999px', fontSize: '10px', fontWeight: '700', textTransform: 'capitalize' }}>
+                                Report: {reportStatus.replace('_', ' ')}
+                              </span>
+                            )}
                           </div>
                         </div>
                       )

@@ -26,7 +26,7 @@ export function AuthProvider({ children }) {
     const normalizedEmail = String(email).trim().toLowerCase()
     const { data } = await supabase
       .from('team_members')
-      .select('short_name, full_name, avatar_url')
+      .select('id, short_name, full_name, avatar_url')
       .ilike('email', normalizedEmail)
       .single()
     setMember(data || null)
@@ -50,10 +50,11 @@ export function AuthProvider({ children }) {
   const fullName  = member?.full_name || authDisplayName || user?.email?.split('@')[0] || 'User'
   const firstName = member?.short_name || fullName.split(' ')[0]
   const avatarUrl = member?.avatar_url || null
+  const memberId  = member?.id || null
   const isZairul = user?.email === ADMIN_EMAIL
 
   return (
-    <AuthContext.Provider value={{ user, loading, fullName, firstName, avatarUrl, isZairul }}>
+    <AuthContext.Provider value={{ user, loading, fullName, firstName, avatarUrl, memberId, isZairul }}>
       {children}
     </AuthContext.Provider>
   )

@@ -6,7 +6,7 @@ import {
   Pencil, Trash2, Search, ArrowUpRight, MapPin, X, Camera,
   Calendar, Clock, CheckCircle,
 } from 'lucide-react'
-import { notify } from '../utils/notify'
+import { notify, notifyMany } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
 import { getSiteHeaderImage } from '../utils/siteHeader'
@@ -181,8 +181,25 @@ export default function Sites() {
       const { error } = await supabase.from('sites').update(updates).eq('id', site.id)
       if (error) { setQuickSaving(null); return }
       setSites(prev => prev.map(s => s.id === site.id ? { ...s, ...updates } : s))
-      if (updates.report_status === 'submitted') await notify(`Report for "${site.site_name}" has been submitted — ready for review`, fullName)
-      if (updates.report_status === 'approved')  await notify(`Report for "${site.site_name}" has been approved by Zairul`, fullName)
+
+      // Collect all member IDs involved in this site
+      const involvedIds = (site.site_assignments || [])
+        .map(a => a.team_members?.id).filter(Boolean)
+
+      if (updates.site_status) {
+        await notifyMany(
+          `Site "${site.site_name}" status changed to ${updates.site_status}`,
+          fullName, involvedIds
+        )
+      }
+      if (updates.report_status) {
+        const msg = updates.report_status === 'approved'
+          ? `Report for "${site.site_name}" has been approved by Zairul`
+          : updates.report_status === 'submitted'
+          ? `Report for "${site.site_name}" has been submitted — awaiting review`
+          : `Report for "${site.site_name}" status changed to ${updates.report_status.replace(/_/g, ' ')}`
+        await notifyMany(msg, fullName, involvedIds)
+      }
       setQuickSaving(null)
     }
     setExpandedCard(null); setDraftStatus(null); setPanelAnchor(null)
@@ -261,6 +278,22 @@ export default function Sites() {
         if (form.pic_id) assignments.push({ site_id:siteId, member_id:form.pic_id, assignment_role:'PIC' })
         form.crew_ids.forEach(id => { if (id!==form.pic_id) assignments.push({ site_id:siteId, member_id:id, assignment_role:'crew' }) })
         if (assignments.length > 0) await supabase.from('site_assignments').insert(assignments)
+
+        // Notify PIC
+        if (form.pic_id) {
+          await notify(
+            `You have been assigned as PIC for "${form.site_name}" on ${new Date(form.scheduled_date).toLocaleDateString('en-MY',{day:'numeric',month:'short',year:'numeric'})}`,
+            fullName, form.pic_id
+          )
+        }
+        // Notify crew
+        const crewOnly = form.crew_ids.filter(id => id !== form.pic_id)
+        if (crewOnly.length > 0) {
+          await notifyMany(
+            `You have been assigned as crew for "${form.site_name}" on ${new Date(form.scheduled_date).toLocaleDateString('en-MY',{day:'numeric',month:'short',year:'numeric'})}`,
+            fullName, crewOnly
+          )
+        }
       }
       await notify(`${editSite?'Updated':'Added'} site: ${form.site_name}`, fullName)
       setShowForm(false); setEditSite(null); fetchAll()
@@ -751,7 +784,10 @@ export default function Sites() {
               </div>
 
               <div><label style={lLabel}>{form.site_type==='meeting'?'Organizer':'PIC'}</label>
-                <select style={lightInput} value={form.pic_id} onChange={e => setForm(f => ({...f, pic_id:e.target.value}))}>
+                <select style={lightInput} value={form.pic_id} onChange={e => {
+                  const picId = e.target.value
+                  setForm(f => ({ ...f, pic_id: picId, crew_ids: f.crew_ids.filter(id => id !== picId) }))
+                }}>
                   <option value="">— Select —</option>
                   {members.map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
                 </select>
