@@ -313,28 +313,13 @@ export default function Sites() {
       }} />
 
       {/* Content */}
-      <div className="relative px-32" style={{ zIndex:1 }}>
+      <div className="relative px-44" style={{ zIndex:1 }}>
 
         {/* ── HEADER ── */}
         <div className="flex items-start justify-between gap-4 pt-7">
-
-          {/* Left: title + stat pills */}
+          {/* Left: title */}
           <div>
             <h1 className="text-[22px] font-extrabold text-slate-100 tracking-tight leading-none">Sites</h1>
-            <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
-              {[
-                { label:`${counts.All} total`,          bg:'rgba(148,163,184,0.08)', text:'#94a3b8', border:'rgba(148,163,184,0.14)', dot:null },
-                { label:`${counts.Upcoming} upcoming`,  bg:'rgba(234,179,8,0.1)',    text:'#fbbf24', border:'rgba(234,179,8,0.2)',    dot:'#f59e0b' },
-                { label:`${counts.Ongoing} ongoing`,    bg:'rgba(249,115,22,0.1)',   text:'#fb923c', border:'rgba(249,115,22,0.2)',   dot:'#f97316' },
-                { label:`${counts.Completed} done`,     bg:'rgba(34,197,94,0.1)',    text:'#4ade80', border:'rgba(34,197,94,0.2)',    dot:'#22c55e' },
-              ].map(({ label, bg, text, border, dot }) => (
-                <span key={label} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold"
-                  style={{ background:bg, color:text, border:`1px solid ${border}` }}>
-                  {dot && <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background:dot }} />}
-                  {label}
-                </span>
-              ))}
-            </div>
           </div>
 
           {/* Right: search + filter + add */}
@@ -376,23 +361,73 @@ export default function Sites() {
         <div className="flex items-center gap-1.5 mt-3.5 mb-5"
           style={{ borderBottom:'1px solid rgba(255,255,255,0.06)', paddingBottom:'14px' }}>
           {TABS.map(t => {
-            const active = tab === t
+            const active = tab === t;
+            // Color for each tab
+            let tabColor = '';
+            let tabBg = 'transparent';
+            let tabBorder = 'rgba(255,255,255,0.08)';
+            let countBg = 'rgba(255,255,255,0.06)';
+            let countColor = '#334155';
+            if (active) {
+              tabColor = '#fff';
+              tabBg = 'linear-gradient(90deg,#2563eb,#0891b2)';
+              tabBorder = 'rgba(59,130,246,0.4)';
+              countBg = 'rgba(59,130,246,0.2)';
+              countColor = '#fff';
+            } else if (t === 'Upcoming') {
+              tabColor = '#fbbf24';
+              tabBg = 'rgba(234,179,8,0.08)';
+              tabBorder = 'rgba(234,179,8,0.2)';
+              countBg = 'rgba(234,179,8,0.13)';
+              countColor = '#fbbf24';
+            } else if (t === 'Ongoing') {
+              tabColor = '#fb923c';
+              tabBg = 'rgba(249,115,22,0.08)';
+              tabBorder = 'rgba(249,115,22,0.2)';
+              countBg = 'rgba(249,115,22,0.13)';
+              countColor = '#fb923c';
+            } else if (t === 'Completed') {
+              tabColor = '#4ade80';
+              tabBg = 'rgba(34,197,94,0.08)';
+              tabBorder = 'rgba(34,197,94,0.2)';
+              countBg = 'rgba(34,197,94,0.13)';
+              countColor = '#4ade80';
+            } else if (t === 'Cancelled') {
+              tabColor = '#f87171';
+              tabBg = 'rgba(239,68,68,0.08)';
+              tabBorder = 'rgba(239,68,68,0.2)';
+              countBg = 'rgba(239,68,68,0.13)';
+              countColor = '#f87171';
+            } else if (t === 'Postponed') {
+              tabColor = '#94a3b8';
+              tabBg = 'rgba(148,163,184,0.08)';
+              tabBorder = 'rgba(148,163,184,0.14)';
+              countBg = 'rgba(148,163,184,0.13)';
+              countColor = '#94a3b8';
+            } else if (t === 'All') {
+              tabColor = '#60a5fa';
+              tabBg = 'rgba(37,99,235,0.08)';
+              tabBorder = 'rgba(59,130,246,0.15)';
+              countBg = 'rgba(59,130,246,0.08)';
+              countColor = '#60a5fa';
+            }
             return (
               <button key={t} onClick={() => { setTab(t); setPage(1) }}
                 className="flex items-center gap-1.5 transition-all"
                 style={{
                   padding:'6px 14px', borderRadius:'99px', fontSize:'12px', fontWeight:'600',
-                  border:`1px solid ${active ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.08)'}`,
-                  background: active ? 'rgba(37,99,235,0.18)' : 'transparent',
-                  color: active ? '#60a5fa' : '#475569',
+                  border:`1px solid ${tabBorder}`,
+                  background: tabBg,
+                  color: tabColor,
                   boxShadow: active ? '0 0 14px rgba(59,130,246,0.15)' : 'none',
                   cursor:'pointer', fontFamily:'inherit',
+                  marginRight:'2px',
                 }}>
                 {t}
                 <span style={{
                   padding:'1px 6px', borderRadius:'99px', fontSize:'10px', fontWeight:'700',
-                  background: active ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.06)',
-                  color: active ? '#93c5fd' : '#334155',
+                  background: countBg,
+                  color: countColor,
                 }}>
                   {counts[t]}
                 </span>
