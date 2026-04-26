@@ -237,16 +237,16 @@ function AppShell() {
   }
 
   useEffect(() => {
-    if (memberId) fetchNotifs()
-  }, [memberId])
+    if (user) fetchNotifs()
+  }, [user, memberId])
 
   useEffect(() => {
     if (!user) return undefined
     const channel = supabase
       .channel('notifications-realtime')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, ({ new: n }) => {
-        // Show if broadcast (no recipient) or addressed to current member
-        if (!n.recipient_id || n.recipient_id === memberId) {
+        // Show if broadcast (no recipient), or matches current member, or memberId unknown
+        if (!n.recipient_id || !memberId || n.recipient_id === memberId) {
           setNotifs(prev => [n, ...prev].slice(0, 30))
         }
       })
@@ -263,13 +263,15 @@ function AppShell() {
   }, [])
 
   async function fetchNotifs() {
-    if (!memberId) return
-    const { data } = await supabase
+    let query = supabase
       .from('notifications')
       .select('*')
-      .or(`recipient_id.is.null,recipient_id.eq.${memberId}`)
       .order('created_at', { ascending: false })
       .limit(30)
+    if (memberId) {
+      query = query.or(`recipient_id.is.null,recipient_id.eq.${memberId}`)
+    }
+    const { data } = await query
     setNotifs(data || [])
   }
 
