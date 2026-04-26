@@ -164,7 +164,7 @@ export default function Sites() {
     const { data:s } = await supabase
       .from('sites')
       .select(`*, site_assignments(assignment_role, team_members(id, full_name, avatar_url))`)
-      .order('scheduled_date', { ascending:true })
+      .order('scheduled_date', { ascending:false })
     const { data:m } = await supabase.from('team_members').select('*').order('full_name')
     setSites(s || [])
     setMembers(m || [])
