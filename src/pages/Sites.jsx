@@ -290,11 +290,12 @@ export default function Sites() {
   const paginated  = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE)
 
 
-  const darkInput = {
-    width:'100%', padding:'9px 12px', borderRadius:'10px',
-    border:'1px solid rgba(255,255,255,0.1)', fontSize:'13px', outline:'none',
-    background:'rgba(255,255,255,0.05)', color:'#f1f5f9', fontFamily:'inherit',
+  const lightInput = {
+    width:'100%', padding:'8px 12px', borderRadius:'8px',
+    border:'1px solid #e2e8f0', fontSize:'13px', outline:'none',
+    background:'white', color:'#0f172a', fontFamily:'inherit', boxSizing:'border-box',
   }
+  const lLabel = { display:'block', fontSize:'12px', fontWeight:'500', color:'#64748b', marginBottom:'6px' }
 
   if (loading) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'calc(100vh - 54px)', background:'#eef3f8' }}>
@@ -306,12 +307,12 @@ export default function Sites() {
   )
 
   return (
-    <div style={{ minHeight:'calc(100vh - 54px)', overflowY:'auto', background:'radial-gradient(circle at 18% 5%,rgba(59,130,246,.18),transparent 26%),radial-gradient(circle at 70% 0%,rgba(14,165,233,.10),transparent 30%),linear-gradient(180deg,#071226 0 190px,#eef3f8 190px 100%)' }}>
+    <div style={{ minHeight:'calc(100vh - 54px)', overflowY:'auto', background:'radial-gradient(circle at 18% 5%,rgba(59,130,246,.18),transparent 26%),radial-gradient(circle at 70% 0%,rgba(14,165,233,.10),transparent 30%),linear-gradient(180deg,#071226 0 88px,#dde4ed 88px 100%)' }}>
 
-      <main style={{ maxWidth:'1800px', margin:'0 auto', padding:'28px 40px 48px' }}>
+      <main style={{ maxWidth:'1800px', margin:'0 auto', padding:'18px 40px 48px' }}>
 
         {/* ── HEADER ── */}
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'16px', marginBottom:'28px' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'16px', marginBottom:'14px' }}>
           <div style={{ color:'white' }}>
             <h1 style={{ margin:0, fontSize:'28px', fontWeight:'850', letterSpacing:'-.05em', lineHeight:1 }}>Sites</h1>
             <p style={{ margin:'7px 0 0', color:'#b8c7dd', fontSize:'14px', lineHeight:1.5 }}>Manage and track all site activities</p>
@@ -337,7 +338,7 @@ export default function Sites() {
 
 
         {/* ── FILTER TABS ── */}
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'20px' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'20px', marginTop:'28px' }}>
           <div style={{ display:'inline-flex', gap:'4px', padding:'5px', background:'rgba(255,255,255,.9)', backdropFilter:'blur(12px)', borderRadius:'999px', boxShadow:'0 1px 4px rgba(15,23,42,.08)', border:'1px solid rgba(226,232,240,.9)' }}>
             {TABS.map(t => {
               const active = tab === t
@@ -622,17 +623,17 @@ export default function Sites() {
 
       {/* ── MODAL ── */}
       {showForm && (
-        <div style={{ position:'fixed', inset:0, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50, padding:'16px', background:'rgba(0,0,0,0.5)', backdropFilter:'blur(6px)' }}
+        <div style={{ position:'fixed', inset:0, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50, padding:'16px', background:'rgba(0,0,0,0.4)' }}
           onClick={e => e.target===e.currentTarget && setShowForm(false)}>
-          <div style={{ width:'100%', maxWidth:'672px', overflowY:'auto', maxHeight:'92vh', borderRadius:'16px', background:'rgba(10,16,30,0.97)', border:'1px solid rgba(255,255,255,0.1)', backdropFilter:'blur(24px)' }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'20px 28px', borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
-              <h3 style={{ margin:0, fontSize:'17px', fontWeight:'800', color:'#f1f5f9' }}>{editSite ? 'Edit Site' : 'Add New Site'}</h3>
-              <button onClick={() => setShowForm(false)} style={{ background:'none', border:'none', cursor:'pointer', color:'#64748b' }}><X size={18} /></button>
+          <div style={{ width:'100%', maxWidth:'672px', maxHeight:'92vh', borderRadius:'20px', background:'white', boxShadow:'0 24px 64px rgba(15,23,42,.18)', display:'flex', flexDirection:'column', overflow:'hidden' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'20px 28px', borderBottom:'1px solid #f1f5f9', flexShrink:0 }}>
+              <h3 style={{ margin:0, fontSize:'17px', fontWeight:'800', color:'#0f172a' }}>{editSite ? 'Edit Site' : 'Add New Site'}</h3>
+              <button onClick={() => setShowForm(false)} style={{ background:'none', border:'none', cursor:'pointer', color:'#94a3b8' }}><X size={18} /></button>
             </div>
-            <div style={{ padding:'20px 28px', display:'flex', flexDirection:'column', gap:'20px' }}>
+            <div style={{ overflowY:'auto', padding:'20px 28px', display:'flex', flexDirection:'column', gap:'20px' }}>
 
               <div>
-                <label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Cover Photo</label>
+                <label style={lLabel}>Cover Photo</label>
                 <input ref={photoInputRef} type="file" accept="image/*" style={{ display:'none' }} onChange={e => {
                   const file = e.target.files[0]; if (!file) return
                   setUploadError(null)
@@ -651,19 +652,19 @@ export default function Sites() {
                   </div>
                 ) : (
                   <button type="button" onClick={() => photoInputRef.current?.click()}
-                    style={{ width:'100%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'8px', padding:'28px', borderRadius:'12px', cursor:'pointer', border:'2px dashed rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.03)', transition:'all .15s' }}
-                    onMouseEnter={e => e.currentTarget.style.borderColor='rgba(59,130,246,0.4)'}
-                    onMouseLeave={e => e.currentTarget.style.borderColor='rgba(255,255,255,0.1)'}>
-                    <Camera size={20} style={{ color:'#475569' }} />
-                    <span style={{ fontSize:'12px', color:'#475569', fontWeight:'600' }}>Click to upload a cover photo</span>
-                    <span style={{ fontSize:'11px', color:'#334155' }}>JPG, PNG, WEBP</span>
+                    style={{ width:'100%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'8px', padding:'28px', borderRadius:'12px', cursor:'pointer', border:'2px dashed #e2e8f0', background:'#f8fafc', transition:'all .15s', boxSizing:'border-box' }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor='#2563eb'}
+                    onMouseLeave={e => e.currentTarget.style.borderColor='#e2e8f0'}>
+                    <Camera size={20} style={{ color:'#94a3b8' }} />
+                    <span style={{ fontSize:'12px', color:'#94a3b8', fontWeight:'600' }}>Click to upload a cover photo</span>
+                    <span style={{ fontSize:'11px', color:'#cbd5e1' }}>JPG, PNG, WEBP</span>
                   </button>
                 )}
-                {uploadError && <p style={{ marginTop:'8px', fontSize:'12px', color:'#f87171', fontWeight:'600' }}>{uploadError}</p>}
+                {uploadError && <p style={{ marginTop:'8px', fontSize:'12px', color:'#ef4444', fontWeight:'600' }}>{uploadError}</p>}
               </div>
 
               <div>
-                <label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Site Type</label>
+                <label style={lLabel}>Site Type</label>
                 <div style={{ display:'flex', gap:'8px' }}>
                   {SITE_TYPES.map(({value,label}) => {
                     const active = form.site_type === value
@@ -671,7 +672,7 @@ export default function Sites() {
                     return (
                       <button key={value} type="button"
                         onClick={() => setForm(f => ({...f, site_type:value, site_duration_days:value==='site_visit'?'0.5':f.site_duration_days}))}
-                        style={{ flex:1, padding:'8px', borderRadius:'10px', fontSize:'12px', fontWeight:'700', fontFamily:'inherit', cursor:'pointer', transition:'all .15s', background:active?meta.chipBg:'rgba(255,255,255,0.04)', border:`1px solid ${active?meta.chipBorder:'rgba(255,255,255,0.08)'}`, color:active?meta.color:'#64748b' }}>
+                        style={{ flex:1, padding:'8px', borderRadius:'10px', fontSize:'12px', fontWeight:'700', fontFamily:'inherit', cursor:'pointer', transition:'all .15s', background:active?meta.chipBg:'white', border:`1px solid ${active?meta.chipBorder:'#e2e8f0'}`, color:active?meta.color:'#64748b' }}>
                         {label}
                       </button>
                     )
@@ -680,100 +681,100 @@ export default function Sites() {
               </div>
 
               <div>
-                <label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Site Name *</label>
-                <input style={darkInput} value={form.site_name} placeholder="e.g. Jalan Ampang Survey" onChange={e => setForm(f => ({...f, site_name:e.target.value}))} />
+                <label style={lLabel}>Site Name *</label>
+                <input style={lightInput} value={form.site_name} placeholder="e.g. Jalan Ampang Survey" onChange={e => setForm(f => ({...f, site_name:e.target.value}))} />
               </div>
 
               <div>
-                <label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Location *</label>
+                <label style={lLabel}>Location *</label>
                 <PlaceSearchBox value={form.location} onChange={v => setForm(f => ({...f, location:v, latitude:'', longitude:''}))} onSelect={r => setForm(f => ({...f, location:r.label, latitude:r.latitude, longitude:r.longitude}))} placeholder="Search and choose a location..." />
               </div>
 
               <div>
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'8px' }}>
-                  <label style={{ fontSize:'11px', fontWeight:'700', color:'#475569', textTransform:'uppercase', letterSpacing:'.07em' }}>Pin on Map <span style={{ color:'#334155', fontSize:'10px', textTransform:'none', letterSpacing:0 }}>(click to place)</span></label>
-                  {form.latitude !== '' && (
-                    <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
-                      <MapPin size={10} style={{ color:'#60a5fa' }} />
-                      <span style={{ fontSize:'11px', color:'#60a5fa', fontWeight:'600' }}>{Number(form.latitude).toFixed(5)}, {Number(form.longitude).toFixed(5)}</span>
-                      <button onClick={() => setForm(f => ({...f, latitude:'', longitude:''}))} style={{ background:'none', border:'none', cursor:'pointer', color:'#64748b' }}><X size={11} /></button>
-                    </div>
-                  )}
+                <label style={{ ...lLabel, marginBottom:'8px' }}>Pin on Map <span style={{ fontSize:'11px', color:'#94a3b8', fontWeight:'400' }}>(click map to place)</span></label>
+                {form.latitude !== '' && (
+                  <div style={{ display:'flex', alignItems:'center', gap:'8px', background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:'8px', padding:'8px 12px', marginBottom:'8px' }}>
+                    <MapPin size={12} style={{ color:'#2563eb', flexShrink:0 }} />
+                    <span style={{ fontSize:'12px', color:'#1d4ed8', fontWeight:'600', flex:1 }}>{Number(form.latitude).toFixed(5)}, {Number(form.longitude).toFixed(5)}</span>
+                    <button onClick={() => setForm(f => ({...f, latitude:'', longitude:''}))} style={{ background:'none', border:'none', cursor:'pointer', fontSize:'11px', color:'#2563eb', fontWeight:'600', fontFamily:'inherit', padding:0 }}>Clear Pin</button>
+                  </div>
+                )}
+                <div style={{ background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:'12px', padding:'12px' }}>
+                  <LocationPicker lat={form.latitude} lng={form.longitude} onPick={(lat,lng) => setForm(f => ({...f, latitude:lat, longitude:lng}))} mapKey={editSite?.id||'new'} />
                 </div>
-                <LocationPicker lat={form.latitude} lng={form.longitude} onPick={(lat,lng) => setForm(f => ({...f, latitude:lat, longitude:lng}))} mapKey={editSite?.id||'new'} />
               </div>
 
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
-                <div><label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Client Company</label><input style={darkInput} value={form.client_company_name} placeholder="Company name" onChange={e => setForm(f => ({...f, client_company_name:e.target.value}))} /></div>
-                <div><label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Client Name</label><input style={darkInput} value={form.client_name} placeholder="Contact name" onChange={e => setForm(f => ({...f, client_name:e.target.value}))} /></div>
-                <div><label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Client Number</label><input style={darkInput} value={form.client_number} placeholder="PO-12345" onChange={e => setForm(f => ({...f, client_number:e.target.value}))} /></div>
+                <div><label style={lLabel}>Client Company</label><input style={lightInput} value={form.client_company_name} placeholder="Company name" onChange={e => setForm(f => ({...f, client_company_name:e.target.value}))} /></div>
+                <div><label style={lLabel}>Client Name</label><input style={lightInput} value={form.client_name} placeholder="Contact name" onChange={e => setForm(f => ({...f, client_name:e.target.value}))} /></div>
+                <div><label style={lLabel}>Client Number</label><input style={lightInput} value={form.client_number} placeholder="PO-12345" onChange={e => setForm(f => ({...f, client_number:e.target.value}))} /></div>
                 <div>
-                  <label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Salesperson</label>
-                  <select style={darkInput} value={form.salesperson} onChange={e => setForm(f => ({...f, salesperson:e.target.value}))}>
+                  <label style={lLabel}>Salesperson</label>
+                  <select style={lightInput} value={form.salesperson} onChange={e => setForm(f => ({...f, salesperson:e.target.value}))}>
                     <option value="">— Select —</option>
                     {SALESPERSONS.map(sp => <option key={sp} value={sp}>{sp}</option>)}
                   </select>
                 </div>
               </div>
 
-              <div><label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Scope of Work</label><textarea style={{...darkInput, resize:'none'}} rows={2} value={form.scope_of_work} placeholder="Describe scope…" onChange={e => setForm(f => ({...f, scope_of_work:e.target.value}))} /></div>
-              <div><label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Scheduled Date *</label><input type="date" style={darkInput} value={form.scheduled_date} onChange={e => setForm(f => ({...f, scheduled_date:e.target.value}))} /></div>
+              <div><label style={lLabel}>Scope of Work</label><textarea style={{...lightInput, resize:'none'}} rows={2} value={form.scope_of_work} placeholder="Describe scope…" onChange={e => setForm(f => ({...f, scope_of_work:e.target.value}))} /></div>
+              <div><label style={lLabel}>Scheduled Date *</label><input type="date" style={lightInput} value={form.scheduled_date} onChange={e => setForm(f => ({...f, scheduled_date:e.target.value}))} /></div>
 
               {form.site_type === 'site_scanning' && (
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
-                  <div><label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Site Duration (Days)</label><input type="number" min="0" step="0.5" style={darkInput} value={form.site_duration_days} onChange={e => setForm(f => ({...f, site_duration_days:e.target.value}))} /></div>
-                  <div><label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Report Duration (Days)</label><input type="number" min="0" step="0.5" style={darkInput} value={form.report_duration_days} onChange={e => setForm(f => ({...f, report_duration_days:e.target.value}))} /></div>
+                  <div><label style={lLabel}>Site Duration (Days)</label><input type="number" min="0" step="0.5" style={lightInput} value={form.site_duration_days} onChange={e => setForm(f => ({...f, site_duration_days:e.target.value}))} /></div>
+                  <div><label style={lLabel}>Report Duration (Days)</label><input type="number" min="0" step="0.5" style={lightInput} value={form.report_duration_days} onChange={e => setForm(f => ({...f, report_duration_days:e.target.value}))} /></div>
                 </div>
               )}
-              {form.site_type === 'site_visit' && <div style={{ padding:'12px 16px', borderRadius:'10px', fontSize:'12px', fontWeight:'600', color:'#2dd4bf', background:'rgba(13,148,136,0.1)', border:'1px solid rgba(13,148,136,0.25)' }}>Duration: Half Day (0.5) — fixed for site visits</div>}
+              {form.site_type === 'site_visit' && <div style={{ padding:'12px 16px', borderRadius:'10px', fontSize:'12px', fontWeight:'600', color:'#0d9488', background:'#f0fdf4', border:'1px solid #6ee7b7' }}>Duration: Half Day (0.5) — fixed for site visits</div>}
               {form.site_type === 'meeting' && (
-                <div><label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Meeting Duration</label>
-                  <select style={darkInput} value={form.site_duration_days} onChange={e => setForm(f => ({...f, site_duration_days:e.target.value}))}>
+                <div><label style={lLabel}>Meeting Duration</label>
+                  <select style={lightInput} value={form.site_duration_days} onChange={e => setForm(f => ({...f, site_duration_days:e.target.value}))}>
                     <option value="0.25">2 Hours</option><option value="0.5">Half Day</option><option value="1">Full Day</option>
                   </select>
                 </div>
               )}
 
               <div style={{ display:'grid', gridTemplateColumns:form.site_type==='site_scanning'?'1fr 1fr':'1fr', gap:'12px' }}>
-                <div><label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Site Status</label>
-                  <select style={darkInput} value={form.site_status} onChange={e => setForm(f => ({...f, site_status:e.target.value}))}>
+                <div><label style={lLabel}>Site Status</label>
+                  <select style={lightInput} value={form.site_status} onChange={e => setForm(f => ({...f, site_status:e.target.value}))}>
                     {['upcoming','ongoing','completed','cancelled','postponed'].map(o => <option key={o} value={o}>{o}</option>)}
                   </select>
                 </div>
                 {form.site_type === 'site_scanning' && (
-                  <div><label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Report Status</label>
-                    <select style={darkInput} value={form.report_status} onChange={e => setForm(f => ({...f, report_status:e.target.value}))}>
+                  <div><label style={lLabel}>Report Status</label>
+                    <select style={lightInput} value={form.report_status} onChange={e => setForm(f => ({...f, report_status:e.target.value}))}>
                       {['pending','in_progress','submitted','approved','not_applicable'].map(o => <option key={o} value={o}>{o.replace('_',' ')}</option>)}
                     </select>
                   </div>
                 )}
               </div>
 
-              <div><label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>{form.site_type==='meeting'?'Organizer':'PIC'}</label>
-                <select style={darkInput} value={form.pic_id} onChange={e => setForm(f => ({...f, pic_id:e.target.value}))}>
+              <div><label style={lLabel}>{form.site_type==='meeting'?'Organizer':'PIC'}</label>
+                <select style={lightInput} value={form.pic_id} onChange={e => setForm(f => ({...f, pic_id:e.target.value}))}>
                   <option value="">— Select —</option>
                   {members.map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
                 </select>
               </div>
 
-              <div><label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'12px', textTransform:'uppercase', letterSpacing:'.07em' }}>{form.site_type==='meeting'?'Attendees':'Crew'}</label>
+              <div><label style={{ ...lLabel, marginBottom:'12px' }}>{form.site_type==='meeting'?'Attendees':'Crew'}</label>
                 <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
-                  {members.map(m => (
+                  {members.filter(m => m.id !== form.pic_id).map(m => (
                     <label key={m.id} style={{ display:'flex', alignItems:'center', gap:'12px', cursor:'pointer' }}>
                       <input type="checkbox" checked={form.crew_ids.includes(m.id)} onChange={() => toggleCrew(m.id)} style={{ width:'16px', height:'16px', accentColor:'#2563eb' }} />
-                      <span style={{ fontSize:'13px', color:'#94a3b8' }}>{m.full_name}</span>
+                      <span style={{ fontSize:'13px', color:'#0f172a' }}>{m.full_name}</span>
                     </label>
                   ))}
                 </div>
               </div>
 
-              <div><label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Notes</label><textarea style={{...darkInput, resize:'none'}} rows={3} value={form.notes} placeholder="Optional notes…" onChange={e => setForm(f => ({...f, notes:e.target.value}))} /></div>
+              <div><label style={lLabel}>Notes</label><textarea style={{...lightInput, resize:'none'}} rows={3} value={form.notes} placeholder="Optional notes…" onChange={e => setForm(f => ({...f, notes:e.target.value}))} /></div>
 
-              <div style={{ display:'flex', gap:'12px', paddingTop:'4px', borderTop:'1px solid rgba(255,255,255,0.07)' }}>
-                <button onClick={handleSave} disabled={saving} style={{ flex:1, padding:'11px', borderRadius:'10px', fontSize:'14px', fontWeight:'800', color:'white', border:'none', cursor:'pointer', fontFamily:'inherit', background:'linear-gradient(135deg,#2563eb,#0ea5e9)', opacity:saving?0.6:1, boxShadow:'0 0 16px rgba(59,130,246,.3)' }}>
+              <div style={{ display:'flex', gap:'12px', paddingTop:'4px', borderTop:'1px solid #f1f5f9' }}>
+                <button onClick={handleSave} disabled={saving} style={{ flex:1, padding:'11px', borderRadius:'10px', fontSize:'14px', fontWeight:'800', color:'white', border:'none', cursor:'pointer', fontFamily:'inherit', background:'#2563eb', opacity:saving?0.6:1, boxShadow:'0 2px 8px rgba(37,99,235,.28)' }}>
                   {saving ? 'Saving…' : editSite ? 'Save Changes' : 'Add Site'}
                 </button>
-                <button onClick={() => setShowForm(false)} style={{ flex:1, padding:'11px', borderRadius:'10px', fontSize:'14px', fontWeight:'600', color:'#94a3b8', cursor:'pointer', fontFamily:'inherit', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)' }}>
+                <button onClick={() => setShowForm(false)} style={{ flex:1, padding:'11px', borderRadius:'10px', fontSize:'14px', fontWeight:'600', color:'#0f172a', cursor:'pointer', fontFamily:'inherit', background:'#f1f5f9', border:'1px solid #e2e8f0' }}>
                   Cancel
                 </button>
               </div>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../supabase'
+import { useAuth } from '../context/AuthContext'
 import { Search, MapPin, Calendar, TrendingUp, Users, Briefcase, Activity, Clock, FileText, Radar, Camera } from 'lucide-react'
 import { calculateWorkload } from '../utils/workload'
 
@@ -121,6 +122,7 @@ function getMemberRole(memberId, assignments) {
 }
 
 export default function Team() {
+  const { isZairul } = useAuth()
   const [members, setMembers] = useState([])
   const [allSites, setAllSites] = useState([])
   const [selectedId, setSelectedId] = useState(null)
@@ -136,16 +138,64 @@ export default function Team() {
 
   async function handleAvatarFileChange(e) {
     const file = e.target.files[0]
-    if (!file || !uploadingFor) return
-    const ext = file.name.split('.').pop()
-    const path = `${uploadingFor}.${ext}`
-    const { error } = await supabase.storage.from('team-avatars').upload(path, file, { upsert: true })
-    if (error) { console.error('Avatar upload error:', error.message); setUploadingFor(null); return }
-    const { data: { publicUrl } } = supabase.storage.from('team-avatars').getPublicUrl(path)
-    await supabase.from('team_members').update({ avatar_url: publicUrl }).eq('id', uploadingFor)
-    setMembers(prev => prev.map(m => m.id === uploadingFor ? { ...m, avatar_url: publicUrl } : m))
-    setUploadingFor(null)
-    e.target.value = ''
+    // Capture memberId immediately — uploadingFor may become stale during await
+    const memberId = uploadingFor
+    if (!file || !memberId) return
+
+    try {
+      if (!file.type.startsWith('image/')) {
+        alert('Please select an image file')
+        setUploadingFor(null)
+        return
+      }
+
+      // Unique filename per upload avoids CDN serving the cached old file
+      const ext = file.name.split('.').pop()
+      const fileName = `${memberId}_${Date.now()}.${ext}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('team-avatars')
+        .upload(fileName, file)
+
+      if (uploadError) {
+        alert('Failed to upload avatar: ' + uploadError.message)
+        setUploadingFor(null)
+        return
+      }
+
+      const { data: urlData } = supabase.storage
+        .from('team-avatars')
+        .getPublicUrl(fileName)
+
+      if (!urlData?.publicUrl) {
+        setUploadingFor(null)
+        return
+      }
+
+      const avatarUrl = urlData.publicUrl
+
+      const { error: updateError } = await supabase
+        .from('team_members')
+        .update({ avatar_url: avatarUrl })
+        .eq('id', memberId)
+
+      if (updateError) {
+        alert('Failed to save avatar: ' + updateError.message)
+        setUploadingFor(null)
+        return
+      }
+
+      setMembers(prev => prev.map(m =>
+        m.id === memberId ? { ...m, avatar_url: avatarUrl } : m
+      ))
+
+      setUploadingFor(null)
+      e.target.value = ''
+
+    } catch (err) {
+      alert('An unexpected error occurred: ' + err.message)
+      setUploadingFor(null)
+    }
   }
 
   useEffect(() => {
@@ -247,6 +297,83 @@ export default function Team() {
       }))
     : []
 
+  // Smart insight derived from live data
+  const overloaded = members.filter(m => m.workload.status === 'Overloaded')
+  const busy = members.filter(m => m.workload.status === 'Busy')
+  const topLoader = topLoadMembers[0]
+  const pendingReports = allSites.filter(s => ['pending','in_progress'].includes(s.report_status))
+  const submittedReports = allSites.filter(s => s.report_status === 'submitted')
+  const ongoingSites = allSites.filter(s => s.site_status === 'ongoing')
+  const upcomingSitesList = allSites.filter(s => s.site_status === 'upcoming')
+  const unassigned = allSites.filter(s => !s.site_assignments || s.site_assignments.length === 0)
+
+  function getInsight() {
+    if (overloaded.length > 0) {
+      const names = overloaded.map(m => m.full_name.split(' ')[0]).join(' and ')
+      return {
+        label: 'Staffing Risk',
+        color: '#ef4444',
+        dot: '#ef4444',
+        headline: `${names} ${overloaded.length === 1 ? 'is' : 'are'} overloaded right now.`,
+        body: `With ${overloaded.length} member${overloaded.length > 1 ? 's' : ''} above capacity, new site assignments should be redistributed to avoid delivery slippage. ${availableCount} member${availableCount !== 1 ? 's are' : ' is'} available to absorb the load.`,
+      }
+    }
+    if (submittedReports.length > 0) {
+      return {
+        label: 'Pending Review',
+        color: '#f59e0b',
+        dot: '#f59e0b',
+        headline: `${submittedReports.length} report${submittedReports.length > 1 ? 's have' : ' has'} been submitted and awaiting approval.`,
+        body: `${submittedReports.map(s => s.site_name).slice(0,2).join(' and ')}${submittedReports.length > 2 ? ` and ${submittedReports.length - 2} more` : ''} — review and approve to keep the pipeline moving.`,
+      }
+    }
+    if (busy.length >= 2) {
+      return {
+        label: 'High Load',
+        color: '#f97316',
+        dot: '#f97316',
+        headline: `${busy.length} members are running at high capacity.`,
+        body: `Average team workload is at ${avgWorkload}%. ${topLoader ? `${topLoader.full_name.split(' ')[0]} leads at ${topLoader.workload.workload_percentage}%.` : ''} Monitor closely before adding new assignments this week.`,
+      }
+    }
+    if (pendingReports.length > 0) {
+      return {
+        label: 'Report Pressure',
+        color: '#a855f7',
+        dot: '#a855f7',
+        headline: `${pendingReports.length} site report${pendingReports.length > 1 ? 's are' : ' is'} still in progress or pending.`,
+        body: `Ongoing field work is generating report backlog. ${ongoingSites.length > 0 ? `${ongoingSites.length} site${ongoingSites.length > 1 ? 's are' : ' is'} still active in the field.` : ''} Prioritise submission before new sites begin.`,
+      }
+    }
+    if (unassigned.length > 0) {
+      return {
+        label: 'Unassigned Sites',
+        color: '#38bdf8',
+        dot: '#38bdf8',
+        headline: `${unassigned.length} site${unassigned.length > 1 ? 's have' : ' has'} no team assigned yet.`,
+        body: `Assign a PIC and crew before the scheduled date to avoid last-minute gaps. ${availableCount} member${availableCount !== 1 ? 's are' : ' is'} currently available.`,
+      }
+    }
+    if (upcomingSitesList.length > 0) {
+      return {
+        label: 'On Track',
+        color: '#22c55e',
+        dot: '#22c55e',
+        headline: `Team is healthy — ${upcomingSitesList.length} upcoming site${upcomingSitesList.length > 1 ? 's' : ''} ahead.`,
+        body: `All ${members.length} members are within normal capacity at ${avgWorkload}% average workload. ${availableCount} ${availableCount === 1 ? 'person is' : 'people are'} fully available for new assignments.`,
+      }
+    }
+    return {
+      label: 'All Clear',
+      color: '#22c55e',
+      dot: '#22c55e',
+      headline: `No active pressure detected across the team.`,
+      body: `All ${members.length} members are within healthy workload limits. Average capacity sits at ${avgWorkload}%. Good time to plan ahead for upcoming site cycles.`,
+    }
+  }
+
+  const insight = getInsight()
+
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#08111f' }}>
@@ -275,15 +402,21 @@ export default function Team() {
 
           <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 500px', gap: '24px', alignItems: 'center' }}>
             <div style={{ padding: '4px 0' }}>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '7px 12px', borderRadius: '999px', background: 'rgba(15, 23, 42, 0.58)', border: '1px solid rgba(148,163,184,0.18)', color: '#93c5fd', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '.08em' }}>
-                <Radar size={14} />
-                Team Operations
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '7px 12px', borderRadius: '999px', background: 'rgba(15, 23, 42, 0.58)', border: '1px solid rgba(148,163,184,0.18)', color: '#93c5fd', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+                  <Radar size={14} />
+                  Team Operations
+                </div>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 12px', borderRadius: '999px', background: `${insight.color}18`, border: `1px solid ${insight.color}44`, fontSize: '11px', fontWeight: '700', color: insight.color }}>
+                  <div style={{ width: 7, height: 7, borderRadius: '50%', background: insight.color }} />
+                  {insight.label}
+                </div>
               </div>
-              <h1 style={{ marginTop: '14px', color: 'white', fontSize: '30px', lineHeight: 1.06, maxWidth: '700px' }}>
-                A sharper command view for people, field load, and report pressure.
+              <h1 style={{ marginTop: '14px', color: 'white', fontSize: '24px', lineHeight: 1.2, maxWidth: '700px', fontWeight: '700' }}>
+                {insight.headline}
               </h1>
               <p style={{ marginTop: '8px', color: '#94a3b8', fontSize: '14px', maxWidth: '660px', lineHeight: 1.6 }}>
-                Track who is available, who is overloaded, and where your next staffing risk is forming before it slows site delivery.
+                {insight.body}
               </p>
             </div>
 
@@ -379,7 +512,7 @@ export default function Team() {
                       boxShadow: isSelected ? '0 16px 36px rgba(37, 99, 235, 0.18)' : 'none',
                     }}
                   >
-                    <Avatar name={member.full_name} size={42} index={index} avatarUrl={member.avatar_url} onUpload={() => triggerAvatarUpload(member.id)} />
+                    <Avatar name={member.full_name} size={42} index={index} avatarUrl={member.avatar_url} onUpload={isZairul ? () => triggerAvatarUpload(member.id) : null} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontWeight: '600', fontSize: '13px', color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{member.full_name}</p>
                       <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{member.role}</p>
@@ -423,7 +556,7 @@ export default function Team() {
                   >
                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px' }}>
                       <div style={{ display: 'flex', gap: '16px' }}>
-                        <Avatar name={selected.full_name} size={68} index={selectedIndex} avatarUrl={selected.avatar_url} onUpload={() => triggerAvatarUpload(selected.id)} />
+                        <Avatar name={selected.full_name} size={68} index={selectedIndex} avatarUrl={selected.avatar_url} onUpload={isZairul ? () => triggerAvatarUpload(selected.id) : null} />
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px', flexWrap: 'wrap' }}>
                             <h2 style={{ fontSize: '23px', fontWeight: '800', color: 'white' }}>{selected.full_name}</h2>
@@ -648,7 +781,7 @@ export default function Team() {
 
                   return (
                     <div key={member.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '11px 12px', marginBottom: '8px', borderRadius: '18px', background: 'rgba(15,23,42,0.72)', border: '1px solid rgba(148,163,184,0.08)' }}>
-                      <Avatar name={member.full_name} size={38} index={index} avatarUrl={member.avatar_url} onUpload={() => triggerAvatarUpload(member.id)} />
+                      <Avatar name={member.full_name} size={38} index={index} avatarUrl={member.avatar_url} onUpload={isZairul ? () => triggerAvatarUpload(member.id) : null} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <p style={{ color: '#e2e8f0', fontSize: '12px', fontWeight: '700', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.full_name}</p>
                         <div style={{ height: '6px', background: 'rgba(148,163,184,0.12)', borderRadius: '999px', overflow: 'hidden', marginTop: '8px' }}>
