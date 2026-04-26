@@ -29,6 +29,7 @@ const REPORT_COLORS = {
   in_progress: { bg: '#fef3c7', text: '#92400e', border: '#fde68a' },
   submitted: { bg: '#dbeafe', text: '#1d4ed8', border: '#bfdbfe' },
   approved: { bg: '#dcfce7', text: '#166534', border: '#bbf7d0' },
+  not_applicable: { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' },
 }
 
 const MAP_COLORS = {
@@ -291,7 +292,7 @@ export default function Dashboard() {
       site_status: form.site_status,
       site_duration_days: isSiteVisit ? 0.5 : (parseFloat(form.site_duration_days) || 1),
       report_duration_days: isSiteVisit || isMeeting ? 0 : (parseFloat(form.report_duration_days) || 0.5),
-      report_status: isSiteVisit || isMeeting ? 'pending' : form.report_status,
+      report_status: isSiteVisit || isMeeting ? 'not_applicable' : form.report_status,
       notes: form.notes,
     }
 
@@ -320,13 +321,19 @@ export default function Dashboard() {
 
     const original = sites.find(s => s.id === updateSite.id)
 
-    await supabase
+    const { error } = await supabase
       .from('sites')
       .update({
         site_status: updateSite.site_status,
         report_status: updateSite.report_status,
       })
       .eq('id', updateSite.id)
+
+    if (error) {
+      console.error('Failed to save status:', error.message)
+      setSaving(false)
+      return
+    }
 
     await notify(`Updated ${updateSite.site_name} → ${updateSite.site_status}`, fullName)
 
@@ -532,6 +539,7 @@ export default function Dashboard() {
     in_progress: sites.filter(site => site.report_status === 'in_progress').length,
     submitted: sites.filter(site => site.report_status === 'submitted').length,
     approved: sites.filter(site => site.report_status === 'approved').length,
+    not_applicable: sites.filter(site => site.report_status === 'not_applicable').length,
   }), [sites])
 
   const assignableSites = useMemo(
@@ -933,7 +941,7 @@ export default function Dashboard() {
                           <div style={{ marginTop: '9px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                             <span style={{ borderRadius: '999px', padding: '5px 8px', background: '#dcfce7', color: '#166534', fontSize: '11px', fontWeight: '800' }}>Scan</span>
                             <span style={{ borderRadius: '999px', padding: '5px 8px', background: site.site_status === 'completed' || site.report_status !== 'pending' ? '#dcfce7' : '#f1f5f9', color: site.site_status === 'completed' || site.report_status !== 'pending' ? '#166534' : '#475569', fontSize: '11px', fontWeight: '800' }}>Data</span>
-                            <span style={{ borderRadius: '999px', padding: '5px 8px', background: site.report_status === 'approved' ? '#dcfce7' : '#fee2e2', color: site.report_status === 'approved' ? '#166534' : '#991b1b', fontSize: '11px', fontWeight: '800' }}>Report</span>
+                            <span style={{ borderRadius: '999px', padding: '5px 8px', background: site.report_status === 'approved' ? '#dcfce7' : site.report_status === 'not_applicable' ? '#f1f5f9' : '#fee2e2', color: site.report_status === 'approved' ? '#166534' : site.report_status === 'not_applicable' ? '#475569' : '#991b1b', fontSize: '11px', fontWeight: '800' }}>Report</span>
                           </div>
                         </div>
                       )
@@ -1121,6 +1129,7 @@ export default function Dashboard() {
                       { label: 'Draft',     value: reportSummary.in_progress, color: '#f59e0b' },
                       { label: 'Submitted', value: reportSummary.submitted,   color: '#7c3aed' },
                       { label: 'Approved',  value: reportSummary.approved,    color: '#16a34a' },
+                      { label: 'N/A',       value: reportSummary.not_applicable, color: '#64748b' },
                     ].map(({ label, value, color }) => (
                       <div key={label} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px', textAlign: 'center' }}>
                         <b style={{ display: 'block', fontSize: '22px', letterSpacing: '-.04em', color }}>{value}</b>
@@ -1535,9 +1544,9 @@ export default function Dashboard() {
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: '600', color: '#374151', display: 'block', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Report Status</label>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                    {['pending', 'in_progress', 'submitted', 'approved'].map(option => {
+                    {['pending', 'in_progress', 'submitted', 'approved', 'not_applicable'].map(option => {
                       const active = updateSite.report_status === option
-                      const colors = { pending: '#64748b', in_progress: '#2563eb', submitted: '#7c3aed', approved: '#16a34a' }
+                      const colors = { pending: '#64748b', in_progress: '#2563eb', submitted: '#7c3aed', approved: '#16a34a', not_applicable: '#94a3b8' }
                       const locked = option === 'approved' && !isZairul
 
                       return (

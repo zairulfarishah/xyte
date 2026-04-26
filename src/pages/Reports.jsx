@@ -9,6 +9,7 @@ const REPORT_COLORS = {
   in_progress: { bg: '#eff6ff', text: '#1d4ed8', border: '#93c5fd' },
   submitted:   { bg: '#faf5ff', text: '#6d28d9', border: '#c4b5fd' },
   approved:    { bg: '#dcfce7', text: '#166534', border: '#4ade80' },
+  not_applicable: { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' },
 }
 
 const STATUS_COLORS = {
@@ -46,7 +47,7 @@ function Pill({ status, colors }) {
   )
 }
 
-const TABS = ['All', 'Pending', 'In Progress', 'Submitted', 'Approved']
+const TABS = ['All', 'Pending', 'In Progress', 'Submitted', 'Approved', 'Not Applicable']
 
 export default function Reports() {
   const { isZairul } = useAuth()
@@ -57,6 +58,7 @@ export default function Reports() {
   const [search, setSearch]   = useState('')
   const [page, setPage]       = useState(1)
   const [updating, setUpdating] = useState(null)
+  const [updateError, setUpdateError] = useState(null)
   const PER_PAGE = 10
 
   useEffect(() => { fetchAll() }, [])
@@ -79,12 +81,21 @@ export default function Reports() {
     const site = sites.find(s => s.id === siteId)
     const prevStatus = site?.report_status
     setUpdating(siteId)
-    await supabase.from('sites').update({ report_status: newStatus }).eq('id', siteId)
+    // Optimistic update so dropdown doesn't flicker while saving
+    setSites(prev => prev.map(s => s.id === siteId ? { ...s, report_status: newStatus } : s))
+    const { error } = await supabase.from('sites').update({ report_status: newStatus }).eq('id', siteId)
+    if (error) {
+      // Revert optimistic update on failure
+      setSites(prev => prev.map(s => s.id === siteId ? { ...s, report_status: prevStatus } : s))
+      setUpdateError(error.message)
+      setUpdating(null)
+      return
+    }
+    setUpdateError(null)
     if (prevStatus !== newStatus) {
       if (newStatus === 'submitted') await notify(`Report for "${site?.site_name}" has been submitted — ready for review`)
       if (newStatus === 'approved') await notify(`Report for "${site?.site_name}" has been approved by Zairul`)
     }
-    await fetchAll()
     setUpdating(null)
   }
 
@@ -105,6 +116,7 @@ export default function Reports() {
     in_progress: sites.filter(s => s.report_status === 'in_progress').length,
     submitted:   sites.filter(s => s.report_status === 'submitted').length,
     approved:    sites.filter(s => s.report_status === 'approved').length,
+    not_applicable: sites.filter(s => s.report_status === 'not_applicable').length,
   }
 
   if (loading) return (
@@ -116,6 +128,13 @@ export default function Reports() {
   return (
     <div style={{ padding: '28px' }}>
 
+      {updateError && (
+        <div style={{ marginBottom: '16px', background: '#fee2e2', border: '1px solid #fecaca', borderRadius: '10px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: '13px', color: '#991b1b', fontWeight: '500' }}>Failed to update: {updateError}</span>
+          <button onClick={() => setUpdateError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontWeight: '700', fontSize: '16px', lineHeight: 1 }}>×</button>
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ marginBottom: '24px' }}>
         <h1 style={{ fontSize: '22px', fontWeight: '700', color: '#0f172a' }}>Reports</h1>
@@ -123,12 +142,13 @@ export default function Reports() {
       </div>
 
       {/* Stat cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginBottom: '24px' }}>
         {[
           { label: 'Pending',     value: counts.pending,     icon: Clock,         color: '#d97706', bg: '#fffbeb' },
           { label: 'In Progress', value: counts.in_progress, icon: AlertCircle,   color: '#2563eb', bg: '#eff6ff' },
           { label: 'Submitted',   value: counts.submitted,   icon: FileText,      color: '#7c3aed', bg: '#faf5ff' },
           { label: 'Approved',    value: counts.approved,    icon: CheckCircle,   color: '#16a34a', bg: '#f0fdf4' },
+          { label: 'Not Applicable', value: counts.not_applicable, icon: FileText, color: '#64748b', bg: '#f8fafc' },
         ].map(({ label, value, icon: Icon, color, bg }) => (
           <div key={label} style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
@@ -221,7 +241,7 @@ export default function Reports() {
                       onChange={e => updateReportStatus(site.id, e.target.value)}
                       style={{ padding: '5px 8px', borderRadius: '7px', border: '1px solid #e2e8f0', fontSize: '12px', color: '#0f172a', background: 'white', cursor: 'pointer', outline: 'none' }}
                     >
-                      {['pending','in_progress','submitted','approved'].map(s => (
+                      {['pending','in_progress','submitted','approved','not_applicable'].map(s => (
                         <option key={s} value={s} disabled={s === 'approved' && !isZairul}>
                           {s.replace('_', ' ')}{s === 'approved' && !isZairul ? ' (Zairul only)' : ''}
                         </option>

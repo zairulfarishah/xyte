@@ -192,7 +192,12 @@ export default function Sites() {
     if (draftStatus.report_status !== site.report_status) updates.report_status = draftStatus.report_status
     if (Object.keys(updates).length > 0) {
       setQuickSaving(site.id)
-      await supabase.from('sites').update(updates).eq('id', site.id)
+      const { error } = await supabase.from('sites').update(updates).eq('id', site.id)
+      if (error) {
+        console.error('Failed to save status:', error.message)
+        setQuickSaving(null)
+        return
+      }
       setSites(prev => prev.map(s => s.id === site.id ? { ...s, ...updates } : s))
       if (updates.report_status === 'submitted') await notify(`Report for "${site.site_name}" has been submitted — ready for review`, fullName)
       if (updates.report_status === 'approved') await notify(`Report for "${site.site_name}" has been approved by Zairul`, fullName)
