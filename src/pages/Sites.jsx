@@ -141,7 +141,7 @@ export default function Sites() {
   const [quickSaving, setQuickSaving]     = useState(null)
   const [draftStatus, setDraftStatus]     = useState(null)
   const photoInputRef = useRef(null)
-  const PER_PAGE = 6
+  const PER_PAGE = 8
 
   const location = useLocation()
   useEffect(() => { fetchAll() }, [])
@@ -409,7 +409,7 @@ export default function Sites() {
             <p className="text-sm font-medium">No sites found</p>
           </div>
         ) : (
-          <div className="grid grid-cols-3 gap-4 pb-6">
+          <div className="grid grid-cols-4 gap-4 pb-6">
             {paginated.map(site => {
               const pic       = site.site_assignments?.find(a => a.assignment_role === 'PIC')
               const crew      = site.site_assignments?.filter(a => a.assignment_role === 'crew') || []
