@@ -34,6 +34,7 @@ const REPORT_COLORS = {
   in_progress: { bg: '#eff6ff', text: '#1d4ed8', border: '#93c5fd' },
   submitted:   { bg: '#faf5ff', text: '#6d28d9', border: '#c4b5fd' },
   approved:    { bg: '#dcfce7', text: '#166534', border: '#4ade80' },
+  not_applicable: { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' },
 }
 
 const AVATAR_COLORS = ['#2563eb','#7c3aed','#db2777','#059669','#d97706','#dc2626']
@@ -142,6 +143,7 @@ export default function Sites() {
   const [page, setPage]             = useState(1)
   const [expandedCard, setExpandedCard] = useState(null)
   const [quickSaving, setQuickSaving]   = useState(null)
+  const [draftStatus, setDraftStatus]   = useState(null)
   const photoInputRef = useRef(null)
   const PER_PAGE = 6
 
@@ -181,6 +183,23 @@ export default function Sites() {
       if (value === 'submitted') await notify(`Report for "${siteName}" has been submitted — ready for review`)
       if (value === 'approved') await notify(`Report for "${siteName}" has been approved by Zairul`)
     }
+  }
+
+  async function handleQuickSave(site) {
+    if (!draftStatus) return
+    const updates = {}
+    if (draftStatus.site_status !== site.site_status) updates.site_status = draftStatus.site_status
+    if (draftStatus.report_status !== site.report_status) updates.report_status = draftStatus.report_status
+    if (Object.keys(updates).length > 0) {
+      setQuickSaving(site.id)
+      await supabase.from('sites').update(updates).eq('id', site.id)
+      setSites(prev => prev.map(s => s.id === site.id ? { ...s, ...updates } : s))
+      if (updates.report_status === 'submitted') await notify(`Report for "${site.site_name}" has been submitted — ready for review`, fullName)
+      if (updates.report_status === 'approved') await notify(`Report for "${site.site_name}" has been approved by Zairul`, fullName)
+      setQuickSaving(null)
+    }
+    setExpandedCard(null)
+    setDraftStatus(null)
   }
 
   function openAdd() { setForm(EMPTY); setEditSite(null); setShowForm(true) }
@@ -224,53 +243,90 @@ export default function Sites() {
     if (!form.site_name || !form.location || !form.scheduled_date) return
     setSaving(true)
     setUploadError(null)
-    let photoUrl = form.site_photo_url
-    if (form.site_photo) {
-      const result = await uploadSitePhoto(form.site_photo)
-      if (result.error) {
-        setUploadError(result.error)
-        setSaving(false)
-        return
+    try {
+      let photoUrl = form.site_photo_url
+      if (form.site_photo) {
+        const result = await uploadSitePhoto(form.site_photo)
+        if (result.error) {
+          throw new Error(result.error)
+        }
+        photoUrl = result.url
       }
-      photoUrl = result.url
+
+      const isSiteVisit = form.site_type === 'site_visit'
+      const isMeeting   = form.site_type === 'meeting'
+      const payload = {
+        site_type: form.site_type,
+        site_name: form.site_name, location: form.location,
+        latitude:  form.latitude  !== '' ? parseFloat(form.latitude)  : null,
+        longitude: form.longitude !== '' ? parseFloat(form.longitude) : null,
+        client_company_name: form.client_company_name || null,
+        client_name: form.client_name || null,
+        client_number: form.client_number || null,
+        scope_of_work: form.scope_of_work || null,
+        salesperson: form.salesperson || null,
+        site_photo_url: photoUrl || null,
+        scheduled_date: form.scheduled_date, site_status: form.site_status,
+        site_duration_days: isSiteVisit ? 0.5 : (form.site_duration_days ? parseFloat(form.site_duration_days) : 0),
+        report_duration_days: isSiteVisit || isMeeting ? 0 : (form.report_duration_days ? parseFloat(form.report_duration_days) : 0),
+      report_status: isSiteVisit || isMeeting ? 'not_applicable' : form.report_status,
+        notes: form.notes,
+      }
+
+      let siteId = editSite?.id
+      const originalAssignments = editSite?.site_assignments || []
+      const originalPicId = originalAssignments.find(a => a.assignment_role === 'PIC')?.team_members?.id || ''
+      const originalCrewIds = originalAssignments
+        .filter(a => a.assignment_role === 'crew')
+        .map(a => a.team_members?.id)
+        .filter(Boolean)
+        .sort()
+      const nextCrewIds = [...form.crew_ids].sort()
+      const assignmentsChanged = !editSite || (
+        originalPicId !== form.pic_id ||
+        originalCrewIds.length !== nextCrewIds.length ||
+        originalCrewIds.some((id, index) => id !== nextCrewIds[index])
+      )
+
+      if (editSite) {
+        const { error: updateError } = await supabase.from('sites').update(payload).eq('id', siteId)
+        if (updateError) throw new Error(updateError.message)
+
+        if (assignmentsChanged) {
+          const { error: assignmentDeleteError } = await supabase.from('site_assignments').delete().eq('site_id', siteId)
+          if (assignmentDeleteError) throw new Error(assignmentDeleteError.message)
+
+          const { error: workloadDeleteError } = await supabase.from('workload_log').delete().eq('site_id', siteId)
+          if (workloadDeleteError) throw new Error(workloadDeleteError.message)
+        }
+      } else {
+        const { data, error: insertError } = await supabase.from('sites').insert(payload).select().single()
+        if (insertError) throw new Error(insertError.message)
+        siteId = data.id
+      }
+
+      const assignments = []
+      if (assignmentsChanged) {
+        if (form.pic_id) assignments.push({ site_id: siteId, member_id: form.pic_id, assignment_role: 'PIC' })
+        form.crew_ids.forEach(id => {
+          if (id !== form.pic_id) assignments.push({ site_id: siteId, member_id: id, assignment_role: 'crew' })
+        })
+      }
+
+      if (assignmentsChanged && assignments.length > 0) {
+        const { error: assignmentInsertError } = await supabase.from('site_assignments').insert(assignments)
+        if (assignmentInsertError) throw new Error(assignmentInsertError.message)
+      }
+
+      await notify(`${editSite ? 'Updated' : 'Added'} site: ${form.site_name}`, fullName)
+      setShowForm(false)
+      setEditSite(null)
+      fetchAll()
+    } catch (error) {
+      setUploadError(error.message || 'Unable to save site changes.')
+    } finally {
+      setSaving(false)
     }
-    const isSiteVisit = form.site_type === 'site_visit'
-    const isMeeting   = form.site_type === 'meeting'
-    const payload = {
-      site_type: form.site_type,
-      site_name: form.site_name, location: form.location,
-      latitude:  form.latitude  !== '' ? parseFloat(form.latitude)  : null,
-      longitude: form.longitude !== '' ? parseFloat(form.longitude) : null,
-      client_company_name: form.client_company_name || null,
-      client_name: form.client_name || null,
-      client_number: form.client_number || null,
-      scope_of_work: form.scope_of_work || null,
-      salesperson: form.salesperson || null,
-      site_photo_url: photoUrl || null,
-      scheduled_date: form.scheduled_date, site_status: form.site_status,
-      site_duration_days: isSiteVisit ? 0.5 : (form.site_duration_days ? parseFloat(form.site_duration_days) : 0),
-      report_duration_days: isSiteVisit || isMeeting ? 0 : (form.report_duration_days ? parseFloat(form.report_duration_days) : 0),
-      report_status: isSiteVisit || isMeeting ? 'pending' : form.report_status,
-      notes: form.notes,
-    }
-    let siteId = editSite?.id
-    if (editSite) {
-      await supabase.from('sites').update(payload).eq('id', siteId)
-      await supabase.from('site_assignments').delete().eq('site_id', siteId)
-      await supabase.from('workload_log').delete().eq('site_id', siteId)
-    } else {
-      const { data } = await supabase.from('sites').insert(payload).select().single()
-      siteId = data.id
-    }
-    const assignments = []
-    if (form.pic_id) assignments.push({ site_id: siteId, member_id: form.pic_id, assignment_role: 'PIC' })
-    form.crew_ids.forEach(id => {
-      if (id !== form.pic_id) assignments.push({ site_id: siteId, member_id: id, assignment_role: 'crew' })
-    })
-    if (assignments.length > 0) await supabase.from('site_assignments').insert(assignments)
-    setSaving(false)
-    setShowForm(false)
-    fetchAll()
   }
 
   async function handleDelete(id) {
@@ -413,7 +469,10 @@ export default function Sites() {
                       View Details <ArrowUpRight size={11} />
                     </Link>
                     <button
-                      onClick={() => setExpandedCard(expandedCard === site.id ? null : site.id)}
+                      onClick={() => {
+                        if (expandedCard === site.id) { setExpandedCard(null); setDraftStatus(null) }
+                        else { setExpandedCard(site.id); setDraftStatus({ site_status: site.site_status, report_status: site.report_status }) }
+                      }}
                       style={{ flex: 1, height: '30px', background: expandedCard === site.id ? '#2563eb' : '#e0edff', border: 'none', borderRadius: '7px', cursor: 'pointer', color: expandedCard === site.id ? 'white' : '#2563eb', fontSize: '11px', fontWeight: '600', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                       <Pencil size={10} /> Update
                     </button>
@@ -426,45 +485,57 @@ export default function Sites() {
                   </div>
 
                   {/* Inline progress update panel */}
-                  {expandedCard === site.id && (
+                  {expandedCard === site.id && draftStatus && (
                     <div style={{ marginTop: '10px', padding: '10px 12px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
                       <p style={{ fontSize: '10px', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>Site Status</p>
                       <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '10px' }}>
                         {['upcoming','ongoing','completed','cancelled','postponed'].map(s => {
                           const c = STATUS_COLORS[s]
-                          const active = site.site_status === s
-                          const isLoading = quickSaving === `${site.id}-site_status`
+                          const active = draftStatus.site_status === s
                           return (
-                            <button key={s} disabled={!!quickSaving} onClick={() => handleQuickUpdate(site.id, 'site_status', s)} style={{
-                              padding: '4px 9px', borderRadius: '99px', fontSize: '10px', fontWeight: '600', cursor: quickSaving ? 'wait' : 'pointer', border: `1px solid ${active ? c.border : '#e2e8f0'}`,
+                            <button key={s} onClick={() => setDraftStatus(d => ({ ...d, site_status: s }))} style={{
+                              padding: '4px 9px', borderRadius: '99px', fontSize: '10px', fontWeight: '600', cursor: 'pointer',
+                              border: `1px solid ${active ? c.border : '#e2e8f0'}`,
                               background: active ? c.bg : 'white', color: active ? c.text : '#94a3b8',
-                              opacity: isLoading && !active ? 0.5 : 1, transition: 'all 0.12s',
+                              transition: 'all 0.12s',
                             }}>{s}</button>
                           )
                         })}
                       </div>
-                      {site.site_type === 'site_scanning' && (
+                      {(site.site_type === 'site_scanning' || site.site_type === 'site_visit') && (
                         <>
                           <p style={{ fontSize: '10px', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>Report Status</p>
-                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                            {['pending','in_progress','submitted','approved'].map(s => {
+                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                            {['pending','in_progress','submitted','approved','not_applicable'].map(s => {
                               const c = REPORT_COLORS[s]
-                              const active = site.report_status === s
-                              const isLoading = quickSaving === `${site.id}-report_status`
+                              const active = draftStatus.report_status === s
                               const locked = s === 'approved' && !isZairul
                               return (
-                                <button key={s} disabled={!!quickSaving || locked} onClick={() => !locked && handleQuickUpdate(site.id, 'report_status', s)} title={locked ? 'Only Zairul can approve' : undefined} style={{
+                                <button key={s} disabled={locked} onClick={() => !locked && setDraftStatus(d => ({ ...d, report_status: s }))} title={locked ? 'Only Zairul can approve' : undefined} style={{
                                   padding: '4px 9px', borderRadius: '99px', fontSize: '10px', fontWeight: '600',
-                                  cursor: locked ? 'not-allowed' : quickSaving ? 'wait' : 'pointer',
+                                  cursor: locked ? 'not-allowed' : 'pointer',
                                   border: `1px solid ${active ? c.border : '#e2e8f0'}`,
                                   background: active ? c.bg : 'white', color: active ? c.text : locked ? '#cbd5e1' : '#94a3b8',
-                                  opacity: locked ? 0.45 : isLoading && !active ? 0.5 : 1, transition: 'all 0.12s',
+                                  opacity: locked ? 0.45 : 1, transition: 'all 0.12s',
                                 }}>{s.replace('_', ' ')}</button>
                               )
                             })}
                           </div>
                         </>
                       )}
+                      <div style={{ display: 'flex', gap: '6px', paddingTop: '8px', borderTop: '1px solid #e2e8f0' }}>
+                        <button
+                          onClick={() => handleQuickSave(site)}
+                          disabled={!!quickSaving}
+                          style={{ flex: 1, padding: '6px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '7px', fontSize: '11px', fontWeight: '600', cursor: quickSaving ? 'not-allowed' : 'pointer', opacity: quickSaving ? 0.7 : 1 }}>
+                          {quickSaving === site.id ? 'Saving...' : 'Save'}
+                        </button>
+                        <button
+                          onClick={() => { setExpandedCard(null); setDraftStatus(null) }}
+                          style={{ flex: 1, padding: '6px', background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '7px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}>
+                          Cancel
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -684,7 +755,7 @@ export default function Sites() {
                   <div>
                     <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Report Status</label>
                     <select style={inputStyle} value={form.report_status} onChange={e => setForm(f => ({ ...f, report_status: e.target.value }))}>
-                      {['pending','in_progress','submitted','approved'].map(o => <option key={o} value={o}>{o.replace('_', ' ')}</option>)}
+                      {['pending','in_progress','submitted','approved','not_applicable'].map(o => <option key={o} value={o}>{o.replace('_', ' ')}</option>)}
                     </select>
                   </div>
                 )}
