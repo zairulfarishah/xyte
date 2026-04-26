@@ -437,13 +437,13 @@ export default function Sites() {
                   }}
                 >
                   {/* ── Banner ── */}
-                  <div className="relative overflow-hidden" style={{ height:130, flexShrink:0, background:CARD_GRADIENTS[site.site_type]||CARD_GRADIENTS.site_scanning }}>
+                  <div className="relative overflow-hidden" style={{ height:140, flexShrink:0, background:CARD_GRADIENTS[site.site_type]||CARD_GRADIENTS.site_scanning }}>
                     {(site.site_photo_url || getSiteHeaderImage(site.site_type)) && (
                       <img src={site.site_photo_url||getSiteHeaderImage(site.site_type)} alt=""
                         className="absolute inset-0 w-full h-full object-cover" style={{ opacity:0.5 }} />
                     )}
                     <div className="absolute inset-0" style={{ background:'linear-gradient(175deg,rgba(0,0,0,0.08) 0%,rgba(5,10,22,0.62) 100%)' }} />
-                    <div className="absolute inset-0 flex flex-col justify-between" style={{ padding:'11px 13px' }}>
+                    <div className="absolute inset-0 flex flex-col justify-between" style={{ padding:'12px 15px' }}>
                       {/* top row: location + status */}
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-1.5 min-w-0"
@@ -472,10 +472,10 @@ export default function Sites() {
                   </div>
 
                   {/* ── Body ── */}
-                  <div style={{ padding:'15px 16px', display:'flex', flexDirection:'column', flex:1 }}>
+                  <div style={{ padding:'17px 20px', display:'flex', flexDirection:'column', flex:1 }}>
 
                     {/* Type chip + report status */}
-                    <div className="flex items-center gap-2 mb-3">
+                    <div className="flex items-center gap-2 mb-3.5">
                       <span style={{
                         fontSize:'10px', fontWeight:'700', padding:'3px 10px', borderRadius:'6px',
                         background:typeMeta.chipBg, color:typeMeta.color, flexShrink:0,
@@ -487,21 +487,21 @@ export default function Sites() {
                     </div>
 
                     {/* Info bar: date + duration */}
-                    <div className="flex items-center gap-4 mb-3 pb-3" style={{ borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
+                    <div className="flex items-center gap-4 mb-4 pb-4" style={{ borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
                       <div className="flex items-center gap-1.5">
-                        <Calendar size={11} color="#475569" />
-                        <span style={{ fontSize:'11px', color:'#94a3b8', fontWeight:'500' }}>
+                        <Calendar size={12} color="#4b5563" />
+                        <span style={{ fontSize:'12px', color:'#94a3b8', fontWeight:'500' }}>
                           {new Date(site.scheduled_date).toLocaleDateString('en-MY',{ day:'numeric', month:'short', year:'numeric' })}
                         </span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <Clock size={11} color="#475569" />
-                        <span style={{ fontSize:'11px', color:'#94a3b8', fontWeight:'500' }}>{site.site_duration_days}d</span>
+                        <Clock size={12} color="#4b5563" />
+                        <span style={{ fontSize:'12px', color:'#94a3b8', fontWeight:'500' }}>{site.site_duration_days}d</span>
                       </div>
                     </div>
 
                     {/* PIC + crew */}
-                    <div className="flex items-center gap-2 mb-3">
+                    <div className="flex items-center gap-2 mb-4">
                       {pic
                         ? <Avatar name={pic.team_members?.full_name} size={26} index={memberIdx>=0?memberIdx:0} avatarUrl={pic.team_members?.avatar_url} />
                         : <div style={{ width:26, height:26, borderRadius:'50%', background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.1)', flexShrink:0 }} />
@@ -531,10 +531,10 @@ export default function Sites() {
                     </div>
 
                     {/* Action buttons — pinned to bottom */}
-                    <div className="flex items-center gap-1.5" style={{ marginTop:'auto', paddingTop:'10px' }}>
+                    <div className="flex items-center gap-2" style={{ marginTop:'auto', paddingTop:'12px', borderTop:'1px solid rgba(255,255,255,0.06)' }}>
                       <Link to={`/sites/${site.id}`}
                         className="flex items-center justify-center gap-1.5 transition-all"
-                        style={{ flex:1, padding:'8px 0', borderRadius:'9px', fontSize:'11px', fontWeight:'700', color:'#60a5fa', background:'rgba(37,99,235,0.1)', border:'1px solid rgba(59,130,246,0.22)', textDecoration:'none' }}
+                        style={{ flex:1, padding:'9px 0', borderRadius:'9px', fontSize:'12px', fontWeight:'700', color:'#60a5fa', background:'rgba(37,99,235,0.1)', border:'1px solid rgba(59,130,246,0.22)', textDecoration:'none' }}
                         onMouseEnter={e => e.currentTarget.style.background='rgba(37,99,235,0.22)'}
                         onMouseLeave={e => e.currentTarget.style.background='rgba(37,99,235,0.1)'}>
                         <ArrowUpRight size={12} /> View
@@ -546,26 +546,26 @@ export default function Sites() {
                         }}
                         className="flex items-center justify-center gap-1.5 transition-all"
                         style={{
-                          flex:1, padding:'8px 0', borderRadius:'9px', fontSize:'11px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit',
+                          flex:1, padding:'9px 0', borderRadius:'9px', fontSize:'12px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit',
                           background: isExpanded ? 'rgba(37,99,235,0.2)' : 'rgba(255,255,255,0.05)',
                           border:`1px solid ${isExpanded ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.09)'}`,
                           color: isExpanded ? '#60a5fa' : '#94a3b8',
                         }}>
-                        <Pencil size={10} /> Update
+                        <Pencil size={11} /> Update
                       </button>
                       <button onClick={() => openEdit(site)}
                         className="flex items-center justify-center transition-all"
-                        style={{ width:32,height:32,borderRadius:'9px',cursor:'pointer',flexShrink:0,background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.09)',color:'#64748b' }}
+                        style={{ width:34,height:34,borderRadius:'9px',cursor:'pointer',flexShrink:0,background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.09)',color:'#64748b' }}
                         onMouseEnter={e => { e.currentTarget.style.color='#cbd5e1'; e.currentTarget.style.background='rgba(255,255,255,0.1)' }}
                         onMouseLeave={e => { e.currentTarget.style.color='#64748b'; e.currentTarget.style.background='rgba(255,255,255,0.05)' }}>
-                        <Pencil size={11} />
+                        <Pencil size={12} />
                       </button>
                       <button onClick={() => handleDelete(site.id)}
                         className="flex items-center justify-center transition-all"
-                        style={{ width:32,height:32,borderRadius:'9px',cursor:'pointer',flexShrink:0,background:'rgba(239,68,68,0.07)',border:'1px solid rgba(239,68,68,0.18)',color:'rgba(239,68,68,0.65)' }}
+                        style={{ width:34,height:34,borderRadius:'9px',cursor:'pointer',flexShrink:0,background:'rgba(239,68,68,0.07)',border:'1px solid rgba(239,68,68,0.18)',color:'rgba(239,68,68,0.65)' }}
                         onMouseEnter={e => { e.currentTarget.style.background='rgba(239,68,68,0.18)'; e.currentTarget.style.color='#f87171' }}
                         onMouseLeave={e => { e.currentTarget.style.background='rgba(239,68,68,0.07)'; e.currentTarget.style.color='rgba(239,68,68,0.65)' }}>
-                        <Trash2 size={11} />
+                        <Trash2 size={12} />
                       </button>
                     </div>
 
