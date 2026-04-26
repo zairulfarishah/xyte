@@ -1,9 +1,32 @@
 import { useEffect, useState } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Tooltip } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Tooltip } from 'react-leaflet'
+import L from 'leaflet'
 import { supabase } from '../supabase'
 import { Search } from 'lucide-react'
 import PlaceSearchBox from '../components/PlaceSearchBox'
 import 'leaflet/dist/leaflet.css'
+
+function xIcon(color, selected = false) {
+  const size = selected ? 34 : 26
+  return L.divIcon({
+    html: `<div style="
+      font-family:Inter,Arial,sans-serif;
+      font-size:${size}px;
+      font-weight:900;
+      color:${color};
+      line-height:1;
+      letter-spacing:-0.03em;
+      text-shadow:0 0 12px ${color}99,0 0 28px ${color}44;
+      filter:${selected ? 'brightness(1.25)' : 'none'};
+      display:flex;align-items:center;justify-content:center;
+      width:${size}px;height:${size}px;
+    ">X</div>`,
+    className: '',
+    iconSize:   [size, size],
+    iconAnchor: [size / 2, size / 2],
+    tooltipAnchor: [0, -(size / 2) - 4],
+  })
+}
 
 const STATUS_COLORS = {
   upcoming:  { dot: '#eab308', bg: '#fef9c3', text: '#854d0e', border: '#fde047' },
@@ -186,19 +209,13 @@ export default function MapView() {
               const crew = site.site_assignments?.filter(a => a.assignment_role === 'crew') || []
               const isSelected = selected?.id === site.id
               return (
-                <CircleMarker
+                <Marker
                   key={site.id}
-                  center={[site.latitude, site.longitude]}
-                  radius={isSelected ? 14 : 10}
-                  pathOptions={{
-                    color: isSelected ? '#2563eb' : c?.dot,
-                    fillColor: c?.dot,
-                    fillOpacity: 0.85,
-                    weight: isSelected ? 3 : 2,
-                  }}
+                  position={[site.latitude, site.longitude]}
+                  icon={xIcon(c?.dot || '#94a3b8', isSelected)}
                   eventHandlers={{ click: () => setSelected(site) }}
                 >
-                  <Tooltip direction="top" offset={[0, -12]} opacity={1}>
+                  <Tooltip direction="top" offset={[0, -4]} opacity={1}>
                     <div style={{ minWidth: '190px', fontFamily: 'Inter, sans-serif', padding: '2px 0' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '5px' }}>
                         <p style={{ fontWeight: '700', fontSize: '13px', color: '#0f172a', margin: 0 }}>{site.site_name}</p>
@@ -223,22 +240,21 @@ export default function MapView() {
                       </div>
                     </div>
                   </Tooltip>
-                </CircleMarker>
+                </Marker>
               )
             })}
             {placeResult && (
-              <CircleMarker
-                center={[placeResult.latitude, placeResult.longitude]}
-                radius={10}
-                pathOptions={{ color: '#0f172a', fillColor: '#2563eb', fillOpacity: 1, weight: 3 }}
+              <Marker
+                position={[placeResult.latitude, placeResult.longitude]}
+                icon={xIcon('#2563eb', true)}
               >
-                <Tooltip direction="top" offset={[0, -12]} opacity={1}>
+                <Tooltip direction="top" offset={[0, -4]} opacity={1}>
                   <div style={{ minWidth: '180px', fontFamily: 'Inter, sans-serif', padding: '2px 0' }}>
                     <p style={{ fontWeight: '700', fontSize: '13px', color: '#0f172a', marginBottom: '4px' }}>Selected Location</p>
                     <p style={{ fontSize: '11px', color: '#64748b', lineHeight: 1.5 }}>{placeResult.label}</p>
                   </div>
                 </Tooltip>
-              </CircleMarker>
+              </Marker>
             )}
           </MapContainer>
         </div>
