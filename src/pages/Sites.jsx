@@ -3,8 +3,8 @@ import { Link, useLocation } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker, useMapEvents } from 'react-leaflet'
 import { supabase } from '../supabase'
 import {
-  Plus, Pencil, Trash2, Search, ArrowUpRight, MapPin, X, Camera,
-  Calendar, Clock, CheckCircle, Activity, FileText, BadgeCheck, Layers,
+  Pencil, Trash2, Search, ArrowUpRight, MapPin, X, Camera,
+  Calendar, Clock, CheckCircle,
 } from 'lucide-react'
 import { notify } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
@@ -12,38 +12,51 @@ import PlaceSearchBox from '../components/PlaceSearchBox'
 import { getSiteHeaderImage } from '../utils/siteHeader'
 import 'leaflet/dist/leaflet.css'
 
+/* ── Design tokens (Dashboard light-mode parity) ── */
 const STATUS_COLORS = {
-  upcoming:  { bg:'rgba(234,179,8,.15)',    text:'#fcd34d', border:'rgba(234,179,8,.35)'   },
-  ongoing:   { bg:'rgba(249,115,22,.15)',   text:'#fb923c', border:'rgba(249,115,22,.35)'  },
-  completed: { bg:'rgba(34,197,94,.15)',    text:'#4ade80', border:'rgba(34,197,94,.35)'   },
-  cancelled: { bg:'rgba(239,68,68,.15)',    text:'#f87171', border:'rgba(239,68,68,.35)'   },
-  postponed: { bg:'rgba(148,163,184,.13)',  text:'#94a3b8', border:'rgba(148,163,184,.28)' },
+  upcoming:  { bg:'#fef3c7', text:'#92400e', border:'#facc15' },
+  ongoing:   { bg:'#ffedd5', text:'#9a3412', border:'#fb923c' },
+  completed: { bg:'#dcfce7', text:'#166534', border:'#4ade80' },
+  cancelled: { bg:'#fee2e2', text:'#991b1b', border:'#f87171' },
+  postponed: { bg:'#f1f5f9', text:'#475569', border:'#cbd5e1' },
 }
 const REPORT_COLORS = {
-  pending:        { bg:'rgba(148,163,184,.12)', text:'#94a3b8', border:'rgba(148,163,184,.25)'  },
-  in_progress:    { bg:'rgba(59,130,246,.15)',  text:'#60a5fa', border:'rgba(59,130,246,.35)'   },
-  submitted:      { bg:'rgba(167,139,250,.15)', text:'#a78bfa', border:'rgba(167,139,250,.35)'  },
-  approved:       { bg:'rgba(52,211,153,.15)',  text:'#34d399', border:'rgba(52,211,153,.35)'   },
-  not_applicable: { bg:'rgba(100,116,139,.08)', text:'#64748b', border:'rgba(100,116,139,.18)'  },
+  pending:        { bg:'#fee2e2', text:'#991b1b', border:'#fecaca'  },
+  in_progress:    { bg:'#fef3c7', text:'#92400e', border:'#fde68a'  },
+  submitted:      { bg:'#dbeafe', text:'#1d4ed8', border:'#bfdbfe'  },
+  approved:       { bg:'#dcfce7', text:'#166534', border:'#bbf7d0'  },
+  not_applicable: { bg:'#f1f5f9', text:'#475569', border:'#cbd5e1'  },
+}
+const TYPE_META = {
+  site_scanning: { label:'Site Scanning', color:'#1d4ed8', chipBg:'#eff6ff', chipBorder:'#93c5fd' },
+  site_visit:    { label:'Site Visit',    color:'#166534', chipBg:'#f0fdf4', chipBorder:'#4ade80'  },
+  meeting:       { label:'Meeting',       color:'#6d28d9', chipBg:'#faf5ff', chipBorder:'#c4b5fd'  },
 }
 const CARD_GRADIENTS = {
   site_scanning: 'linear-gradient(135deg,#0f2460 0%,#1a4b8c 55%,#0891b2 100%)',
   site_visit:    'linear-gradient(135deg,#042f2e 0%,#065f46 55%,#0d9488 100%)',
   meeting:       'linear-gradient(135deg,#1e0a3c 0%,#4c1d95 55%,#7c3aed 100%)',
 }
-const AVATAR_GRADIENTS = [
-  'linear-gradient(135deg,#1d4ed8,#0891b2)',
-  'linear-gradient(135deg,#6d28d9,#7c3aed)',
-  'linear-gradient(135deg,#be185d,#db2777)',
-  'linear-gradient(135deg,#047857,#059669)',
-  'linear-gradient(135deg,#b45309,#d97706)',
-  'linear-gradient(135deg,#991b1b,#dc2626)',
-]
-const TYPE_META = {
-  site_scanning: { label:'Site Scanning', color:'#60a5fa', chipBg:'rgba(59,130,246,0.13)' },
-  site_visit:    { label:'Site Visit',    color:'#2dd4bf', chipBg:'rgba(13,148,136,0.13)'  },
-  meeting:       { label:'Meeting',       color:'#a78bfa', chipBg:'rgba(124,58,237,0.13)'  },
+const CARD_GLOW = {
+  site_scanning: 'rgba(37,99,235,.18)',
+  site_visit:    'rgba(13,148,136,.15)',
+  meeting:       'rgba(124,58,237,.15)',
 }
+const SITE_PROGRESS = {
+  upcoming:  { pct:15,  color:'#f59e0b' },
+  ongoing:   { pct:55,  color:'#2563eb' },
+  completed: { pct:100, color:'#16a34a' },
+  cancelled: { pct:0,   color:'#ef4444' },
+  postponed: { pct:25,  color:'#94a3b8' },
+}
+const REPORT_PROGRESS = {
+  pending:        { pct:10,  color:'#ef4444' },
+  in_progress:    { pct:40,  color:'#f59e0b' },
+  submitted:      { pct:75,  color:'#7c3aed' },
+  approved:       { pct:100, color:'#16a34a' },
+  not_applicable: { pct:0,   color:'#cbd5e1' },
+}
+const AVATAR_COLORS = ['#2563eb','#7c3aed','#db2777','#059669','#d97706','#dc2626']
 const SITE_TYPES   = [
   { value:'site_scanning', label:'Site Scanning' },
   { value:'site_visit',    label:'Site Visit'    },
@@ -59,15 +72,15 @@ const EMPTY = {
   site_photo:null, site_photo_preview:null, site_photo_url:'',
 }
 
-function Avatar({ name, size = 26, index = 0, avatarUrl = null }) {
+function Avatar({ name, size = 28, index = 0, avatarUrl = null }) {
   const initials = name?.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase() || '?'
   return (
     <div style={{
       width:size, height:size, borderRadius:'50%', flexShrink:0, overflow:'hidden',
-      background: avatarUrl ? '#0f172a' : AVATAR_GRADIENTS[index % AVATAR_GRADIENTS.length],
+      background: avatarUrl ? '#e2e8f0' : AVATAR_COLORS[index % AVATAR_COLORS.length],
       display:'flex', alignItems:'center', justifyContent:'center',
-      color:'white', fontWeight:'700', fontSize:size * .36,
-      border:'2px solid rgba(255,255,255,0.14)',
+      color:'white', fontWeight:'700', fontSize:size * 0.35,
+      boxShadow:'0 2px 6px rgba(15,23,42,.18)',
     }}>
       {avatarUrl ? <img src={avatarUrl} alt={name} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : initials}
     </div>
@@ -81,8 +94,8 @@ function Pill({ status, colors }) {
     <span style={{
       display:'inline-flex', alignItems:'center', gap:'4px',
       background:c.bg, color:c.text, border:`1px solid ${c.border}`,
-      padding:'3px 9px', borderRadius:'99px', fontSize:'10px',
-      fontWeight:'700', textTransform:'capitalize', whiteSpace:'nowrap', flexShrink:0,
+      padding:'4px 9px', borderRadius:'999px', fontSize:'10px',
+      fontWeight:'800', textTransform:'capitalize', whiteSpace:'nowrap', flexShrink:0,
     }}>
       {status?.replace(/_/g,' ')}
       {done && <CheckCircle size={9} />}
@@ -133,6 +146,7 @@ export default function Sites() {
   const [expandedCard, setExpandedCard] = useState(null)
   const [quickSaving, setQuickSaving]   = useState(null)
   const [draftStatus, setDraftStatus]   = useState(null)
+  const [panelAnchor, setPanelAnchor]   = useState(null)
   const photoInputRef = useRef(null)
   const PER_PAGE = 8
 
@@ -171,7 +185,7 @@ export default function Sites() {
       if (updates.report_status === 'approved')  await notify(`Report for "${site.site_name}" has been approved by Zairul`, fullName)
       setQuickSaving(null)
     }
-    setExpandedCard(null); setDraftStatus(null)
+    setExpandedCard(null); setDraftStatus(null); setPanelAnchor(null)
   }
 
   function openAdd() { setForm(EMPTY); setEditSite(null); setShowForm(true) }
@@ -275,16 +289,6 @@ export default function Sites() {
   const totalPages = Math.ceil(filtered.length / PER_PAGE)
   const paginated  = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE)
 
-  const pendingReports  = sites.filter(s => s.report_status === 'in_progress' || s.report_status === 'pending').length
-  const approvedReports = sites.filter(s => s.report_status === 'approved').length
-
-  const STATS = [
-    { label:'Total Sites',     value:sites.length,    color:'#f1f5f9', iconBg:'rgba(241,245,249,0.1)',  icon:<Layers size={15}/>     },
-    { label:'Ongoing',         value:counts.Ongoing,  color:'#fb923c', iconBg:'rgba(249,115,22,0.13)',  icon:<Activity size={15}/>   },
-    { label:'Completed',       value:counts.Completed,color:'#4ade80', iconBg:'rgba(74,222,128,0.12)',  icon:<CheckCircle size={15}/> },
-    { label:'Pending Reports', value:pendingReports,  color:'#60a5fa', iconBg:'rgba(96,165,250,0.12)',  icon:<FileText size={15}/>   },
-    { label:'Approved',        value:approvedReports, color:'#34d399', iconBg:'rgba(52,211,153,0.12)',  icon:<BadgeCheck size={15}/> },
-  ]
 
   const darkInput = {
     width:'100%', padding:'9px 12px', borderRadius:'10px',
@@ -293,324 +297,255 @@ export default function Sites() {
   }
 
   if (loading) return (
-    <div className="flex items-center justify-center bg-[#06090f]" style={{ height:'calc(100vh - 54px)' }}>
-      <div className="flex items-center gap-3 text-slate-400 text-sm">
-        <div className="w-4 h-4 rounded-full border-2 border-blue-800 border-t-blue-500 animate-spin" />
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'calc(100vh - 54px)', background:'#eef3f8' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:'10px', color:'#64748b', fontSize:'14px', fontWeight:'600' }}>
+        <div className="w-4 h-4 rounded-full border-2 border-slate-300 border-t-blue-500 animate-spin" />
         Loading sites…
       </div>
     </div>
   )
 
   return (
-    <div className="bg-[#06090f]" style={{ minHeight:'calc(100vh - 54px)', overflowY:'auto' }}>
+    <div style={{ minHeight:'calc(100vh - 54px)', overflowY:'auto', background:'radial-gradient(circle at 18% 5%,rgba(59,130,246,.18),transparent 26%),radial-gradient(circle at 70% 0%,rgba(14,165,233,.10),transparent 30%),linear-gradient(180deg,#071226 0 190px,#eef3f8 190px 100%)' }}>
 
-      {/* fixed bg glows */}
-      <div className="pointer-events-none fixed inset-0" style={{
-        zIndex:0,
-        background:'radial-gradient(ellipse 55% 50% at 15% 20%,rgba(59,130,246,0.07) 0%,transparent 60%),radial-gradient(ellipse 40% 35% at 85% 10%,rgba(6,182,212,0.04) 0%,transparent 55%)',
-      }} />
-      {/* subtle grid */}
-      <div className="pointer-events-none fixed inset-0" style={{
-        zIndex:0,
-        backgroundImage:'linear-gradient(rgba(255,255,255,0.012) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.012) 1px,transparent 1px)',
-        backgroundSize:'48px 48px',
-      }} />
-
-      <div className="relative px-10" style={{ zIndex:1 }}>
+      <main style={{ maxWidth:'1800px', margin:'0 auto', padding:'28px 40px 48px' }}>
 
         {/* ── HEADER ── */}
-        <div className="flex items-center justify-between gap-4 pt-8 pb-7">
-          <div>
-            <h1 className="text-[22px] font-extrabold text-white tracking-tight leading-none">Sites</h1>
-            <p className="text-[12px] text-slate-500 mt-1.5 font-medium">Manage and track all site activities</p>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'16px', marginBottom:'28px' }}>
+          <div style={{ color:'white' }}>
+            <h1 style={{ margin:0, fontSize:'28px', fontWeight:'850', letterSpacing:'-.05em', lineHeight:1 }}>Sites</h1>
+            <p style={{ margin:'7px 0 0', color:'#b8c7dd', fontSize:'14px', lineHeight:1.5 }}>Manage and track all site activities</p>
           </div>
-          <div className="flex items-center gap-2.5">
-            <div className="relative">
-              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+          <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+            <div style={{ position:'relative' }}>
+              <Search size={13} style={{ position:'absolute', left:'12px', top:'50%', transform:'translateY(-50%)', color:'#94a3b8', pointerEvents:'none' }} />
               <input
                 placeholder="Search sites…"
                 value={search}
                 onChange={e => { setSearch(e.target.value); setPage(1) }}
                 style={{
-                  background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.09)',
+                  background:'rgba(255,255,255,.12)', border:'1px solid rgba(255,255,255,.18)',
                   borderRadius:'10px', fontSize:'13px', fontFamily:'inherit',
-                  padding:'9px 14px 9px 32px', width:'220px', color:'#e2e8f0', outline:'none',
+                  padding:'9px 14px 9px 34px', width:'220px', color:'white', outline:'none',
                 }}
-                onFocus={e => e.target.style.borderColor='rgba(59,130,246,0.5)'}
-                onBlur={e => e.target.style.borderColor='rgba(255,255,255,0.09)'}
+                onFocus={e => { e.target.style.background='rgba(255,255,255,.18)'; e.target.style.borderColor='rgba(255,255,255,.35)' }}
+                onBlur={e => { e.target.style.background='rgba(255,255,255,.12)'; e.target.style.borderColor='rgba(255,255,255,.18)' }}
               />
             </div>
-            <button onClick={openAdd}
-              className="flex items-center gap-2 text-white font-bold transition-all hover:-translate-y-px"
-              style={{
-                padding:'9px 20px', borderRadius:'10px', fontSize:'13px', fontFamily:'inherit', border:'none', cursor:'pointer',
-                background:'linear-gradient(135deg,#2563eb,#0ea5e9)',
-                boxShadow:'0 0 22px rgba(37,99,235,0.35),0 4px 14px rgba(0,0,0,0.3)',
-              }}>
-              <Plus size={14} /> Add Site
-            </button>
           </div>
         </div>
 
-        {/* ── STATS STRIP ── */}
-        <div className="grid grid-cols-5 gap-3 mb-7">
-          {STATS.map(({ label, value, color, iconBg, icon }) => (
-            <div key={label} style={{
-              padding:'16px 20px', borderRadius:'14px',
-              border:'1px solid rgba(255,255,255,0.08)',
-              background:'rgba(255,255,255,0.045)',
-              display:'flex', alignItems:'center', gap:'14px',
-            }}>
-              <div style={{
-                width:38, height:38, borderRadius:'11px', background:iconBg,
-                display:'flex', alignItems:'center', justifyContent:'center',
-                flexShrink:0, color,
-              }}>
-                {icon}
-              </div>
-              <div>
-                <p style={{ fontSize:'10px', color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.07em', fontWeight:'600', marginBottom:'5px' }}>{label}</p>
-                <p style={{ fontSize:'22px', fontWeight:'800', color, letterSpacing:'-0.03em', lineHeight:1 }}>{value}</p>
-              </div>
-            </div>
-          ))}
-        </div>
 
         {/* ── FILTER TABS ── */}
-        <div className="flex items-center gap-2 mb-7">
-          {TABS.map(t => {
-            const active = tab === t
-            return (
-              <button key={t} onClick={() => { setTab(t); setPage(1) }}
-                style={{
-                  padding:'7px 16px', borderRadius:'99px', fontSize:'12px', fontWeight:'600',
-                  border:`1px solid ${active ? 'rgba(59,130,246,0.55)' : 'rgba(255,255,255,0.09)'}`,
-                  background: active ? 'rgba(37,99,235,0.22)' : 'rgba(255,255,255,0.03)',
-                  color: active ? '#93c5fd' : '#64748b',
-                  cursor:'pointer', fontFamily:'inherit', transition:'all .15s',
-                  boxShadow: active ? '0 0 16px rgba(37,99,235,0.28),inset 0 0 0 1px rgba(59,130,246,0.08)' : 'none',
-                }}>
-                {t} <span style={{ fontSize:'10px', opacity:0.65, marginLeft:'1px' }}>({counts[t]})</span>
-              </button>
-            )
-          })}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'20px' }}>
+          <div style={{ display:'inline-flex', gap:'4px', padding:'5px', background:'rgba(255,255,255,.9)', backdropFilter:'blur(12px)', borderRadius:'999px', boxShadow:'0 1px 4px rgba(15,23,42,.08)', border:'1px solid rgba(226,232,240,.9)' }}>
+            {TABS.map(t => {
+              const active = tab === t
+              return (
+                <button key={t} onClick={() => { setTab(t); setPage(1) }}
+                  style={{
+                    border:0, background: active ? '#0f172a' : 'transparent',
+                    color: active ? 'white' : '#64748b',
+                    padding:'7px 14px', borderRadius:'999px', fontWeight:'750',
+                    cursor:'pointer', fontSize:'12px', fontFamily:'inherit', transition:'all .15s',
+                  }}>
+                  {t} <span style={{ opacity:0.65, fontSize:'10px', marginLeft:'1px' }}>({counts[t]})</span>
+                </button>
+              )
+            })}
+          </div>
         </div>
 
         {/* ── CARDS ── */}
         {paginated.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl text-slate-500 mb-10"
-            style={{ height:200, border:'1px solid rgba(255,255,255,0.07)', background:'rgba(255,255,255,0.02)' }}>
-            <MapPin size={28} className="mb-3 opacity-30" />
-            <p className="text-sm font-medium">No sites found</p>
+          <div style={{ height:200, border:'1px solid rgba(226,232,240,.9)', background:'white', borderRadius:'16px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', color:'#94a3b8', boxShadow:'0 1px 4px rgba(15,23,42,.06)' }}>
+            <MapPin size={28} style={{ marginBottom:'12px', opacity:0.35 }} />
+            <p style={{ margin:0, fontSize:'14px', fontWeight:'600', color:'#64748b' }}>No sites found</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 pb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" style={{ gap:'16px', paddingBottom:'8px' }}>
             {paginated.map(site => {
               const pic       = site.site_assignments?.find(a => a.assignment_role === 'PIC')
               const crew      = site.site_assignments?.filter(a => a.assignment_role === 'crew') || []
               const typeMeta  = TYPE_META[site.site_type] || TYPE_META.site_scanning
               const memberIdx = members.findIndex(m => m.id === pic?.team_members?.id)
               const isExpanded = expandedCard === site.id
+              const glow = CARD_GLOW[site.site_type] || CARD_GLOW.site_scanning
 
               return (
                 <div key={site.id}
-                  className="rounded-2xl overflow-hidden flex flex-col"
                   style={{
-                    border:`1px solid ${isExpanded ? 'rgba(59,130,246,0.45)' : 'rgba(255,255,255,0.08)'}`,
-                    background:'rgba(10,17,32,0.92)',
-                    boxShadow: isExpanded
-                      ? '0 0 0 1px rgba(59,130,246,0.15),0 8px 32px rgba(0,0,0,0.5)'
-                      : '0 2px 16px rgba(0,0,0,0.35)',
-                    transition:'transform .2s ease, box-shadow .2s ease, border-color .2s ease',
+                    background:'white', borderRadius:'16px', overflow:'hidden',
+                    border: isExpanded ? '1px solid #93c5fd' : '1px solid rgba(203,213,225,.85)',
+                    boxShadow: isExpanded ? `0 0 0 3px rgba(59,130,246,.12),0 8px 28px rgba(15,23,42,.12)` : '0 1px 4px rgba(15,23,42,.06),0 4px 16px rgba(15,23,42,.06)',
+                    display:'flex', flexDirection:'column',
+                    transition:'transform .18s ease,box-shadow .18s ease,border-color .18s ease',
                   }}
                   onMouseEnter={e => {
                     if (isExpanded) return
                     e.currentTarget.style.transform = 'translateY(-3px)'
-                    e.currentTarget.style.borderColor = 'rgba(59,130,246,0.28)'
-                    e.currentTarget.style.boxShadow = '0 16px 40px rgba(0,0,0,0.55),0 0 0 1px rgba(59,130,246,0.1)'
+                    e.currentTarget.style.boxShadow = `0 12px 32px ${glow},0 4px 12px rgba(15,23,42,.08)`
                   }}
                   onMouseLeave={e => {
                     if (isExpanded) return
                     e.currentTarget.style.transform = 'none'
-                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'
-                    e.currentTarget.style.boxShadow = '0 2px 16px rgba(0,0,0,0.35)'
+                    e.currentTarget.style.boxShadow = '0 1px 4px rgba(15,23,42,.06),0 4px 16px rgba(15,23,42,.06)'
                   }}
                 >
                   {/* ── Banner ── */}
-                  <div className="relative overflow-hidden" style={{ height:140, flexShrink:0, background:CARD_GRADIENTS[site.site_type]||CARD_GRADIENTS.site_scanning }}>
+                  <div style={{ height:130, flexShrink:0, position:'relative', overflow:'hidden', background:CARD_GRADIENTS[site.site_type]||CARD_GRADIENTS.site_scanning }}>
                     {(site.site_photo_url || getSiteHeaderImage(site.site_type)) && (
                       <img src={site.site_photo_url||getSiteHeaderImage(site.site_type)} alt=""
-                        className="absolute inset-0 w-full h-full object-cover" style={{ opacity:0.5 }} />
+                        style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }} />
                     )}
-                    <div className="absolute inset-0" style={{ background:'linear-gradient(175deg,rgba(0,0,0,0.08) 0%,rgba(5,10,22,0.62) 100%)' }} />
-                    <div className="absolute inset-0 flex flex-col justify-between" style={{ padding:'12px 15px' }}>
-                      {/* top row: location + status */}
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-1.5 min-w-0"
-                          style={{
-                            background:'rgba(0,0,0,0.48)', backdropFilter:'blur(10px)',
-                            border:'1px solid rgba(255,255,255,0.15)',
-                            padding:'3px 9px', borderRadius:'99px',
-                            fontSize:'10px', color:'rgba(255,255,255,0.88)', fontWeight:'500',
-                            maxWidth:'58%',
-                          }}>
+                    <div style={{ position:'absolute', inset:0, background:'linear-gradient(to bottom, transparent 30%, rgba(0,0,0,0.62) 100%)' }} />
+                    <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column', justifyContent:'space-between', padding:'12px 14px' }}>
+                      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:'8px' }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:'5px', background:'rgba(0,0,0,0.45)', backdropFilter:'blur(10px)', border:'1px solid rgba(255,255,255,.18)', padding:'3px 9px', borderRadius:'999px', fontSize:'10px', color:'rgba(255,255,255,.92)', fontWeight:'500', maxWidth:'58%', minWidth:0 }}>
                           <MapPin size={9} style={{ flexShrink:0 }} />
                           <span style={{ whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{site.location}</span>
                         </div>
                         <Pill status={site.site_status} colors={STATUS_COLORS} />
                       </div>
-                      {/* bottom: site name */}
-                      <p style={{
-                        fontSize:'15px', fontWeight:'800', color:'#ffffff',
-                        letterSpacing:'-0.02em', textShadow:'0 2px 12px rgba(0,0,0,0.8)',
-                        whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
-                        lineHeight:1.2,
-                      }}>
+                      <p style={{ margin:0, fontSize:'15px', fontWeight:'800', color:'white', letterSpacing:'-.02em', textShadow:'0 2px 10px rgba(0,0,0,.7)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', lineHeight:1.25 }}>
                         {site.site_name}
                       </p>
                     </div>
                   </div>
 
                   {/* ── Body ── */}
-                  <div style={{ padding:'17px 20px', display:'flex', flexDirection:'column', flex:1 }}>
+                  <div style={{ padding:'16px 18px', display:'flex', flexDirection:'column', flex:1 }}>
 
-                    {/* Type chip + report status */}
-                    <div className="flex items-center gap-2 mb-3.5">
-                      <span style={{
-                        fontSize:'10px', fontWeight:'700', padding:'3px 10px', borderRadius:'6px',
-                        background:typeMeta.chipBg, color:typeMeta.color, flexShrink:0,
-                        border:`1px solid ${typeMeta.color}22`,
-                      }}>
+                    {/* Type + report */}
+                    <div style={{ display:'flex', alignItems:'center', gap:'6px', marginBottom:'12px' }}>
+                      <span style={{ fontSize:'10px', fontWeight:'700', padding:'3px 9px', borderRadius:'6px', background:typeMeta.chipBg, color:typeMeta.color, border:`1px solid ${typeMeta.chipBorder}`, flexShrink:0 }}>
                         {typeMeta.label}
                       </span>
                       <Pill status={site.report_status} colors={REPORT_COLORS} />
                     </div>
 
-                    {/* Info bar: date + duration */}
-                    <div className="flex items-center gap-4 mb-4 pb-4" style={{ borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
-                      <div className="flex items-center gap-1.5">
-                        <Calendar size={12} color="#4b5563" />
-                        <span style={{ fontSize:'12px', color:'#94a3b8', fontWeight:'500' }}>
+                    {/* Progress bars */}
+                    {(() => {
+                      const sp = SITE_PROGRESS[site.site_status] || SITE_PROGRESS.upcoming
+                      const rp = REPORT_PROGRESS[site.report_status] || REPORT_PROGRESS.pending
+                      const showReport = site.site_type !== 'meeting' && site.report_status !== 'not_applicable'
+                      return (
+                        <div style={{ marginBottom:'12px', display:'flex', flexDirection:'column', gap:'7px' }}>
+                          <div>
+                            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'4px' }}>
+                              <span style={{ fontSize:'10px', fontWeight:'600', color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.04em' }}>Site</span>
+                              <span style={{ fontSize:'10px', fontWeight:'700', color:sp.color }}>{sp.pct}%</span>
+                            </div>
+                            <div style={{ height:'5px', borderRadius:'999px', background:'#f1f5f9', overflow:'hidden' }}>
+                              <div style={{ height:'100%', width:`${sp.pct}%`, borderRadius:'999px', background:sp.color, transition:'width .4s ease' }} />
+                            </div>
+                          </div>
+                          {showReport && (
+                            <div>
+                              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'4px' }}>
+                                <span style={{ fontSize:'10px', fontWeight:'600', color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.04em' }}>Report</span>
+                                <span style={{ fontSize:'10px', fontWeight:'700', color:rp.color }}>{rp.pct}%</span>
+                              </div>
+                              <div style={{ height:'5px', borderRadius:'999px', background:'#f1f5f9', overflow:'hidden' }}>
+                                <div style={{ height:'100%', width:`${rp.pct}%`, borderRadius:'999px', background:rp.color, transition:'width .4s ease' }} />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
+
+                    {/* Info bar */}
+                    <div style={{ display:'flex', alignItems:'center', gap:'16px', marginBottom:'12px', paddingBottom:'12px', borderBottom:'1px solid #f1f5f9' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:'5px' }}>
+                        <Calendar size={12} color="#94a3b8" />
+                        <span style={{ fontSize:'12px', color:'#64748b', fontWeight:'500' }}>
                           {new Date(site.scheduled_date).toLocaleDateString('en-MY',{ day:'numeric', month:'short', year:'numeric' })}
                         </span>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <Clock size={12} color="#4b5563" />
-                        <span style={{ fontSize:'12px', color:'#94a3b8', fontWeight:'500' }}>{site.site_duration_days}d</span>
+                      <div style={{ display:'flex', alignItems:'center', gap:'5px' }}>
+                        <Clock size={12} color="#94a3b8" />
+                        <span style={{ fontSize:'12px', color:'#64748b', fontWeight:'500' }}>{site.site_duration_days}d</span>
                       </div>
                     </div>
 
                     {/* PIC + crew */}
-                    <div className="flex items-center gap-2 mb-4">
+                    <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'12px' }}>
                       {pic
-                        ? <Avatar name={pic.team_members?.full_name} size={26} index={memberIdx>=0?memberIdx:0} avatarUrl={pic.team_members?.avatar_url} />
-                        : <div style={{ width:26, height:26, borderRadius:'50%', background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.1)', flexShrink:0 }} />
+                        ? <Avatar name={pic.team_members?.full_name} size={28} index={memberIdx>=0?memberIdx:0} avatarUrl={pic.team_members?.avatar_url} />
+                        : <div style={{ width:28, height:28, borderRadius:'50%', background:'#f1f5f9', border:'1px solid #e2e8f0', flexShrink:0 }} />
                       }
-                      <span style={{ fontSize:'12px', fontWeight:'600', color:'#dde3ec', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', flex:1, minWidth:0 }}>
-                        {pic?.team_members?.full_name || '—'}
-                      </span>
-                      {pic && (
-                        <span style={{ fontSize:'9px', fontWeight:'700', padding:'2px 7px', borderRadius:'5px', background:'rgba(59,130,246,0.15)', color:'#60a5fa', border:'1px solid rgba(59,130,246,0.28)', flexShrink:0 }}>PIC</span>
-                      )}
+                      <div style={{ display:'flex', alignItems:'center', gap:'5px', flex:1, minWidth:0 }}>
+                        <span style={{ fontSize:'13px', fontWeight:'700', color:'#0f172a', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                          {pic?.team_members?.full_name || <span style={{ color:'#94a3b8', fontWeight:'500' }}>No PIC</span>}
+                        </span>
+                        {pic && (
+                          <span style={{ fontSize:'9px', fontWeight:'800', padding:'2px 7px', borderRadius:'5px', background:'#eff6ff', color:'#1d4ed8', border:'1px solid #bfdbfe', flexShrink:0, letterSpacing:'.02em' }}>PIC</span>
+                        )}
+                      </div>
                       {crew.length > 0 && (
-                        <div className="flex items-center flex-shrink-0">
-                          <div className="flex">
-                            {crew.slice(0,3).map((c,ci) => (
-                              <div key={ci} title={c.team_members?.full_name} style={{ marginLeft:ci>0?'-6px':0 }}>
-                                <Avatar name={c.team_members?.full_name||'?'} size={20} index={ci+1} avatarUrl={c.team_members?.avatar_url} />
-                              </div>
-                            ))}
-                            {crew.length > 3 && (
-                              <div style={{ width:20,height:20,borderRadius:'50%',marginLeft:'-6px',background:'rgba(255,255,255,0.09)',border:'1.5px solid rgba(255,255,255,0.12)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'7px',fontWeight:'700',color:'#64748b' }}>
-                                +{crew.length-3}
-                              </div>
-                            )}
-                          </div>
+                        <div style={{ display:'flex', flexShrink:0 }}>
+                          {crew.slice(0,3).map((c,ci) => (
+                            <div key={ci} title={c.team_members?.full_name} style={{ marginLeft:ci>0?'-6px':0 }}>
+                              <Avatar name={c.team_members?.full_name||'?'} size={22} index={ci+1} avatarUrl={c.team_members?.avatar_url} />
+                            </div>
+                          ))}
+                          {crew.length > 3 && (
+                            <div style={{ width:22,height:22,borderRadius:'50%',marginLeft:'-6px',background:'#f1f5f9',border:'2px solid white',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'8px',fontWeight:'800',color:'#64748b' }}>
+                              +{crew.length-3}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
 
-                    {/* Action buttons — pinned to bottom */}
-                    <div className="flex items-center gap-2" style={{ marginTop:'auto', paddingTop:'12px', borderTop:'1px solid rgba(255,255,255,0.06)' }}>
+                    {/* Actions — pinned to bottom */}
+                    <div style={{ display:'flex', alignItems:'center', gap:'6px', marginTop:'auto', paddingTop:'12px', borderTop:'1px solid #f1f5f9' }}>
                       <Link to={`/sites/${site.id}`}
-                        className="flex items-center justify-center gap-1.5 transition-all"
-                        style={{ flex:1, padding:'9px 0', borderRadius:'9px', fontSize:'12px', fontWeight:'700', color:'#60a5fa', background:'rgba(37,99,235,0.1)', border:'1px solid rgba(59,130,246,0.22)', textDecoration:'none' }}
-                        onMouseEnter={e => e.currentTarget.style.background='rgba(37,99,235,0.22)'}
-                        onMouseLeave={e => e.currentTarget.style.background='rgba(37,99,235,0.1)'}>
+                        style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:'5px', padding:'8px 0', borderRadius:'8px', fontSize:'12px', fontWeight:'750', color:'white', background:'#2563eb', textDecoration:'none', boxShadow:'0 2px 8px rgba(37,99,235,.28)' }}
+                        onMouseEnter={e => e.currentTarget.style.background='#1d4ed8'}
+                        onMouseLeave={e => e.currentTarget.style.background='#2563eb'}>
                         <ArrowUpRight size={12} /> View
                       </Link>
                       <button
-                        onClick={() => {
-                          if (isExpanded) { setExpandedCard(null); setDraftStatus(null) }
-                          else { setExpandedCard(site.id); setDraftStatus({ site_status:site.site_status, report_status:site.report_status }) }
+                        onClick={(e) => {
+                          if (isExpanded) {
+                            setExpandedCard(null); setDraftStatus(null); setPanelAnchor(null)
+                          } else {
+                            const rect = e.currentTarget.getBoundingClientRect()
+                            const panelH = 300
+                            const spaceBelow = window.innerHeight - rect.bottom
+                            const top = spaceBelow > panelH ? rect.bottom + 8 : rect.top - panelH - 8
+                            const left = Math.min(Math.max(rect.left - 80, 8), window.innerWidth - 300)
+                            setPanelAnchor({ top, left })
+                            setExpandedCard(site.id)
+                            setDraftStatus({ site_status:site.site_status, report_status:site.report_status })
+                          }
                         }}
-                        className="flex items-center justify-center gap-1.5 transition-all"
                         style={{
-                          flex:1, padding:'9px 0', borderRadius:'9px', fontSize:'12px', fontWeight:'700', cursor:'pointer', fontFamily:'inherit',
-                          background: isExpanded ? 'rgba(37,99,235,0.2)' : 'rgba(255,255,255,0.05)',
-                          border:`1px solid ${isExpanded ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.09)'}`,
-                          color: isExpanded ? '#60a5fa' : '#94a3b8',
+                          flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:'5px',
+                          padding:'8px 0', borderRadius:'8px', fontSize:'12px', fontWeight:'750', cursor:'pointer', fontFamily:'inherit',
+                          background: isExpanded ? '#eff6ff' : '#0891b2',
+                          border: `1px solid ${isExpanded ? '#bfdbfe' : '#0891b2'}`,
+                          color: isExpanded ? '#2563eb' : 'white',
+                          boxShadow: isExpanded ? 'none' : '0 2px 8px rgba(8,145,178,.28)',
                         }}>
                         <Pencil size={11} /> Update
                       </button>
                       <button onClick={() => openEdit(site)}
-                        className="flex items-center justify-center transition-all"
-                        style={{ width:34,height:34,borderRadius:'9px',cursor:'pointer',flexShrink:0,background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.09)',color:'#64748b' }}
-                        onMouseEnter={e => { e.currentTarget.style.color='#cbd5e1'; e.currentTarget.style.background='rgba(255,255,255,0.1)' }}
-                        onMouseLeave={e => { e.currentTarget.style.color='#64748b'; e.currentTarget.style.background='rgba(255,255,255,0.05)' }}>
+                        style={{ width:34,height:34,borderRadius:'8px',cursor:'pointer',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',background:'#fff7ed',border:'1px solid #fed7aa',color:'#d97706',transition:'all .15s' }}
+                        onMouseEnter={e => { e.currentTarget.style.background='#ffedd5' }}
+                        onMouseLeave={e => { e.currentTarget.style.background='#fff7ed' }}>
                         <Pencil size={12} />
                       </button>
                       <button onClick={() => handleDelete(site.id)}
-                        className="flex items-center justify-center transition-all"
-                        style={{ width:34,height:34,borderRadius:'9px',cursor:'pointer',flexShrink:0,background:'rgba(239,68,68,0.07)',border:'1px solid rgba(239,68,68,0.18)',color:'rgba(239,68,68,0.65)' }}
-                        onMouseEnter={e => { e.currentTarget.style.background='rgba(239,68,68,0.18)'; e.currentTarget.style.color='#f87171' }}
-                        onMouseLeave={e => { e.currentTarget.style.background='rgba(239,68,68,0.07)'; e.currentTarget.style.color='rgba(239,68,68,0.65)' }}>
+                        style={{ width:34,height:34,borderRadius:'8px',cursor:'pointer',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',background:'#fee2e2',border:'1px solid #fecaca',color:'#dc2626',transition:'all .15s' }}
+                        onMouseEnter={e => { e.currentTarget.style.background='#fecaca' }}
+                        onMouseLeave={e => { e.currentTarget.style.background='#fee2e2' }}>
                         <Trash2 size={12} />
                       </button>
                     </div>
 
-                    {/* Inline update panel */}
-                    {isExpanded && draftStatus && (
-                      <div style={{ marginTop:'12px', padding:'14px', borderRadius:'12px', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)' }}>
-                        <p style={{ fontSize:'9px', fontWeight:'700', color:'#475569', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:'8px' }}>Site Status</p>
-                        <div className="flex flex-wrap gap-1.5" style={{ marginBottom:'12px' }}>
-                          {['upcoming','ongoing','completed','cancelled','postponed'].map(s => {
-                            const c = STATUS_COLORS[s]; const active = draftStatus.site_status === s
-                            return (
-                              <button key={s} onClick={() => setDraftStatus(d => ({...d, site_status:s}))}
-                                style={{ padding:'4px 10px', borderRadius:'99px', fontSize:'10px', fontWeight:'600', cursor:'pointer', textTransform:'capitalize', fontFamily:'inherit', border:`1px solid ${active?c.border:'rgba(255,255,255,0.08)'}`, background:active?c.bg:'transparent', color:active?c.text:'#64748b' }}>
-                                {s}
-                              </button>
-                            )
-                          })}
-                        </div>
-                        {(site.site_type === 'site_scanning' || site.site_type === 'site_visit') && (<>
-                          <p style={{ fontSize:'9px', fontWeight:'700', color:'#475569', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:'8px' }}>Report Status</p>
-                          <div className="flex flex-wrap gap-1.5" style={{ marginBottom:'12px' }}>
-                            {['pending','in_progress','submitted','approved','not_applicable'].map(s => {
-                              const c = REPORT_COLORS[s]; const active = draftStatus.report_status === s
-                              const locked = s === 'approved' && !isZairul
-                              return (
-                                <button key={s} disabled={locked} onClick={() => !locked && setDraftStatus(d => ({...d, report_status:s}))} title={locked?'Only Zairul can approve':undefined}
-                                  style={{ padding:'4px 10px', borderRadius:'99px', fontSize:'10px', fontWeight:'600', cursor:locked?'not-allowed':'pointer', textTransform:'capitalize', fontFamily:'inherit', border:`1px solid ${active?c.border:'rgba(255,255,255,0.08)'}`, background:active?c.bg:'transparent', color:active?c.text:locked?'#334155':'#64748b', opacity:locked?0.4:1 }}>
-                                  {s.replace(/_/g,' ')}
-                                </button>
-                              )
-                            })}
-                          </div>
-                        </>)}
-                        <div className="flex gap-2" style={{ borderTop:'1px solid rgba(255,255,255,0.06)', paddingTop:'10px' }}>
-                          <button onClick={() => handleQuickSave(site)} disabled={!!quickSaving}
-                            style={{ flex:1, padding:'8px 0', borderRadius:'10px', fontSize:'12px', fontWeight:'700', color:'white', cursor:'pointer', border:'none', fontFamily:'inherit', background:'linear-gradient(135deg,#2563eb,#0ea5e9)', opacity:quickSaving?0.6:1 }}>
-                            {quickSaving === site.id ? 'Saving…' : 'Save'}
-                          </button>
-                          <button onClick={() => { setExpandedCard(null); setDraftStatus(null) }}
-                            style={{ flex:1, padding:'8px 0', borderRadius:'10px', fontSize:'12px', fontWeight:'600', color:'#94a3b8', cursor:'pointer', fontFamily:'inherit', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)' }}>
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    )}
 
                   </div>
                 </div>
@@ -621,80 +556,152 @@ export default function Sites() {
 
         {/* ── PAGINATION ── */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-between pb-10">
-            <span style={{ fontSize:'12px', color:'#475569' }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:'24px' }}>
+            <span style={{ fontSize:'12px', color:'#64748b', fontWeight:'600' }}>
               Showing {(page-1)*PER_PAGE+1}–{Math.min(page*PER_PAGE, filtered.length)} of {filtered.length} sites
             </span>
-            <div className="flex gap-1.5">
+            <div style={{ display:'flex', gap:'6px' }}>
               <button onClick={() => setPage(p => Math.max(1,p-1))} disabled={page===1}
-                style={{ padding:'6px 14px', borderRadius:'8px', fontSize:'12px', fontWeight:'500', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.09)', color:page===1?'#334155':'#94a3b8', cursor:page===1?'default':'pointer', fontFamily:'inherit' }}>‹</button>
+                style={{ padding:'6px 14px', borderRadius:'8px', fontSize:'12px', fontWeight:'600', background:'white', border:'1px solid #e2e8f0', color:page===1?'#cbd5e1':'#64748b', cursor:page===1?'default':'pointer', fontFamily:'inherit' }}>‹</button>
               {Array.from({ length:totalPages }, (_,i) => i+1).map(p => (
                 <button key={p} onClick={() => setPage(p)}
-                  style={{ padding:'6px 12px', borderRadius:'8px', fontSize:'12px', fontWeight:'600', background:page===p?'#2563eb':'rgba(255,255,255,0.05)', border:`1px solid ${page===p?'#2563eb':'rgba(255,255,255,0.09)'}`, color:page===p?'white':'#94a3b8', cursor:'pointer', fontFamily:'inherit' }}>
+                  style={{ padding:'6px 12px', borderRadius:'8px', fontSize:'12px', fontWeight:'700', background:page===p?'#0f172a':'white', border:`1px solid ${page===p?'#0f172a':'#e2e8f0'}`, color:page===p?'white':'#64748b', cursor:'pointer', fontFamily:'inherit' }}>
                   {p}
                 </button>
               ))}
               <button onClick={() => setPage(p => Math.min(totalPages,p+1))} disabled={page===totalPages}
-                style={{ padding:'6px 14px', borderRadius:'8px', fontSize:'12px', fontWeight:'500', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.09)', color:page===totalPages?'#334155':'#94a3b8', cursor:page===totalPages?'default':'pointer', fontFamily:'inherit' }}>›</button>
+                style={{ padding:'6px 14px', borderRadius:'8px', fontSize:'12px', fontWeight:'600', background:'white', border:'1px solid #e2e8f0', color:page===totalPages?'#cbd5e1':'#64748b', cursor:page===totalPages?'default':'pointer', fontFamily:'inherit' }}>›</button>
             </div>
           </div>
         )}
 
-      </div>
+      </main>
+
+      {/* ── FLOATING UPDATE PANEL ── */}
+      {expandedCard && draftStatus && panelAnchor && (() => {
+        const site = paginated.find(s => s.id === expandedCard)
+        if (!site) return null
+        const close = () => { setExpandedCard(null); setDraftStatus(null); setPanelAnchor(null) }
+        return (
+          <>
+            <div style={{ position:'fixed', inset:0, zIndex:49 }} onClick={close} />
+            <div style={{
+              position:'fixed', top:panelAnchor.top, left:panelAnchor.left,
+              zIndex:50, width:'292px',
+              background:'white', border:'1px solid #e2e8f0', borderRadius:'16px',
+              boxShadow:'0 24px 64px rgba(15,23,42,.18),0 4px 16px rgba(15,23,42,.08)',
+              padding:'18px',
+              animation:'fadeSlideIn .15s ease',
+            }}>
+              <style>{`@keyframes fadeSlideIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}`}</style>
+
+              {/* Header */}
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'14px' }}>
+                <div>
+                  <p style={{ margin:0, fontSize:'13px', fontWeight:'800', color:'#0f172a', lineHeight:1.3 }}>{site.site_name}</p>
+                  <p style={{ margin:'2px 0 0', fontSize:'11px', color:'#94a3b8', fontWeight:'500' }}>Update status</p>
+                </div>
+                <button onClick={close} style={{ background:'none', border:'none', cursor:'pointer', color:'#94a3b8', padding:'4px', borderRadius:'6px' }}>
+                  <X size={14} />
+                </button>
+              </div>
+
+              <p style={{ fontSize:'9px', fontWeight:'800', color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.08em', margin:'0 0 8px' }}>Site Status</p>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:'6px', marginBottom:'14px' }}>
+                {['upcoming','ongoing','completed','cancelled','postponed'].map(s => {
+                  const c = STATUS_COLORS[s]; const active = draftStatus.site_status === s
+                  return (
+                    <button key={s} onClick={() => setDraftStatus(d => ({...d, site_status:s}))}
+                      style={{ padding:'5px 11px', borderRadius:'999px', fontSize:'11px', fontWeight:'700', cursor:'pointer', textTransform:'capitalize', fontFamily:'inherit', border:`1px solid ${active?c.border:'#e2e8f0'}`, background:active?c.bg:'#f8fafc', color:active?c.text:'#64748b', transition:'all .12s' }}>
+                      {s}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {(site.site_type === 'site_scanning' || site.site_type === 'site_visit') && (<>
+                <p style={{ fontSize:'9px', fontWeight:'800', color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.08em', margin:'0 0 8px' }}>Report Status</p>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:'6px', marginBottom:'14px' }}>
+                  {['pending','in_progress','submitted','approved','not_applicable'].map(s => {
+                    const c = REPORT_COLORS[s]; const active = draftStatus.report_status === s
+                    const locked = s === 'approved' && !isZairul
+                    return (
+                      <button key={s} disabled={locked} onClick={() => !locked && setDraftStatus(d => ({...d, report_status:s}))} title={locked?'Only Zairul can approve':undefined}
+                        style={{ padding:'5px 11px', borderRadius:'999px', fontSize:'11px', fontWeight:'700', cursor:locked?'not-allowed':'pointer', textTransform:'capitalize', fontFamily:'inherit', border:`1px solid ${active?c.border:'#e2e8f0'}`, background:active?c.bg:'#f8fafc', color:active?c.text:locked?'#cbd5e1':'#64748b', opacity:locked?0.5:1, transition:'all .12s' }}>
+                        {s.replace(/_/g,' ')}
+                      </button>
+                    )
+                  })}
+                </div>
+              </>)}
+
+              <div style={{ display:'flex', gap:'8px', borderTop:'1px solid #f1f5f9', paddingTop:'14px' }}>
+                <button onClick={() => handleQuickSave(site)} disabled={!!quickSaving}
+                  style={{ flex:1, padding:'9px 0', borderRadius:'9px', fontSize:'13px', fontWeight:'750', color:'white', cursor:'pointer', border:'none', fontFamily:'inherit', background:'#0f172a', opacity:quickSaving?0.6:1 }}>
+                  {quickSaving === site.id ? 'Saving…' : 'Save Changes'}
+                </button>
+                <button onClick={close}
+                  style={{ flex:1, padding:'9px 0', borderRadius:'9px', fontSize:'13px', fontWeight:'600', color:'#475569', cursor:'pointer', fontFamily:'inherit', background:'#f8fafc', border:'1px solid #e2e8f0' }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </>
+        )
+      })()}
 
       {/* ── MODAL ── */}
       {showForm && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 p-4"
-          style={{ background:'rgba(0,0,0,0.75)', backdropFilter:'blur(6px)' }}
+        <div style={{ position:'fixed', inset:0, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50, padding:'16px', background:'rgba(0,0,0,0.5)', backdropFilter:'blur(6px)' }}
           onClick={e => e.target===e.currentTarget && setShowForm(false)}>
-          <div className="w-full max-w-2xl overflow-y-auto rounded-2xl" style={{ maxHeight:'92vh', background:'rgba(10,16,30,0.96)', border:'1px solid rgba(255,255,255,0.1)', backdropFilter:'blur(24px)' }}>
-            <div className="flex items-center justify-between px-7 py-5" style={{ borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
-              <h3 className="text-lg font-bold text-slate-100">{editSite ? 'Edit Site' : 'Add New Site'}</h3>
-              <button onClick={() => setShowForm(false)} className="text-slate-500 hover:text-slate-300 transition-colors"><X size={18} /></button>
+          <div style={{ width:'100%', maxWidth:'672px', overflowY:'auto', maxHeight:'92vh', borderRadius:'16px', background:'rgba(10,16,30,0.97)', border:'1px solid rgba(255,255,255,0.1)', backdropFilter:'blur(24px)' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'20px 28px', borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
+              <h3 style={{ margin:0, fontSize:'17px', fontWeight:'800', color:'#f1f5f9' }}>{editSite ? 'Edit Site' : 'Add New Site'}</h3>
+              <button onClick={() => setShowForm(false)} style={{ background:'none', border:'none', cursor:'pointer', color:'#64748b' }}><X size={18} /></button>
             </div>
-            <div className="px-7 py-5 flex flex-col gap-5">
+            <div style={{ padding:'20px 28px', display:'flex', flexDirection:'column', gap:'20px' }}>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Cover Photo</label>
-                <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={e => {
+                <label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Cover Photo</label>
+                <input ref={photoInputRef} type="file" accept="image/*" style={{ display:'none' }} onChange={e => {
                   const file = e.target.files[0]; if (!file) return
                   setUploadError(null)
                   setForm(f => ({...f, site_photo:file, site_photo_preview:URL.createObjectURL(file)}))
                   e.target.value = ''
                 }} />
                 {form.site_photo_preview ? (
-                  <div className="relative rounded-xl overflow-hidden">
-                    <img src={form.site_photo_preview} alt="preview" className="w-full h-36 object-cover" />
-                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center gap-3 opacity-0 hover:opacity-100 transition-opacity">
-                      <button type="button" onClick={() => photoInputRef.current?.click()} className="px-3 py-1.5 bg-white text-slate-900 rounded-lg text-xs font-semibold">Change</button>
-                      <button type="button" onClick={() => setForm(f => ({...f, site_photo:null, site_photo_preview:null, site_photo_url:''}))} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-xs font-semibold">Remove</button>
+                  <div style={{ position:'relative', borderRadius:'12px', overflow:'hidden' }}>
+                    <img src={form.site_photo_preview} alt="preview" style={{ width:'100%', height:'144px', objectFit:'cover', display:'block' }} />
+                    <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,.5)', display:'flex', alignItems:'center', justifyContent:'center', gap:'12px', opacity:0 }}
+                      onMouseEnter={e => e.currentTarget.style.opacity=1}
+                      onMouseLeave={e => e.currentTarget.style.opacity=0}>
+                      <button type="button" onClick={() => photoInputRef.current?.click()} style={{ padding:'6px 14px', background:'white', color:'#0f172a', borderRadius:'8px', fontSize:'12px', fontWeight:'700', border:'none', cursor:'pointer' }}>Change</button>
+                      <button type="button" onClick={() => setForm(f => ({...f, site_photo:null, site_photo_preview:null, site_photo_url:''}))} style={{ padding:'6px 14px', background:'#ef4444', color:'white', borderRadius:'8px', fontSize:'12px', fontWeight:'700', border:'none', cursor:'pointer' }}>Remove</button>
                     </div>
                   </div>
                 ) : (
                   <button type="button" onClick={() => photoInputRef.current?.click()}
-                    className="w-full flex flex-col items-center justify-center gap-2 py-7 rounded-xl cursor-pointer transition-all"
-                    style={{ border:'2px dashed rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.03)' }}
+                    style={{ width:'100%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'8px', padding:'28px', borderRadius:'12px', cursor:'pointer', border:'2px dashed rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.03)', transition:'all .15s' }}
                     onMouseEnter={e => e.currentTarget.style.borderColor='rgba(59,130,246,0.4)'}
                     onMouseLeave={e => e.currentTarget.style.borderColor='rgba(255,255,255,0.1)'}>
-                    <Camera size={20} className="text-slate-600" />
-                    <span className="text-xs text-slate-500 font-medium">Click to upload a cover photo</span>
-                    <span className="text-[11px] text-slate-700">JPG, PNG, WEBP</span>
+                    <Camera size={20} style={{ color:'#475569' }} />
+                    <span style={{ fontSize:'12px', color:'#475569', fontWeight:'600' }}>Click to upload a cover photo</span>
+                    <span style={{ fontSize:'11px', color:'#334155' }}>JPG, PNG, WEBP</span>
                   </button>
                 )}
-                {uploadError && <p className="mt-2 text-xs text-red-400 font-medium">{uploadError}</p>}
+                {uploadError && <p style={{ marginTop:'8px', fontSize:'12px', color:'#f87171', fontWeight:'600' }}>{uploadError}</p>}
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Site Type</label>
-                <div className="flex gap-2">
+                <label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Site Type</label>
+                <div style={{ display:'flex', gap:'8px' }}>
                   {SITE_TYPES.map(({value,label}) => {
                     const active = form.site_type === value
                     const meta = TYPE_META[value]
                     return (
                       <button key={value} type="button"
                         onClick={() => setForm(f => ({...f, site_type:value, site_duration_days:value==='site_visit'?'0.5':f.site_duration_days}))}
-                        className="flex-1 py-2 rounded-xl text-xs font-semibold transition-all"
-                        style={{ background:active?meta.chipBg:'rgba(255,255,255,0.04)', border:`1px solid ${active?meta.color+'55':'rgba(255,255,255,0.08)'}`, color:active?meta.color:'#64748b', fontFamily:'inherit', cursor:'pointer' }}>
+                        style={{ flex:1, padding:'8px', borderRadius:'10px', fontSize:'12px', fontWeight:'700', fontFamily:'inherit', cursor:'pointer', transition:'all .15s', background:active?meta.chipBg:'rgba(255,255,255,0.04)', border:`1px solid ${active?meta.chipBorder:'rgba(255,255,255,0.08)'}`, color:active?meta.color:'#64748b' }}>
                         {label}
                       </button>
                     )
@@ -703,34 +710,35 @@ export default function Sites() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Site Name *</label>
+                <label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Site Name *</label>
                 <input style={darkInput} value={form.site_name} placeholder="e.g. Jalan Ampang Survey" onChange={e => setForm(f => ({...f, site_name:e.target.value}))} />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Location *</label>
+                <label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Location *</label>
                 <PlaceSearchBox value={form.location} onChange={v => setForm(f => ({...f, location:v, latitude:'', longitude:''}))} onSelect={r => setForm(f => ({...f, location:r.label, latitude:r.latitude, longitude:r.longitude}))} placeholder="Search and choose a location..." />
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Pin on Map <span className="text-slate-700 text-[10px] normal-case tracking-normal">(click to place)</span></label>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'8px' }}>
+                  <label style={{ fontSize:'11px', fontWeight:'700', color:'#475569', textTransform:'uppercase', letterSpacing:'.07em' }}>Pin on Map <span style={{ color:'#334155', fontSize:'10px', textTransform:'none', letterSpacing:0 }}>(click to place)</span></label>
                   {form.latitude !== '' && (
-                    <div className="flex items-center gap-1.5">
-                      <MapPin size={10} className="text-blue-400" />
-                      <span className="text-[11px] text-blue-400 font-medium">{Number(form.latitude).toFixed(5)}, {Number(form.longitude).toFixed(5)}</span>
-                      <button onClick={() => setForm(f => ({...f, latitude:'', longitude:''}))} className="text-slate-600 hover:text-slate-400"><X size={11} /></button>
+                    <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
+                      <MapPin size={10} style={{ color:'#60a5fa' }} />
+                      <span style={{ fontSize:'11px', color:'#60a5fa', fontWeight:'600' }}>{Number(form.latitude).toFixed(5)}, {Number(form.longitude).toFixed(5)}</span>
+                      <button onClick={() => setForm(f => ({...f, latitude:'', longitude:''}))} style={{ background:'none', border:'none', cursor:'pointer', color:'#64748b' }}><X size={11} /></button>
                     </div>
                   )}
                 </div>
                 <LocationPicker lat={form.latitude} lng={form.longitude} onPick={(lat,lng) => setForm(f => ({...f, latitude:lat, longitude:lng}))} mapKey={editSite?.id||'new'} />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Client Company</label><input style={darkInput} value={form.client_company_name} placeholder="Company name" onChange={e => setForm(f => ({...f, client_company_name:e.target.value}))} /></div>
-                <div><label className="block text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Client Name</label><input style={darkInput} value={form.client_name} placeholder="Contact name" onChange={e => setForm(f => ({...f, client_name:e.target.value}))} /></div>
-                <div><label className="block text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Client Number</label><input style={darkInput} value={form.client_number} placeholder="PO-12345" onChange={e => setForm(f => ({...f, client_number:e.target.value}))} /></div>
-                <div><label className="block text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Salesperson</label>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
+                <div><label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Client Company</label><input style={darkInput} value={form.client_company_name} placeholder="Company name" onChange={e => setForm(f => ({...f, client_company_name:e.target.value}))} /></div>
+                <div><label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Client Name</label><input style={darkInput} value={form.client_name} placeholder="Contact name" onChange={e => setForm(f => ({...f, client_name:e.target.value}))} /></div>
+                <div><label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Client Number</label><input style={darkInput} value={form.client_number} placeholder="PO-12345" onChange={e => setForm(f => ({...f, client_number:e.target.value}))} /></div>
+                <div>
+                  <label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Salesperson</label>
                   <select style={darkInput} value={form.salesperson} onChange={e => setForm(f => ({...f, salesperson:e.target.value}))}>
                     <option value="">— Select —</option>
                     {SALESPERSONS.map(sp => <option key={sp} value={sp}>{sp}</option>)}
@@ -738,32 +746,32 @@ export default function Sites() {
                 </div>
               </div>
 
-              <div><label className="block text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Scope of Work</label><textarea style={{...darkInput, resize:'none'}} rows={2} value={form.scope_of_work} placeholder="Describe scope…" onChange={e => setForm(f => ({...f, scope_of_work:e.target.value}))} /></div>
-              <div><label className="block text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Scheduled Date *</label><input type="date" style={darkInput} value={form.scheduled_date} onChange={e => setForm(f => ({...f, scheduled_date:e.target.value}))} /></div>
+              <div><label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Scope of Work</label><textarea style={{...darkInput, resize:'none'}} rows={2} value={form.scope_of_work} placeholder="Describe scope…" onChange={e => setForm(f => ({...f, scope_of_work:e.target.value}))} /></div>
+              <div><label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Scheduled Date *</label><input type="date" style={darkInput} value={form.scheduled_date} onChange={e => setForm(f => ({...f, scheduled_date:e.target.value}))} /></div>
 
               {form.site_type === 'site_scanning' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div><label className="block text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Site Duration (Days)</label><input type="number" min="0" step="0.5" style={darkInput} value={form.site_duration_days} onChange={e => setForm(f => ({...f, site_duration_days:e.target.value}))} /></div>
-                  <div><label className="block text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Report Duration (Days)</label><input type="number" min="0" step="0.5" style={darkInput} value={form.report_duration_days} onChange={e => setForm(f => ({...f, report_duration_days:e.target.value}))} /></div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
+                  <div><label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Site Duration (Days)</label><input type="number" min="0" step="0.5" style={darkInput} value={form.site_duration_days} onChange={e => setForm(f => ({...f, site_duration_days:e.target.value}))} /></div>
+                  <div><label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Report Duration (Days)</label><input type="number" min="0" step="0.5" style={darkInput} value={form.report_duration_days} onChange={e => setForm(f => ({...f, report_duration_days:e.target.value}))} /></div>
                 </div>
               )}
-              {form.site_type === 'site_visit' && <div className="px-4 py-3 rounded-xl text-xs font-medium text-teal-400" style={{ background:'rgba(13,148,136,0.1)', border:'1px solid rgba(13,148,136,0.25)' }}>Duration: Half Day (0.5) — fixed for site visits</div>}
+              {form.site_type === 'site_visit' && <div style={{ padding:'12px 16px', borderRadius:'10px', fontSize:'12px', fontWeight:'600', color:'#2dd4bf', background:'rgba(13,148,136,0.1)', border:'1px solid rgba(13,148,136,0.25)' }}>Duration: Half Day (0.5) — fixed for site visits</div>}
               {form.site_type === 'meeting' && (
-                <div><label className="block text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Meeting Duration</label>
+                <div><label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Meeting Duration</label>
                   <select style={darkInput} value={form.site_duration_days} onChange={e => setForm(f => ({...f, site_duration_days:e.target.value}))}>
                     <option value="0.25">2 Hours</option><option value="0.5">Half Day</option><option value="1">Full Day</option>
                   </select>
                 </div>
               )}
 
-              <div className={`grid gap-3 ${form.site_type==='site_scanning'?'grid-cols-2':'grid-cols-1'}`}>
-                <div><label className="block text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Site Status</label>
+              <div style={{ display:'grid', gridTemplateColumns:form.site_type==='site_scanning'?'1fr 1fr':'1fr', gap:'12px' }}>
+                <div><label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Site Status</label>
                   <select style={darkInput} value={form.site_status} onChange={e => setForm(f => ({...f, site_status:e.target.value}))}>
                     {['upcoming','ongoing','completed','cancelled','postponed'].map(o => <option key={o} value={o}>{o}</option>)}
                   </select>
                 </div>
                 {form.site_type === 'site_scanning' && (
-                  <div><label className="block text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Report Status</label>
+                  <div><label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Report Status</label>
                     <select style={darkInput} value={form.report_status} onChange={e => setForm(f => ({...f, report_status:e.target.value}))}>
                       {['pending','in_progress','submitted','approved','not_applicable'].map(o => <option key={o} value={o}>{o.replace('_',' ')}</option>)}
                     </select>
@@ -771,33 +779,31 @@ export default function Sites() {
                 )}
               </div>
 
-              <div><label className="block text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">{form.site_type==='meeting'?'Organizer':'PIC'}</label>
+              <div><label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>{form.site_type==='meeting'?'Organizer':'PIC'}</label>
                 <select style={darkInput} value={form.pic_id} onChange={e => setForm(f => ({...f, pic_id:e.target.value}))}>
                   <option value="">— Select —</option>
                   {members.map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
                 </select>
               </div>
 
-              <div><label className="block text-xs font-semibold text-slate-500 mb-3 uppercase tracking-wider">{form.site_type==='meeting'?'Attendees':'Crew'}</label>
-                <div className="flex flex-col gap-2">
+              <div><label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'12px', textTransform:'uppercase', letterSpacing:'.07em' }}>{form.site_type==='meeting'?'Attendees':'Crew'}</label>
+                <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
                   {members.map(m => (
-                    <label key={m.id} className="flex items-center gap-3 cursor-pointer group">
-                      <input type="checkbox" checked={form.crew_ids.includes(m.id)} onChange={() => toggleCrew(m.id)} className="w-4 h-4 rounded accent-blue-500" />
-                      <span className="text-sm text-slate-400 group-hover:text-slate-300 transition-colors">{m.full_name}</span>
+                    <label key={m.id} style={{ display:'flex', alignItems:'center', gap:'12px', cursor:'pointer' }}>
+                      <input type="checkbox" checked={form.crew_ids.includes(m.id)} onChange={() => toggleCrew(m.id)} style={{ width:'16px', height:'16px', accentColor:'#2563eb' }} />
+                      <span style={{ fontSize:'13px', color:'#94a3b8' }}>{m.full_name}</span>
                     </label>
                   ))}
                 </div>
               </div>
 
-              <div><label className="block text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Notes</label><textarea style={{...darkInput, resize:'none'}} rows={3} value={form.notes} placeholder="Optional notes…" onChange={e => setForm(f => ({...f, notes:e.target.value}))} /></div>
+              <div><label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#475569', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.07em' }}>Notes</label><textarea style={{...darkInput, resize:'none'}} rows={3} value={form.notes} placeholder="Optional notes…" onChange={e => setForm(f => ({...f, notes:e.target.value}))} /></div>
 
-              <div className="flex gap-3 pt-1" style={{ borderTop:'1px solid rgba(255,255,255,0.07)' }}>
-                <button onClick={handleSave} disabled={saving} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-all"
-                  style={{ background:'linear-gradient(135deg,#2563eb,#0ea5e9)', opacity:saving?0.6:1, boxShadow:'0 0 16px rgba(59,130,246,0.3)', border:'none', cursor:'pointer', fontFamily:'inherit' }}>
+              <div style={{ display:'flex', gap:'12px', paddingTop:'4px', borderTop:'1px solid rgba(255,255,255,0.07)' }}>
+                <button onClick={handleSave} disabled={saving} style={{ flex:1, padding:'11px', borderRadius:'10px', fontSize:'14px', fontWeight:'800', color:'white', border:'none', cursor:'pointer', fontFamily:'inherit', background:'linear-gradient(135deg,#2563eb,#0ea5e9)', opacity:saving?0.6:1, boxShadow:'0 0 16px rgba(59,130,246,.3)' }}>
                   {saving ? 'Saving…' : editSite ? 'Save Changes' : 'Add Site'}
                 </button>
-                <button onClick={() => setShowForm(false)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-slate-400 hover:text-slate-200 transition-all"
-                  style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', cursor:'pointer', fontFamily:'inherit' }}>
+                <button onClick={() => setShowForm(false)} style={{ flex:1, padding:'11px', borderRadius:'10px', fontSize:'14px', fontWeight:'600', color:'#94a3b8', cursor:'pointer', fontFamily:'inherit', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)' }}>
                   Cancel
                 </button>
               </div>
