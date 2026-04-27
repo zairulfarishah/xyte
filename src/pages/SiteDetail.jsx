@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { ChevronLeft, ChevronRight, Pencil, MapPin, Upload, X, Users, FileText, LayoutGrid } from 'lucide-react'
 import { getSiteHeaderImage } from '../utils/siteHeader'
+import { parseCompletionMeta } from '../utils/completionMeta'
 
 const STATUS_COLORS = {
   upcoming:  { bg: '#fef9c3', text: '#854d0e', border: '#fde047' },
@@ -149,6 +150,7 @@ export default function SiteDetail() {
 
   const pic  = site.site_assignments?.find(a => a.assignment_role === 'PIC')
   const crew = site.site_assignments?.filter(a => a.assignment_role === 'crew') || []
+  const completionMeta = parseCompletionMeta(site.notes || '')
 
   return (
     <div style={{ background: '#f1f5f9', minHeight: '100vh' }}>
@@ -274,13 +276,14 @@ export default function SiteDetail() {
                     { label: 'Site Type',       value: TYPE_LABELS[site.site_type] || 'Site Scanning' },
                     { label: 'Scheduled Date',  value: new Date(site.scheduled_date).toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' }) },
                     { label: 'Site Duration',   value: `${site.site_duration_days} day(s)` },
-                    { label: 'Report Duration', value: site.report_duration_days > 0 ? `${site.report_duration_days} day(s)` : 'N/A' },
-                    { label: 'Client Company',  value: site.client_company_name || 'Not set' },
-                    { label: 'Location',        value: site.location },
-                    { label: 'Coordinates',     value: site.latitude && site.longitude ? `${Number(site.latitude).toFixed(4)}, ${Number(site.longitude).toFixed(4)}` : 'Not set' },
-                  ].map(({ label, value }) => (
-                    <div key={label} style={{ background: '#f8fafc', borderRadius: '10px', padding: '14px', border: '1px solid #e2e8f0' }}>
-                      <p style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '600', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</p>
+                  { label: 'Report Duration', value: site.report_duration_days > 0 ? `${site.report_duration_days} day(s)` : 'N/A' },
+                  { label: 'Client Company',  value: site.client_company_name || 'Not set' },
+                  { label: 'Location',        value: site.location },
+                  { label: 'Coordinates',     value: site.latitude && site.longitude ? `${Number(site.latitude).toFixed(4)}, ${Number(site.longitude).toFixed(4)}` : 'Not set' },
+                  { label: 'Delivery Order',  value: completionMeta.deliveryOrderNumber || 'N/A' },
+                ].map(({ label, value }) => (
+                  <div key={label} style={{ background: '#f8fafc', borderRadius: '10px', padding: '14px', border: '1px solid #e2e8f0' }}>
+                    <p style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '600', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</p>
                       <p style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a' }}>{value}</p>
                     </div>
                   ))}
@@ -345,6 +348,7 @@ export default function SiteDetail() {
                 { label: 'Scheduled Date', value: new Date(site.scheduled_date).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' }) },
                 { label: 'Site Duration',  value: `${site.site_duration_days} day(s)` },
                 { label: 'Site Type',      value: TYPE_LABELS[site.site_type] || 'Site Scanning' },
+                { label: 'Delivery Order', value: completionMeta.deliveryOrderNumber || 'N/A' },
               ].map(({ label, value }) => (
                 <div key={label}>
                   <p style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '3px' }}>{label}</p>
@@ -354,6 +358,12 @@ export default function SiteDetail() {
               <div>
                 <p style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '6px' }}>Report Status</p>
                 <StatusPill status={site.report_status} colors={REPORT_COLORS} />
+              </div>
+              <div>
+                <p style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '6px' }}>Reason If No DO</p>
+                <p style={{ fontSize: '13px', fontWeight: '600', color: completionMeta.completionReason ? '#0f172a' : '#94a3b8', lineHeight: 1.6 }}>
+                  {completionMeta.completionReason || 'N/A'}
+                </p>
               </div>
             </div>
           </div>

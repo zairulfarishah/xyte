@@ -8,6 +8,7 @@ import { calculateWorkload } from '../utils/workload'
 import { notify } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
+import { mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../utils/completionMeta'
 import 'leaflet/dist/leaflet.css'
 
 function xIcon(color, selected = false) {
@@ -328,15 +329,29 @@ export default function Dashboard() {
   async function handleStatusSave() {
     if (!updateSite) return
     if (updateSite.report_status === 'approved' && !isZairul) return
+    const completionError = validateCompletionRequirement(
+      updateSite.site_status,
+      updateSite.delivery_order_number,
+      updateSite.completion_reason
+    )
+    if (completionError) {
+      alert(completionError)
+      return
+    }
     setSaving(true)
 
     const original = sites.find(s => s.id === updateSite.id)
+    const mergedNotes = mergeCompletionMeta(original?.notes || '', {
+      deliveryOrderNumber: updateSite.delivery_order_number,
+      completionReason: updateSite.completion_reason,
+    })
 
     const { error } = await supabase
       .from('sites')
       .update({
         site_status: updateSite.site_status,
         report_status: updateSite.report_status,
+        notes: mergedNotes,
       })
       .eq('id', updateSite.id)
 
@@ -1090,7 +1105,18 @@ export default function Dashboard() {
                             ))}
                           </div>
                           <button
-                            onClick={() => setUpdateSite({ id: site.id, site_name: site.site_name, site_status: site.site_status, report_status: site.report_status, site_type: site.site_type || 'site_scanning' })}
+                            onClick={() => {
+                              const completionMeta = parseCompletionMeta(site.notes || '')
+                              setUpdateSite({
+                                id: site.id,
+                                site_name: site.site_name,
+                                site_status: site.site_status,
+                                report_status: site.report_status,
+                                site_type: site.site_type || 'site_scanning',
+                                delivery_order_number: completionMeta.deliveryOrderNumber,
+                                completion_reason: completionMeta.completionReason,
+                              })
+                            }}
                             style={{
                               border: 'none', background: '#2563eb', color: 'white',
                               borderRadius: '7px', padding: '5px 10px', fontWeight: '600',
@@ -1579,6 +1605,39 @@ export default function Dashboard() {
                       )
                     })}
                   </div>
+                </div>
+              )}
+
+              {updateSite.site_status === 'completed' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: '600', color: '#374151', display: 'block', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Delivery Order Number
+                    </label>
+                    <input
+                      value={updateSite.delivery_order_number || ''}
+                      onChange={event => setUpdateSite(site => ({ ...site, delivery_order_number: event.target.value }))}
+                      placeholder="Key in DO number"
+                      style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', boxSizing: 'border-box', color: '#0f172a' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: '600', color: '#374151', display: 'block', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Reason If No DO
+                    </label>
+                    <textarea
+                      value={updateSite.completion_reason || ''}
+                      onChange={event => setUpdateSite(site => ({ ...site, completion_reason: event.target.value }))}
+                      placeholder="State the reason if there is no delivery order number"
+                      rows={3}
+                      style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', boxSizing: 'border-box', color: '#0f172a', resize: 'vertical', fontFamily: 'inherit' }}
+                    />
+                  </div>
+
+                  <p style={{ margin: 0, fontSize: '12px', color: '#64748b', lineHeight: 1.5 }}>
+                    Completed status requires either a delivery order number or a stated reason.
+                  </p>
                 </div>
               )}
 

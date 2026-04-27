@@ -98,6 +98,12 @@ function timeAgo(index) {
   return times[index % times.length]
 }
 
+function siteHasReport(site) {
+  const siteType = String(site?.site_type || '').toLowerCase()
+  const reportStatus = String(site?.report_status || '').toLowerCase()
+  return siteType === 'site_scanning' && reportStatus !== 'not_applicable'
+}
+
 function buildMemberRecord(member, sites) {
   const assignments = sites.flatMap(site =>
     (site.site_assignments || [])
@@ -107,18 +113,34 @@ function buildMemberRecord(member, sites) {
 
   const picCount = assignments.filter(assignment => normalizeRole(assignment.assignment_role) === 'pic').length
   const crewCount = assignments.filter(assignment => normalizeRole(assignment.assignment_role) === 'crew').length
+  const reportInvolvedCount = assignments.filter(assignment => siteHasReport(assignment.site)).length
 
   return {
     ...member,
     assignments,
     pic_count: picCount,
     crew_count: crewCount,
+    report_involved_count: reportInvolvedCount,
     workload: calculateWorkload(assignments),
   }
 }
 
 function getMemberRole(memberId, assignments) {
   return assignments?.find(assignment => assignment.member_id === memberId)?.assignment_role || '-'
+}
+
+function getRanking(members, key) {
+  return [...members]
+    .sort((a, b) => {
+      const diff = (b[key] || 0) - (a[key] || 0)
+      if (diff !== 0) return diff
+      return a.full_name.localeCompare(b.full_name)
+    })
+    .map((member, index) => ({
+      ...member,
+      rank: index + 1,
+      value: member[key] || 0,
+    }))
 }
 
 export default function Team() {
@@ -283,6 +305,33 @@ export default function Team() {
   const availableCount = members.filter(member => member.workload.status === 'Available').length
   const busyCount = members.filter(member => ['Busy', 'Overloaded'].includes(member.workload.status)).length
   const picLeads = members.filter(member => member.pic_count > 0).length
+  const rankingGroups = useMemo(() => ([
+    {
+      key: 'pic_count',
+      title: 'PIC Ranking',
+      subtitle: 'Most times leading a site',
+      accent: '#38bdf8',
+      emptyLabel: 'No PIC assignments yet.',
+    },
+    {
+      key: 'crew_count',
+      title: 'Crew Ranking',
+      subtitle: 'Most times serving as crew',
+      accent: '#22c55e',
+      emptyLabel: 'No crew assignments yet.',
+    },
+    {
+      key: 'report_involved_count',
+      title: 'Report Ranking',
+      subtitle: 'Most report-involved jobs',
+      accent: '#f59e0b',
+      emptyLabel: 'No report work yet.',
+    },
+  ].map(group => ({
+    ...group,
+    rows: getRanking(members, group.key).filter(member => member.value > 0).slice(0, 5),
+    selectedEntry: selected ? getRanking(members, group.key).find(member => member.id === selected.id) : null,
+  }))), [members, selected])
 
   const topLoadMembers = [...members]
     .sort((a, b) => b.workload.workload_percentage - a.workload.workload_percentage)
@@ -782,6 +831,119 @@ export default function Team() {
                   </div>
                 </div>
               </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '16px', alignItems: 'start' }}>
+                <div
+                  style={{
+                    background: 'rgba(8, 15, 28, 0.92)',
+                    borderRadius: '24px',
+                    border: '1px solid rgba(148,163,184,0.12)',
+                    overflow: 'hidden',
+                    minWidth: 0,
+                  }}
+                >
+                  <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(148,163,184,0.08)' }}>
+                    <p style={{ color: 'white', fontSize: '14px', fontWeight: '700' }}>Team Pulse</p>
+                    <p style={{ color: '#64748b', fontSize: '11px', marginTop: '4px' }}>Fast view of who needs capacity attention.</p>
+                  </div>
+
+                  <div style={{ padding: '14px' }}>
+                    {topLoadMembers.map((member, index) => {
+                      const colors = member.workload.status_colors
+
+                      return (
+                        <div key={member.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '11px 12px', marginBottom: '8px', borderRadius: '18px', background: 'rgba(15,23,42,0.72)', border: '1px solid rgba(148,163,184,0.08)' }}>
+                          <Avatar name={member.full_name} size={38} index={index} avatarUrl={member.avatar_url} onUpload={isZairul ? () => triggerAvatarUpload(member.id) : null} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ color: '#e2e8f0', fontSize: '12px', fontWeight: '700', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.full_name}</p>
+                            <div style={{ height: '6px', background: 'rgba(148,163,184,0.12)', borderRadius: '999px', overflow: 'hidden', marginTop: '8px' }}>
+                              <div style={{ width: `${Math.min(member.workload.workload_percentage, 100)}%`, height: '100%', background: colors.bar, borderRadius: '999px' }} />
+                            </div>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <p style={{ color: 'white', fontSize: '12px', fontWeight: '800' }}>{member.workload.workload_percentage}%</p>
+                            <p style={{ color: '#64748b', fontSize: '10px', marginTop: '3px' }}>{member.workload.status}</p>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    background: 'rgba(8, 15, 28, 0.92)',
+                    borderRadius: '24px',
+                    border: '1px solid rgba(148,163,184,0.12)',
+                    overflow: 'hidden',
+                    minWidth: 0,
+                  }}
+                >
+                  <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(148,163,184,0.08)' }}>
+                    <p style={{ color: 'white', fontSize: '14px', fontWeight: '700' }}>Capacity Radar</p>
+                  </div>
+
+                  <div style={{ padding: '16px 18px' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '10px', minHeight: '120px' }}>
+                      {teamRadar.length === 0 ? (
+                        <p style={{ color: '#64748b', fontSize: '13px', width: '100%', textAlign: 'center' }}>No assignments yet.</p>
+                      ) : teamRadar.map((member, index) => (
+                        <div key={member.id} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ height: '98px', display: 'flex', alignItems: 'flex-end' }}>
+                            <div
+                              style={{
+                                width: '22px',
+                                height: `${Math.max(18, Math.min(member.workload.workload_percentage, 100))}%`,
+                                minHeight: '18px',
+                                borderRadius: '999px',
+                                background: member.workload.status_colors.bar,
+                                boxShadow: `0 10px 24px ${member.workload.status_colors.bar}33`,
+                              }}
+                            />
+                          </div>
+                          <div style={{ width: '100%' }}>
+                            <p style={{ color: '#e2e8f0', fontSize: '10px', fontWeight: '700', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {member.full_name.split(' ')[0]}
+                            </p>
+                            <p style={{ color: '#64748b', fontSize: '10px', textAlign: 'center', marginTop: '3px' }}>{member.workload.workload_percentage}%</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid rgba(148,163,184,0.08)' }}>
+                      <p style={{ color: 'white', fontSize: '22px', fontWeight: '800', lineHeight: 1 }}>{avgWorkload}%</p>
+                      <p style={{ color: '#94a3b8', fontSize: '11px', marginTop: '6px' }}>Average workload across the team right now.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    background: 'rgba(8, 15, 28, 0.92)',
+                    borderRadius: '24px',
+                    border: '1px solid rgba(148,163,184,0.12)',
+                    overflow: 'hidden',
+                    minWidth: 0,
+                  }}
+                >
+                  <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(148,163,184,0.08)' }}>
+                    <p style={{ color: 'white', fontSize: '14px', fontWeight: '700' }}>Ops Notes</p>
+                  </div>
+                  <div style={{ padding: '16px 18px', display: 'grid', gap: '12px' }}>
+                    {[
+                      `${availableCount} members are currently available for new assignments.`,
+                      `${busyCount} members are close to or above their weekly limit.`,
+                      `${picLeads} people are acting as PIC across current site coverage.`,
+                    ].map(note => (
+                      <div key={note} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#38bdf8', marginTop: '6px', flexShrink: 0 }} />
+                        <p style={{ color: '#94a3b8', fontSize: '12px', lineHeight: 1.6 }}>{note}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -795,104 +957,51 @@ export default function Team() {
               }}
             >
               <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(148,163,184,0.08)' }}>
-                <p style={{ color: 'white', fontSize: '14px', fontWeight: '700' }}>Team Pulse</p>
-                <p style={{ color: '#64748b', fontSize: '11px', marginTop: '4px' }}>Fast view of who needs capacity attention.</p>
+                <p style={{ color: 'white', fontSize: '14px', fontWeight: '700' }}>Ranking Board</p>
+                <p style={{ color: '#64748b', fontSize: '11px', marginTop: '4px' }}>PIC, crew, and report involvement across the team.</p>
               </div>
 
-              <div style={{ padding: '14px' }}>
-                {topLoadMembers.map((member, index) => {
-                  const colors = member.workload.status_colors
-
-                  return (
-                    <div key={member.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '11px 12px', marginBottom: '8px', borderRadius: '18px', background: 'rgba(15,23,42,0.72)', border: '1px solid rgba(148,163,184,0.08)' }}>
-                      <Avatar name={member.full_name} size={38} index={index} avatarUrl={member.avatar_url} onUpload={isZairul ? () => triggerAvatarUpload(member.id) : null} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ color: '#e2e8f0', fontSize: '12px', fontWeight: '700', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.full_name}</p>
-                        <div style={{ height: '6px', background: 'rgba(148,163,184,0.12)', borderRadius: '999px', overflow: 'hidden', marginTop: '8px' }}>
-                          <div style={{ width: `${Math.min(member.workload.workload_percentage, 100)}%`, height: '100%', background: colors.bar, borderRadius: '999px' }} />
-                        </div>
+              <div style={{ padding: '14px', display: 'grid', gap: '12px' }}>
+                {rankingGroups.map(group => (
+                  <div key={group.key} style={{ borderRadius: '18px', padding: '13px', background: 'rgba(15,23,42,0.72)', border: '1px solid rgba(148,163,184,0.08)' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px', marginBottom: '10px' }}>
+                      <div>
+                        <p style={{ color: 'white', fontSize: '12px', fontWeight: '700' }}>{group.title}</p>
+                        <p style={{ color: '#64748b', fontSize: '10px', marginTop: '3px' }}>{group.subtitle}</p>
                       </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <p style={{ color: 'white', fontSize: '12px', fontWeight: '800' }}>{member.workload.workload_percentage}%</p>
-                        <p style={{ color: '#64748b', fontSize: '10px', marginTop: '3px' }}>{member.workload.status}</p>
-                      </div>
+                      <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: group.accent, flexShrink: 0, marginTop: '4px' }} />
                     </div>
-                  )
-                })}
-              </div>
-            </div>
 
-            <div
-              style={{
-                background: 'rgba(8, 15, 28, 0.92)',
-                borderRadius: '24px',
-                border: '1px solid rgba(148,163,184,0.12)',
-                overflow: 'hidden',
-              }}
-            >
-              <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(148,163,184,0.08)' }}>
-                <p style={{ color: 'white', fontSize: '14px', fontWeight: '700' }}>Capacity Radar</p>
-              </div>
-
-              <div style={{ padding: '16px 18px' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '10px', minHeight: '120px' }}>
-                  {teamRadar.length === 0 ? (
-                    <p style={{ color: '#64748b', fontSize: '13px', width: '100%', textAlign: 'center' }}>No assignments yet.</p>
-                  ) : teamRadar.map((member, index) => (
-                    <div key={member.id} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                      <div style={{ height: '98px', display: 'flex', alignItems: 'flex-end' }}>
-                        <div
-                          style={{
-                            width: '22px',
-                            height: `${Math.max(18, Math.min(member.workload.workload_percentage, 100))}%`,
-                            minHeight: '18px',
-                            borderRadius: '999px',
-                            background: member.workload.status_colors.bar,
-                            boxShadow: `0 10px 24px ${member.workload.status_colors.bar}33`,
-                          }}
-                        />
+                    {group.rows.length === 0 ? (
+                      <p style={{ color: '#64748b', fontSize: '12px', padding: '6px 0' }}>{group.emptyLabel}</p>
+                    ) : (
+                      <div style={{ display: 'grid', gap: '8px' }}>
+                        {group.rows.map((member, index) => (
+                          <div key={member.id} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div style={{ width: '22px', height: '22px', borderRadius: '999px', background: `${group.accent}22`, border: `1px solid ${group.accent}33`, color: group.accent, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: '800', flexShrink: 0 }}>
+                              {index + 1}
+                            </div>
+                            <Avatar name={member.full_name} size={30} index={index} avatarUrl={member.avatar_url} onUpload={isZairul ? () => triggerAvatarUpload(member.id) : null} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <p style={{ color: '#e2e8f0', fontSize: '12px', fontWeight: '700', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.full_name}</p>
+                              <p style={{ color: '#64748b', fontSize: '10px', marginTop: '3px' }}>{member.value} time{member.value === 1 ? '' : 's'}</p>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                      <div style={{ width: '100%' }}>
-                        <p style={{ color: '#e2e8f0', fontSize: '10px', fontWeight: '700', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {member.full_name.split(' ')[0]}
-                        </p>
-                        <p style={{ color: '#64748b', fontSize: '10px', textAlign: 'center', marginTop: '3px' }}>{member.workload.workload_percentage}%</p>
+                    )}
+
+                    {group.selectedEntry && (
+                      <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid rgba(148,163,184,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                        <span style={{ color: '#94a3b8', fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '.08em' }}>Selected member</span>
+                        <span style={{ color: '#e2e8f0', fontSize: '11px', fontWeight: '700' }}>#{group.selectedEntry.rank} • {group.selectedEntry.value} time{group.selectedEntry.value === 1 ? '' : 's'}</span>
                       </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid rgba(148,163,184,0.08)' }}>
-                  <p style={{ color: 'white', fontSize: '22px', fontWeight: '800', lineHeight: 1 }}>{avgWorkload}%</p>
-                  <p style={{ color: '#94a3b8', fontSize: '11px', marginTop: '6px' }}>Average workload across the team right now.</p>
-                </div>
-              </div>
-            </div>
-
-            <div
-              style={{
-                background: 'rgba(8, 15, 28, 0.92)',
-                borderRadius: '24px',
-                border: '1px solid rgba(148,163,184,0.12)',
-                overflow: 'hidden',
-              }}
-            >
-              <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(148,163,184,0.08)' }}>
-                <p style={{ color: 'white', fontSize: '14px', fontWeight: '700' }}>Ops Notes</p>
-              </div>
-              <div style={{ padding: '16px 18px', display: 'grid', gap: '12px' }}>
-                {[
-                  `${availableCount} members are currently available for new assignments.`,
-                  `${busyCount} members are close to or above their weekly limit.`,
-                  `${picLeads} people are acting as PIC across current site coverage.`,
-                ].map(note => (
-                  <div key={note} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#38bdf8', marginTop: '6px', flexShrink: 0 }} />
-                    <p style={{ color: '#94a3b8', fontSize: '12px', lineHeight: 1.6 }}>{note}</p>
+                    )}
                   </div>
                 ))}
               </div>
             </div>
+
           </div>
         </div>
       </div>

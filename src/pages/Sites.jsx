@@ -10,6 +10,7 @@ import { notify, notifyMany } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
 import { getSiteHeaderImage } from '../utils/siteHeader'
+import { mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../utils/completionMeta'
 import 'leaflet/dist/leaflet.css'
 
 /* ── Design tokens (Dashboard light-mode parity) ── */
@@ -69,6 +70,7 @@ const EMPTY = {
   client_company_name:'', client_name:'', client_number:'', scope_of_work:'',
   salesperson:'', scheduled_date:'', site_status:'upcoming', report_status:'pending',
   site_duration_days:'1', report_duration_days:'0.5', notes:'', pic_id:'', crew_ids:[],
+  delivery_order_number:'', completion_reason:'',
   site_photo:null, site_photo_preview:null, site_photo_url:'',
 }
 
@@ -173,9 +175,25 @@ export default function Sites() {
 
   async function handleQuickSave(site) {
     if (!draftStatus) return
+    const completionError = validateCompletionRequirement(
+      draftStatus.site_status,
+      draftStatus.delivery_order_number,
+      draftStatus.completion_reason
+    )
+    if (completionError) {
+      alert(completionError)
+      return
+    }
+
+    const mergedNotes = mergeCompletionMeta(site.notes || '', {
+      deliveryOrderNumber: draftStatus.delivery_order_number,
+      completionReason: draftStatus.completion_reason,
+    })
+
     const updates = {}
     if (draftStatus.site_status   !== site.site_status)   updates.site_status   = draftStatus.site_status
     if (draftStatus.report_status !== site.report_status) updates.report_status = draftStatus.report_status
+    if (mergedNotes !== (site.notes || '')) updates.notes = mergedNotes
     if (Object.keys(updates).length > 0) {
       setQuickSaving(site.id)
       const { error } = await supabase.from('sites').update(updates).eq('id', site.id)
@@ -209,6 +227,7 @@ export default function Sites() {
   function openEdit(site) {
     const pic  = site.site_assignments?.find(a => a.assignment_role === 'PIC')
     const crew = site.site_assignments?.filter(a => a.assignment_role === 'crew')
+    const completionMeta = parseCompletionMeta(site.notes || '')
     setForm({
       site_type: site.site_type || 'site_scanning',
       site_name:site.site_name, location:site.location,
@@ -219,9 +238,11 @@ export default function Sites() {
       site_status:site.site_status,
       site_duration_days:site.site_duration_days?.toString()||'1',
       report_duration_days:site.report_duration_days?.toString()||'0.5',
-      report_status:site.report_status, notes:site.notes||'',
+      report_status:site.report_status, notes:completionMeta.baseNotes,
       pic_id:pic?.team_members?.id||'',
       crew_ids:crew?.map(c => c.team_members?.id)||[],
+      delivery_order_number: completionMeta.deliveryOrderNumber,
+      completion_reason: completionMeta.completionReason,
       site_photo:null, site_photo_preview:site.site_photo_url||null, site_photo_url:site.site_photo_url||'',
     })
     setEditSite(site); setShowForm(true)
@@ -240,6 +261,12 @@ export default function Sites() {
         if (r.error) throw new Error(r.error)
         photoUrl = r.url
       }
+      const completionError = validateCompletionRequirement(
+        form.site_status,
+        form.delivery_order_number,
+        form.completion_reason
+      )
+      if (completionError) throw new Error(completionError)
       const isSiteVisit = form.site_type === 'site_visit'
       const isMeeting   = form.site_type === 'meeting'
       const payload = {
@@ -253,7 +280,10 @@ export default function Sites() {
         site_duration_days:isSiteVisit ? 0.5 : (parseFloat(form.site_duration_days)||0),
         report_duration_days:isSiteVisit||isMeeting ? 0 : (parseFloat(form.report_duration_days)||0),
         report_status:isSiteVisit||isMeeting ? 'not_applicable' : form.report_status,
-        notes:form.notes,
+        notes: mergeCompletionMeta(form.notes, {
+          deliveryOrderNumber: form.delivery_order_number,
+          completionReason: form.completion_reason,
+        }),
       }
       let siteId = editSite?.id
       const origA    = editSite?.site_assignments||[]
@@ -406,6 +436,7 @@ export default function Sites() {
               const memberIdx = members.findIndex(m => m.id === pic?.team_members?.id)
               const isExpanded = expandedCard === site.id
               const glow = CARD_GLOW[site.site_type] || CARD_GLOW.site_scanning
+              const completionMeta = parseCompletionMeta(site.notes || '')
 
               return (
                 <div key={site.id}
@@ -474,6 +505,13 @@ export default function Sites() {
                       </div>
                     </div>
 
+                    <div style={{ display:'flex', alignItems:'center', gap:'6px', marginBottom:'12px' }}>
+                      <span style={{ fontSize:'10px', fontWeight:'800', color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.06em' }}>DO:</span>
+                      <span style={{ fontSize:'12px', color:completionMeta.deliveryOrderNumber ? '#0f172a' : '#94a3b8', fontWeight:'700', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                        {completionMeta.deliveryOrderNumber || 'N/A'}
+                      </span>
+                    </div>
+
                     {/* PIC + crew */}
                     <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'12px' }}>
                       {pic
@@ -513,18 +551,19 @@ export default function Sites() {
                         <ArrowUpRight size={12} /> View
                       </Link>
                       <button
-                        onClick={(e) => {
+                        onClick={() => {
                           if (isExpanded) {
                             setExpandedCard(null); setDraftStatus(null); setPanelAnchor(null)
                           } else {
-                            const rect = e.currentTarget.getBoundingClientRect()
-                            const panelH = 300
-                            const spaceBelow = window.innerHeight - rect.bottom
-                            const top = spaceBelow > panelH ? rect.bottom + 8 : rect.top - panelH - 8
-                            const left = Math.min(Math.max(rect.left - 80, 8), window.innerWidth - 300)
-                            setPanelAnchor({ top, left })
+                            setPanelAnchor({ open: true })
                             setExpandedCard(site.id)
-                            setDraftStatus({ site_status:site.site_status, report_status:site.report_status })
+                            const completionMeta = parseCompletionMeta(site.notes || '')
+                            setDraftStatus({
+                              site_status: site.site_status,
+                              report_status: site.report_status,
+                              delivery_order_number: completionMeta.deliveryOrderNumber,
+                              completion_reason: completionMeta.completionReason,
+                            })
                           }
                         }}
                         style={{
@@ -591,11 +630,11 @@ export default function Sites() {
           <>
             <div style={{ position:'fixed', inset:0, zIndex:49 }} onClick={close} />
             <div style={{
-              position:'fixed', top:panelAnchor.top, left:panelAnchor.left,
-              zIndex:50, width:'292px',
+              position:'fixed', top:'50%', left:'50%', transform:'translate(-50%, -50%)',
+              zIndex:50, width:'100%', maxWidth:'420px', maxHeight:'calc(100vh - 32px)',
               background:'white', border:'1px solid #e2e8f0', borderRadius:'16px',
               boxShadow:'0 24px 64px rgba(15,23,42,.18),0 4px 16px rgba(15,23,42,.08)',
-              padding:'18px',
+              padding:'18px', overflowY:'auto',
               animation:'fadeSlideIn .15s ease',
             }}>
               <style>{`@keyframes fadeSlideIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}`}</style>
@@ -639,6 +678,37 @@ export default function Sites() {
                   })}
                 </div>
               </>)}
+
+              {draftStatus.site_status === 'completed' && (
+                <div style={{ display:'grid', gap:'10px', marginBottom:'14px' }}>
+                  <div>
+                    <label style={{ fontSize:'10px', fontWeight:'800', color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.08em', display:'block', marginBottom:'6px' }}>
+                      Delivery Order Number
+                    </label>
+                    <input
+                      value={draftStatus.delivery_order_number || ''}
+                      onChange={event => setDraftStatus(current => ({ ...current, delivery_order_number: event.target.value }))}
+                      placeholder="Key in DO number"
+                      style={{ width:'100%', padding:'9px 10px', borderRadius:'10px', border:'1px solid #e2e8f0', fontSize:'12px', color:'#0f172a', outline:'none', boxSizing:'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize:'10px', fontWeight:'800', color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.08em', display:'block', marginBottom:'6px' }}>
+                      Reason If No DO
+                    </label>
+                    <textarea
+                      value={draftStatus.completion_reason || ''}
+                      onChange={event => setDraftStatus(current => ({ ...current, completion_reason: event.target.value }))}
+                      placeholder="State the reason if there is no delivery order number"
+                      rows={3}
+                      style={{ width:'100%', padding:'9px 10px', borderRadius:'10px', border:'1px solid #e2e8f0', fontSize:'12px', color:'#0f172a', outline:'none', boxSizing:'border-box', resize:'vertical', fontFamily:'inherit' }}
+                    />
+                  </div>
+                  <p style={{ margin:0, fontSize:'11px', color:'#64748b', lineHeight:1.5 }}>
+                    Completed status requires either a delivery order number or a stated reason.
+                  </p>
+                </div>
+              )}
 
               <div style={{ display:'flex', gap:'8px', borderTop:'1px solid #f1f5f9', paddingTop:'14px' }}>
                 <button onClick={() => handleQuickSave(site)} disabled={!!quickSaving}
@@ -806,6 +876,27 @@ export default function Sites() {
               </div>
 
               <div><label style={lLabel}>Notes</label><textarea style={{...lightInput, resize:'none'}} rows={3} value={form.notes} placeholder="Optional notes…" onChange={e => setForm(f => ({...f, notes:e.target.value}))} /></div>
+
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
+                <div>
+                  <label style={lLabel}>Delivery Order Number</label>
+                  <input
+                    style={lightInput}
+                    value={form.delivery_order_number}
+                    placeholder="DO-12345"
+                    onChange={e => setForm(f => ({ ...f, delivery_order_number: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label style={lLabel}>Reason If No DO</label>
+                  <input
+                    style={lightInput}
+                    value={form.completion_reason}
+                    placeholder="Why there is no DO"
+                    onChange={e => setForm(f => ({ ...f, completion_reason: e.target.value }))}
+                  />
+                </div>
+              </div>
 
               <div style={{ display:'flex', gap:'12px', paddingTop:'4px', borderTop:'1px solid #f1f5f9' }}>
                 <button onClick={handleSave} disabled={saving} style={{ flex:1, padding:'11px', borderRadius:'10px', fontSize:'14px', fontWeight:'800', color:'white', border:'none', cursor:'pointer', fontFamily:'inherit', background:'#2563eb', opacity:saving?0.6:1, boxShadow:'0 2px 8px rgba(37,99,235,.28)' }}>
