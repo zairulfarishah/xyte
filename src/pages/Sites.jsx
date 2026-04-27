@@ -492,24 +492,26 @@ export default function Sites() {
 
 
                     {/* Info bar */}
-                    <div style={{ display:'flex', alignItems:'center', gap:'16px', marginBottom:'12px', paddingBottom:'12px', borderBottom:'1px solid #f1f5f9' }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:'5px' }}>
-                        <Calendar size={12} color="#94a3b8" />
-                        <span style={{ fontSize:'12px', color:'#64748b', fontWeight:'500' }}>
-                          {new Date(site.scheduled_date).toLocaleDateString('en-MY',{ day:'numeric', month:'short', year:'numeric' })}
+                    <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:'12px', marginBottom:'12px', paddingBottom:'12px', borderBottom:'1px solid #f1f5f9' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:'16px', minWidth:0 }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:'5px' }}>
+                          <Calendar size={12} color="#94a3b8" />
+                          <span style={{ fontSize:'12px', color:'#64748b', fontWeight:'500' }}>
+                            {new Date(site.scheduled_date).toLocaleDateString('en-MY',{ day:'numeric', month:'short', year:'numeric' })}
+                          </span>
+                        </div>
+                        <div style={{ display:'flex', alignItems:'center', gap:'5px' }}>
+                          <Clock size={12} color="#94a3b8" />
+                          <span style={{ fontSize:'12px', color:'#64748b', fontWeight:'500' }}>{site.site_duration_days}d</span>
+                        </div>
+                      </div>
+
+                      <div style={{ display:'flex', alignItems:'center', gap:'6px', minWidth:0, flexShrink:0, maxWidth:'140px' }}>
+                        <span style={{ fontSize:'10px', fontWeight:'800', color:'#16a34a', textTransform:'uppercase', letterSpacing:'.06em', flexShrink:0 }}>DO :</span>
+                        <span style={{ fontSize:'12px', color:completionMeta.deliveryOrderNumber ? '#0f172a' : '#94a3b8', fontWeight:'700', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                          {completionMeta.deliveryOrderNumber || 'N/A'}
                         </span>
                       </div>
-                      <div style={{ display:'flex', alignItems:'center', gap:'5px' }}>
-                        <Clock size={12} color="#94a3b8" />
-                        <span style={{ fontSize:'12px', color:'#64748b', fontWeight:'500' }}>{site.site_duration_days}d</span>
-                      </div>
-                    </div>
-
-                    <div style={{ display:'flex', alignItems:'center', gap:'6px', marginBottom:'12px' }}>
-                      <span style={{ fontSize:'10px', fontWeight:'800', color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.06em' }}>DO:</span>
-                      <span style={{ fontSize:'12px', color:completionMeta.deliveryOrderNumber ? '#0f172a' : '#94a3b8', fontWeight:'700', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-                        {completionMeta.deliveryOrderNumber || 'N/A'}
-                      </span>
                     </div>
 
                     {/* PIC + crew */}
