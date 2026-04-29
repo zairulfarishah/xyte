@@ -320,12 +320,70 @@ function AppShell() {
       {/* Top Navbar */}
       <nav style={{
         background: '#0f172a', flexShrink: 0,
-        display: 'flex', flexDirection: 'column', gap: '12px', padding: isMobile ? '12px 14px' : isTablet ? '12px 18px' : '0 28px',
+        display: 'flex', flexDirection: 'column', gap: isMobile ? '8px' : '12px', padding: isMobile ? '8px 12px' : isTablet ? '12px 18px' : '0 28px',
         position: 'sticky', top: 0, zIndex: 100,
         borderBottom: '1px solid #1e293b',
       }}>
+        {isMobile && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', minHeight: '40px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+              <button
+                onClick={() => setMobileMenuOpen(open => !open)}
+                style={{ width: '34px', height: '34px', borderRadius: '10px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+              >
+                {mobileMenuOpen ? <X size={17} /> : <Menu size={17} />}
+              </button>
+
+              <NavLink to="/" style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', flexShrink: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1 }}>
+                  <span style={{ fontSize: '18px', fontWeight: '900', color: '#22c55e', letterSpacing: '-0.03em', lineHeight: 1, textShadow: '0 0 12px rgba(34,197,94,0.5), 0 0 32px rgba(34,197,94,0.15)' }}>X</span>
+                  <span style={{ fontSize: '18px', fontWeight: '200', color: 'rgba(255,255,255,0.88)', letterSpacing: '0.02em', lineHeight: 1 }}>yte</span>
+                </div>
+              </NavLink>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+              <button onClick={() => setSearchOpen(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center', padding: 0, transition: 'color 0.15s' }}>
+                <Search size={17} />
+              </button>
+
+              <div ref={notifRef} style={{ position: 'relative' }}>
+                <button onClick={handleBell} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center', padding: 0, position: 'relative', transition: 'color 0.15s' }}>
+                  <Bell size={17} />
+                  {unread > 0 && (
+                    <span style={{ position: 'absolute', top: '-5px', right: '-5px', width: '16px', height: '16px', borderRadius: '50%', background: '#ef4444', color: 'white', fontSize: '9px', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #0f172a' }}>
+                      {unread > 9 ? '9+' : unread}
+                    </span>
+                  )}
+                </button>
+                {notifOpen && <NotifDropdown notifs={notifs} lastSeen={lastSeen} onClose={() => setNotifOpen(false)} />}
+              </div>
+
+              <div ref={avatarRef} style={{ position: 'relative' }}>
+                <button onClick={() => setAvatarOpen(o => !o)} style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#1d4ed8', border: 'none', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '700', fontSize: '11px', cursor: 'pointer' }}>
+                  {avatarUrl
+                    ? <img src={avatarUrl} alt={fullName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : fullName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+                  }
+                </button>
+                {avatarOpen && (
+                  <div style={{ position: 'absolute', right: 0, top: '42px', width: '200px', background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 12px 40px rgba(0,0,0,0.18)', zIndex: 1100, overflow: 'hidden' }}>
+                    <div style={{ padding: '12px 14px', borderBottom: '1px solid #f1f5f9' }}>
+                      <p style={{ fontWeight: '600', fontSize: '13px', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fullName}</p>
+                      <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</p>
+                    </div>
+                    <button onClick={handleSignOut} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: '#ef4444', fontSize: '13px', fontWeight: '500' }}>
+                      <LogOut size={14} /> Sign Out
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Logo */}
-        <NavLink to="/" style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', flexShrink: 0 }}>
+        <NavLink to="/" style={{ textDecoration: 'none', display: isMobile ? 'none' : 'flex', flexDirection: 'column', alignItems: 'flex-start', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1 }}>
             <span style={{ fontSize: '20px', fontWeight: '900', color: '#22c55e', letterSpacing: '-0.03em', lineHeight: 1, textShadow: '0 0 12px rgba(34,197,94,0.5), 0 0 32px rgba(34,197,94,0.15)' }}>X</span>
             <span style={{ fontSize: '20px', fontWeight: '200', color: 'rgba(255,255,255,0.88)', letterSpacing: '0.02em', lineHeight: 1 }}>yte</span>
@@ -353,16 +411,7 @@ function AppShell() {
         </div>
 
         {/* Right icons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '10px' : '14px', marginLeft: 'auto', flexWrap: 'wrap', justifyContent: 'flex-end', width: isTablet ? '100%' : 'auto' }}>
-          {isMobile && (
-            <button
-              onClick={() => setMobileMenuOpen(open => !open)}
-              style={{ width: '34px', height: '34px', borderRadius: '10px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-            >
-              {mobileMenuOpen ? <X size={17} /> : <Menu size={17} />}
-            </button>
-          )}
-
+        <div style={{ display: isMobile ? 'none' : 'flex', alignItems: 'center', gap: isMobile ? '10px' : '14px', marginLeft: 'auto', flexWrap: 'wrap', justifyContent: 'flex-end', width: isTablet ? '100%' : 'auto' }}>
           <button
             onClick={handleOpenAddSite}
             style={{ display: isMobile ? 'none' : 'flex', alignItems: 'center', gap: '5px', background: '#2563eb', border: 'none', cursor: 'pointer', color: 'white', padding: '6px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: '600', transition: 'background 0.15s' }}
