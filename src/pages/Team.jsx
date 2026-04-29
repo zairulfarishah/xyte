@@ -3,6 +3,7 @@ import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { Search, MapPin, Calendar, TrendingUp, Users, Briefcase, Activity, Clock, FileText, Radar, Camera } from 'lucide-react'
 import { calculateWorkload } from '../utils/workload'
+import { useViewport } from '../utils/useViewport'
 
 const AVATAR_COLORS = ['#2563eb', '#7c3aed', '#db2777', '#059669', '#d97706', '#dc2626']
 
@@ -145,6 +146,7 @@ function getRanking(members, key) {
 
 export default function Team() {
   const { isZairul } = useAuth()
+  const { isMobile, isTablet } = useViewport()
   const [members, setMembers] = useState([])
   const [allSites, setAllSites] = useState([])
   const [selectedId, setSelectedId] = useState(null)
@@ -437,7 +439,7 @@ export default function Team() {
   return (
     <div style={{ minHeight: '100vh', background: 'radial-gradient(circle at top left, #13315c 0%, #0b1220 38%, #060912 100%)' }}>
       <input ref={avatarInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarFileChange} />
-      <div style={{ maxWidth: '1540px', margin: '0 auto', padding: '26px 30px 36px' }}>
+      <div style={{ maxWidth: '1540px', margin: '0 auto', padding: isMobile ? '16px 14px 28px' : isTablet ? '20px 18px 32px' : '26px 30px 36px' }}>
         <div
           style={{
             position: 'relative',
@@ -452,7 +454,7 @@ export default function Team() {
         >
           <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 85% 18%, rgba(56,189,248,0.22), transparent 26%), radial-gradient(circle at 70% 100%, rgba(37,99,235,0.20), transparent 35%)' }} />
 
-          <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 500px', gap: '24px', alignItems: 'center' }}>
+          <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: isTablet ? '1fr' : 'minmax(0, 1fr) 500px', gap: '24px', alignItems: 'center' }}>
             <div style={{ padding: '4px 0' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '7px 12px', borderRadius: '999px', background: 'rgba(15, 23, 42, 0.58)', border: '1px solid rgba(148,163,184,0.18)', color: '#93c5fd', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '.08em' }}>
@@ -472,7 +474,7 @@ export default function Team() {
               </p>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: '12px' }}>
               {[
                 { label: 'Team Size', sub: 'Active members', value: members.length, icon: Users, accent: '#38bdf8' },
                 { label: 'Available', sub: 'Ready for assignment', value: availableCount, icon: Activity, accent: '#22c55e' },
@@ -506,7 +508,7 @@ export default function Team() {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '300px minmax(0, 1fr) 280px', gap: '16px', alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '300px minmax(0, 1fr) 280px', gap: '16px', alignItems: 'start' }}>
           <div
             style={{
               position: 'sticky',
@@ -597,7 +599,7 @@ export default function Team() {
                   boxShadow: '0 20px 44px rgba(2, 6, 23, 0.3)',
                 }}
               >
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.08fr) minmax(240px, 0.92fr)', gap: '16px', alignItems: 'stretch' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : 'minmax(0, 1.08fr) minmax(240px, 0.92fr)', gap: '16px', alignItems: 'stretch' }}>
                   <div
                     style={{
                       padding: '20px',
@@ -622,7 +624,7 @@ export default function Team() {
                       </div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '12px', marginTop: '20px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: '12px', marginTop: '20px' }}>
                       {[
                         { label: 'PIC Lead', sub: 'Sites owned', value: selected.pic_count, color: '#60a5fa', bg: 'rgba(37,99,235,0.18)' },
                         { label: 'Crew', sub: 'Supporting assignments', value: selected.crew_count, color: '#c084fc', bg: 'rgba(168,85,247,0.16)' },
@@ -678,7 +680,7 @@ export default function Team() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.05fr) minmax(240px, 0.95fr)', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : 'minmax(0, 1.05fr) minmax(240px, 0.95fr)', gap: '16px' }}>
                 <div
                   style={{
                     background: 'rgba(8, 15, 28, 0.92)',
@@ -812,7 +814,7 @@ export default function Team() {
                     <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(148,163,184,0.08)' }}>
                       <p style={{ color: 'white', fontSize: '14px', fontWeight: '700' }}>Delivery Snapshot</p>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '12px', padding: '16px 18px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: '12px', padding: '16px 18px' }}>
                       {[
                         { label: 'Active', value: activeSites.length, icon: Activity, color: '#38bdf8' },
                         { label: 'Completed', value: completedSites.length, icon: Briefcase, color: '#22c55e' },
@@ -832,7 +834,7 @@ export default function Team() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '16px', alignItems: 'start' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: '16px', alignItems: 'start' }}>
                 <div
                   style={{
                     background: 'rgba(8, 15, 28, 0.92)',

@@ -9,6 +9,7 @@ import { notify } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
 import { mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../utils/completionMeta'
+import { useViewport } from '../utils/useViewport'
 import 'leaflet/dist/leaflet.css'
 
 function xIcon(color, selected = false) {
@@ -212,6 +213,7 @@ function getTrendText(value, kind = 'default') {
 
 export default function Dashboard() {
   const { fullName, firstName, isZairul } = useAuth()
+  const { isMobile, isTablet } = useViewport()
   const [members, setMembers] = useState([])
   const [sites, setSites] = useState([])
   const [upcoming, setUpcoming] = useState([])
@@ -601,11 +603,11 @@ export default function Dashboard() {
           background: 'radial-gradient(circle at 18% 5%, rgba(59,130,246,.22), transparent 26%), radial-gradient(circle at 70% 0%, rgba(14,165,233,.12), transparent 30%), linear-gradient(180deg, #071226 0 220px, #eef3f8 220px 100%)',
         }}
       >
-        <main style={{ maxWidth: '1720px', margin: '0 auto', padding: '30px 18px 36px' }}>
+        <main style={{ maxWidth: '1720px', margin: '0 auto', padding: isMobile ? '16px 14px 28px' : isTablet ? '24px 16px 32px' : '30px 18px 36px' }}>
           <section
             style={{
               display: 'grid',
-              gridTemplateColumns: 'minmax(0, 1fr) 500px',
+              gridTemplateColumns: isTablet ? '1fr' : 'minmax(0, 1fr) 500px',
               gap: '24px',
               marginBottom: '28px',
               alignItems: 'center',
@@ -656,7 +658,7 @@ export default function Dashboard() {
           <section
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(6, minmax(0, 1fr))',
+              gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : isTablet ? 'repeat(3, minmax(0, 1fr))' : 'repeat(6, minmax(0, 1fr))',
               gap: '12px',
               marginBottom: '24px',
             }}
@@ -719,7 +721,7 @@ export default function Dashboard() {
           <section
             style={{
               display: 'grid',
-              gridTemplateColumns: '340px minmax(0, 1fr) 320px',
+              gridTemplateColumns: isTablet ? '1fr' : '340px minmax(0, 1fr) 320px',
               gap: '16px',
               alignItems: 'start',
             }}
@@ -924,7 +926,7 @@ export default function Dashboard() {
                 </div>
               </section>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px' }}>
                 <section
                   style={{
                     background: 'rgba(255,255,255,.96)',
@@ -1154,7 +1156,7 @@ export default function Dashboard() {
                   <span style={{ color: '#2563eb', fontSize: '13px', fontWeight: '700' }}>Status</span>
                 </div>
                 <div style={{ padding: '14px 18px 16px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: '8px' }}>
                     {[
                       { label: 'Pending',   value: reportSummary.pending,     color: '#ef4444' },
                       { label: 'Draft',     value: reportSummary.in_progress, color: '#f59e0b' },
@@ -1182,8 +1184,8 @@ export default function Dashboard() {
           }}
           style={{
             position: 'fixed',
-            right: '28px',
-            bottom: '28px',
+            right: isMobile ? '14px' : '28px',
+            bottom: isMobile ? '14px' : '28px',
             background: '#2563eb',
             color: 'white',
             border: 0,
@@ -1213,7 +1215,7 @@ export default function Dashboard() {
           }}
           onClick={event => event.target === event.currentTarget && setShowAdd(false)}
         >
-          <div style={{ background: 'white', borderRadius: '20px', width: '100%', maxWidth: '680px', maxHeight: '92vh', overflowY: 'auto', padding: '30px' }}>
+          <div style={{ background: 'white', borderRadius: '20px', width: '100%', maxWidth: '680px', maxHeight: '92vh', overflowY: 'auto', padding: isMobile ? '18px' : '30px' }}>
             <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginBottom: '24px' }}>Add New Site</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
 
@@ -1363,7 +1365,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Client Company Name</label>
                   <input
@@ -1427,7 +1429,7 @@ export default function Dashboard() {
               </div>
 
               {form.site_type === 'site_scanning' && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
                   {[{ label: 'Site Duration (Days)', key: 'site_duration_days' }, { label: 'Report Duration (Days)', key: 'report_duration_days' }].map(({ label, key }) => (
                     <div key={key}>
                       <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>{label}</label>

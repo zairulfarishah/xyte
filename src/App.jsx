@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, NavLink, useLocation, useNavigate } from 
 import { Search, Bell, X, MapPin, Users, Plus, LogOut } from 'lucide-react'
 import { supabase } from './supabase'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { useViewport } from './utils/useViewport'
 
 const LoginPage = lazy(() => import('./pages/LoginPage'))
 
@@ -217,6 +218,7 @@ function AppShell() {
   const [avatarOpen, setAvatarOpen] = useState(false)
   const notifRef  = useRef(null)
   const avatarRef = useRef(null)
+  const { isMobile, isTablet } = useViewport()
 
   useEffect(() => {
     function handle(e) {
@@ -312,8 +314,8 @@ function AppShell() {
 
       {/* Top Navbar */}
       <nav style={{
-        background: '#0f172a', height: '54px', flexShrink: 0,
-        display: 'flex', alignItems: 'center', padding: '0 28px',
+        background: '#0f172a', flexShrink: 0,
+        display: 'flex', flexDirection: 'column', gap: '12px', padding: isMobile ? '12px 14px' : isTablet ? '12px 18px' : '0 28px',
         position: 'sticky', top: 0, zIndex: 100,
         borderBottom: '1px solid #1e293b',
       }}>
@@ -331,8 +333,8 @@ function AppShell() {
         </NavLink>
 
         {/* Nav links — centered floating pill */}
-        <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', display: 'flex', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '2px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '99px', padding: '3px' }}>
+        <div style={{ alignSelf: isTablet ? 'stretch' : 'center', width: '100%', overflowX: 'auto', display: 'flex', justifyContent: isTablet ? 'flex-start' : 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '2px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '99px', padding: '3px', width: 'max-content', minWidth: isTablet ? '100%' : undefined }}>
             {NAV.map(({ to, label, end }) => (
               <NavLink key={to} to={to} end={end} style={({ isActive }) => ({
                 padding: '5px 14px', borderRadius: '99px', textDecoration: 'none',
@@ -346,14 +348,14 @@ function AppShell() {
         </div>
 
         {/* Right icons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginLeft: 'auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '10px' : '14px', marginLeft: 'auto', flexWrap: 'wrap', justifyContent: 'flex-end', width: isTablet ? '100%' : 'auto' }}>
           <button
             onClick={handleOpenAddSite}
             style={{ display: 'flex', alignItems: 'center', gap: '5px', background: '#2563eb', border: 'none', cursor: 'pointer', color: 'white', padding: '6px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: '600', transition: 'background 0.15s' }}
             onMouseEnter={e => e.currentTarget.style.background = '#1d4ed8'}
             onMouseLeave={e => e.currentTarget.style.background = '#2563eb'}
           >
-            <Plus size={13} /> Add Site
+            <Plus size={13} /> {!isMobile && 'Add Site'}
           </button>
 
           <button onClick={() => setSearchOpen(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center', padding: 0, transition: 'color 0.15s' }}

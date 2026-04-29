@@ -4,6 +4,7 @@ import L from 'leaflet'
 import { supabase } from '../supabase'
 import { Search } from 'lucide-react'
 import PlaceSearchBox from '../components/PlaceSearchBox'
+import { useViewport } from '../utils/useViewport'
 import 'leaflet/dist/leaflet.css'
 
 function xIcon(color, selected = false) {
@@ -39,6 +40,7 @@ const STATUS_COLORS = {
 const TABS = ['All','Upcoming','Ongoing','Completed','Cancelled','Postponed']
 
 export default function MapView() {
+  const { isMobile, isTablet } = useViewport()
   const [sites, setSites]       = useState([])
   const [selected, setSelected] = useState(null)
   const [tab, setTab]           = useState('All')
@@ -84,7 +86,7 @@ export default function MapView() {
   )
 
   return (
-    <div style={{ padding: '16px 20px', height: 'calc(100vh - 54px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div style={{ padding: isMobile ? '14px' : '16px 20px', minHeight: 'calc(100vh - 54px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
       {/* Header */}
       <div style={{ marginBottom: '12px', flexShrink: 0 }}>
@@ -93,10 +95,10 @@ export default function MapView() {
       </div>
 
       {/* Main layout */}
-      <div style={{ display: 'flex', gap: '16px', flex: 1, minHeight: 0 }}>
+      <div style={{ display: 'flex', flexDirection: isTablet ? 'column' : 'row', gap: '16px', flex: 1, minHeight: 0 }}>
 
         {/* Left panel */}
-        <div style={{ width: '300px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ width: isTablet ? '100%' : '300px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
           {/* Search */}
           <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '12px' }}>
@@ -148,7 +150,7 @@ export default function MapView() {
           {/* Summary */}
           <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '10px' }}>
             <p style={{ fontSize: '10px', fontWeight: '600', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '7px' }}>Summary</p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '4px' }}>
               {Object.entries(STATUS_COLORS).map(([key, c]) => (
                 <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc', borderRadius: '7px', padding: '5px 8px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -197,8 +199,8 @@ export default function MapView() {
         </div>
 
         {/* Map */}
-        <div style={{ flex: 1, borderRadius: '12px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-          <MapContainer key={activeMapKey} center={activeCenter} zoom={placeResult ? 14 : 10} style={{ height: '100%', width: '100%' }}>
+        <div style={{ flex: 1, minHeight: isTablet ? '52vh' : 0, borderRadius: '12px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+          <MapContainer key={activeMapKey} center={activeCenter} zoom={placeResult ? 14 : 10} style={{ height: '100%', minHeight: isTablet ? '52vh' : undefined, width: '100%' }}>
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

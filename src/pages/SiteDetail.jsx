@@ -4,6 +4,7 @@ import { supabase } from '../supabase'
 import { ChevronLeft, ChevronRight, Pencil, MapPin, Upload, X, Users, FileText, LayoutGrid } from 'lucide-react'
 import { getSiteHeaderImage } from '../utils/siteHeader'
 import { parseCompletionMeta } from '../utils/completionMeta'
+import { useViewport } from '../utils/useViewport'
 
 const STATUS_COLORS = {
   upcoming:  { bg: '#fef9c3', text: '#854d0e', border: '#fde047' },
@@ -56,6 +57,7 @@ function StatusPill({ status, colors }) {
 }
 
 export default function SiteDetail() {
+  const { isMobile, isTablet } = useViewport()
   const { id } = useParams()
   const navigate = useNavigate()
   const fileInputRef = useRef(null)
@@ -156,7 +158,7 @@ export default function SiteDetail() {
     <div style={{ background: '#f1f5f9', minHeight: '100vh' }}>
 
       {/* Dark header */}
-      <div style={{ background: '#0f172a', padding: '24px 28px', position: 'relative', overflow: 'hidden' }}>
+      <div style={{ background: '#0f172a', padding: isMobile ? '18px 14px' : '24px 28px', position: 'relative', overflow: 'hidden' }}>
         <img
           src={site.site_photo_url || getSiteHeaderImage(site.site_type)}
           alt=""
@@ -172,13 +174,13 @@ export default function SiteDetail() {
         </div>
 
         {/* Title row */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
-            <h1 style={{ fontSize: '24px', fontWeight: '700', color: 'white', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{site.site_name}</h1>
+        <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'space-between', gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0, flexWrap: 'wrap' }}>
+            <h1 style={{ fontSize: isMobile ? '20px' : '24px', fontWeight: '700', color: 'white', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: isMobile ? 'normal' : 'nowrap' }}>{site.site_name}</h1>
             <StatusPill status={site.site_status} colors={STATUS_COLORS} />
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, flexWrap: 'wrap' }}>
             <button
               onClick={() => prevId && navigate(`/sites/${prevId}`)}
               disabled={!prevId}
@@ -203,7 +205,7 @@ export default function SiteDetail() {
       </div>
 
       {/* Content */}
-      <div style={{ padding: '24px 28px', display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
+      <div style={{ padding: isMobile ? '16px 14px 24px' : '24px 28px', display: 'flex', flexDirection: isTablet ? 'column' : 'row', gap: '24px', alignItems: 'flex-start' }}>
 
         {/* Left */}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -230,7 +232,7 @@ export default function SiteDetail() {
                 <p style={{ fontSize: '13px', color: '#94a3b8' }}>No photos yet. Click to upload site photos.</p>
               </div>
             ) : (
-              <div style={{ padding: '16px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
+              <div style={{ padding: '16px', display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : isTablet ? 'repeat(3, 1fr)' : 'repeat(4, 1fr)', gap: '10px' }}>
                 {photos.map(photo => (
                   <div key={photo.name} style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', aspectRatio: '4/3', background: '#f1f5f9' }}>
                     <img src={photo.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
@@ -271,7 +273,7 @@ export default function SiteDetail() {
             <div style={{ padding: '20px' }}>
 
               {tab === 'overview' && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : isTablet ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: '12px' }}>
                   {[
                     { label: 'Site Type',       value: TYPE_LABELS[site.site_type] || 'Site Scanning' },
                     { label: 'Scheduled Date',  value: new Date(site.scheduled_date).toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' }) },
@@ -338,7 +340,7 @@ export default function SiteDetail() {
         </div>
 
         {/* Right sidebar */}
-        <div style={{ width: '300px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ width: isTablet ? '100%' : '300px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
           {/* Info card */}
           <div style={{ background: 'white', borderRadius: '14px', border: '1px solid #e2e8f0', padding: '20px' }}>

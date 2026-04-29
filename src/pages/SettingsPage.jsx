@@ -3,6 +3,7 @@ import { supabase } from '../supabase'
 import { User, Info, Lock } from 'lucide-react'
 import { ROLE_MULTIPLIERS, WEEKLY_CAPACITY_DAYS } from '../utils/workload'
 import { useAuth } from '../context/AuthContext'
+import { useViewport } from '../utils/useViewport'
 
 const AVATAR_COLORS = ['#2563eb','#7c3aed','#db2777','#059669','#d97706','#dc2626']
 
@@ -25,6 +26,7 @@ const SECTIONS = [
 
 export default function SettingsPage() {
   const { isZairul } = useAuth()
+  const { isMobile, isTablet } = useViewport()
   const [members, setMembers]   = useState([])
   const [loading, setLoading]   = useState(true)
   const [section, setSection]   = useState('team')
@@ -76,7 +78,7 @@ export default function SettingsPage() {
   )
 
   return (
-    <div style={{ padding: '28px' }}>
+    <div style={{ padding: isMobile ? '16px 14px 24px' : '28px' }}>
 
       {/* Header */}
       <div style={{ marginBottom: '24px' }}>
@@ -84,10 +86,10 @@ export default function SettingsPage() {
         <p style={{ color: '#64748b', fontSize: '13px', marginTop: '2px' }}>Manage your app configuration</p>
       </div>
 
-      <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', flexDirection: isTablet ? 'column' : 'row', gap: '20px', alignItems: 'flex-start' }}>
 
         {/* Left nav */}
-        <div style={{ width: '220px', flexShrink: 0, background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '8px', overflow: 'hidden' }}>
+        <div style={{ width: isTablet ? '100%' : '220px', flexShrink: 0, background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '8px', overflow: 'hidden' }}>
           {SECTIONS.map(({ key, label, icon: Icon }) => (
             <button key={key} onClick={() => setSection(key)} style={{
               display: 'flex', alignItems: 'center', gap: '10px',
@@ -183,7 +185,7 @@ export default function SettingsPage() {
                       example: `e.g. 1-day report = ${((1 / WEEKLY_CAPACITY_DAYS) * 100).toFixed(0)}%`,
                     },
                   ].map(({ label, color, bg, desc, pct, example }) => (
-                    <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', background: bg, borderRadius: '10px' }}>
+                    <div key={label} style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', gap: '10px', padding: '12px 14px', background: bg, borderRadius: '10px' }}>
                       <div>
                         <p style={{ fontWeight: '600', fontSize: '13px', color }}>{label}</p>
                         <p style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{desc}</p>
@@ -212,7 +214,7 @@ export default function SettingsPage() {
                     <p style={{ fontSize: '13px', color: '#64748b' }}>Xradar Internal System · Version 1.0.0</p>
                   </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
                   {[
                     { label: 'Total Sites',       value: stats.totalSites },
                     { label: 'Completed Sites',   value: stats.completed  },
@@ -239,7 +241,7 @@ export default function SettingsPage() {
                     { name: 'Lucide React',   role: 'Icons',                color: '#7c3aed' },
                     { name: 'GitHub',         role: 'Code repository',      color: '#0f172a' },
                   ].map(({ name, role, color }) => (
-                    <div key={name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                    <div key={name} style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', gap: '8px', padding: '10px 14px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: color }} />
                         <span style={{ fontWeight: '600', fontSize: '13px', color: '#0f172a' }}>{name}</span>

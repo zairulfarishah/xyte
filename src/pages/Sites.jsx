@@ -11,6 +11,7 @@ import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
 import { getSiteHeaderImage } from '../utils/siteHeader'
 import { mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../utils/completionMeta'
+import { useViewport } from '../utils/useViewport'
 import 'leaflet/dist/leaflet.css'
 
 /* ── Design tokens (Dashboard light-mode parity) ── */
@@ -134,6 +135,7 @@ function LocationPicker({ lat, lng, onPick, mapKey }) {
 
 export default function Sites() {
   const { fullName, isZairul } = useAuth()
+  const { isMobile, isTablet } = useViewport()
   const [sites, setSites]             = useState([])
   const [members, setMembers]         = useState([])
   const [loading, setLoading]         = useState(true)
@@ -373,15 +375,15 @@ export default function Sites() {
   return (
     <div style={{ minHeight:'calc(100vh - 54px)', overflowY:'auto', background:'radial-gradient(circle at 18% 5%,rgba(59,130,246,.18),transparent 26%),radial-gradient(circle at 70% 0%,rgba(14,165,233,.10),transparent 30%),linear-gradient(180deg,#071226 0 88px,#dde4ed 88px 100%)' }}>
 
-      <main style={{ maxWidth:'1800px', margin:'0 auto', padding:'18px 40px 48px' }}>
+      <main style={{ maxWidth:'1800px', margin:'0 auto', padding:isMobile ? '16px 14px 28px' : isTablet ? '18px 20px 40px' : '18px 40px 48px' }}>
 
         {/* ── HEADER ── */}
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'16px', marginBottom:'14px' }}>
+        <div style={{ display:'flex', flexDirection:isMobile ? 'column' : 'row', alignItems:isMobile ? 'stretch' : 'center', justifyContent:'space-between', gap:'16px', marginBottom:'14px' }}>
           <div style={{ color:'white' }}>
             <h1 style={{ margin:0, fontSize:'28px', fontWeight:'850', letterSpacing:'-.05em', lineHeight:1 }}>Sites</h1>
             <p style={{ margin:'7px 0 0', color:'#b8c7dd', fontSize:'14px', lineHeight:1.5 }}>Manage and track all site activities</p>
           </div>
-          <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:'10px', width:isMobile ? '100%' : undefined }}>
             <div style={{ position:'relative' }}>
               <Search size={13} style={{ position:'absolute', left:'12px', top:'50%', transform:'translateY(-50%)', color:'#94a3b8', pointerEvents:'none' }} />
               <input
@@ -391,7 +393,7 @@ export default function Sites() {
                 style={{
                   background:'rgba(255,255,255,.12)', border:'1px solid rgba(255,255,255,.18)',
                   borderRadius:'10px', fontSize:'13px', fontFamily:'inherit',
-                  padding:'9px 14px 9px 34px', width:'220px', color:'white', outline:'none',
+                  padding:'9px 14px 9px 34px', width:isMobile ? '100%' : '220px', color:'white', outline:'none',
                 }}
                 onFocus={e => { e.target.style.background='rgba(255,255,255,.18)'; e.target.style.borderColor='rgba(255,255,255,.35)' }}
                 onBlur={e => { e.target.style.background='rgba(255,255,255,.12)'; e.target.style.borderColor='rgba(255,255,255,.18)' }}
@@ -402,8 +404,8 @@ export default function Sites() {
 
 
         {/* ── FILTER TABS ── */}
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'20px', marginTop:'28px' }}>
-          <div style={{ display:'inline-flex', gap:'4px', padding:'5px', background:'rgba(255,255,255,.9)', backdropFilter:'blur(12px)', borderRadius:'999px', boxShadow:'0 1px 4px rgba(15,23,42,.08)', border:'1px solid rgba(226,232,240,.9)' }}>
+        <div style={{ display:'flex', alignItems:isMobile ? 'stretch' : 'center', justifyContent:'space-between', flexDirection:isMobile ? 'column' : 'row', gap:'12px', marginBottom:'20px', marginTop:'28px' }}>
+          <div style={{ display:'inline-flex', gap:'4px', padding:'5px', background:'rgba(255,255,255,.9)', backdropFilter:'blur(12px)', borderRadius:'999px', boxShadow:'0 1px 4px rgba(15,23,42,.08)', border:'1px solid rgba(226,232,240,.9)', overflowX:'auto', maxWidth:'100%' }}>
             {TABS.map(t => {
               const active = tab === t
               return (
@@ -732,11 +734,11 @@ export default function Sites() {
         <div style={{ position:'fixed', inset:0, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50, padding:'16px', background:'rgba(0,0,0,0.4)' }}
           onClick={e => e.target===e.currentTarget && setShowForm(false)}>
           <div style={{ width:'100%', maxWidth:'672px', maxHeight:'92vh', borderRadius:'20px', background:'white', boxShadow:'0 24px 64px rgba(15,23,42,.18)', display:'flex', flexDirection:'column', overflow:'hidden' }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'20px 28px', borderBottom:'1px solid #f1f5f9', flexShrink:0 }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:isMobile ? '16px 18px' : '20px 28px', borderBottom:'1px solid #f1f5f9', flexShrink:0 }}>
               <h3 style={{ margin:0, fontSize:'17px', fontWeight:'800', color:'#0f172a' }}>{editSite ? 'Edit Site' : 'Add New Site'}</h3>
               <button onClick={() => setShowForm(false)} style={{ background:'none', border:'none', cursor:'pointer', color:'#94a3b8' }}><X size={18} /></button>
             </div>
-            <div style={{ overflowY:'auto', padding:'20px 28px', display:'flex', flexDirection:'column', gap:'20px' }}>
+            <div style={{ overflowY:'auto', padding:isMobile ? '16px 18px' : '20px 28px', display:'flex', flexDirection:'column', gap:'20px' }}>
 
               <div>
                 <label style={lLabel}>Cover Photo</label>
@@ -810,7 +812,7 @@ export default function Sites() {
                 </div>
               </div>
 
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
+              <div style={{ display:'grid', gridTemplateColumns:isMobile ? '1fr' : '1fr 1fr', gap:'12px' }}>
                 <div><label style={lLabel}>Client Company</label><input style={lightInput} value={form.client_company_name} placeholder="Company name" onChange={e => setForm(f => ({...f, client_company_name:e.target.value}))} /></div>
                 <div><label style={lLabel}>Client Name</label><input style={lightInput} value={form.client_name} placeholder="Contact name" onChange={e => setForm(f => ({...f, client_name:e.target.value}))} /></div>
                 <div><label style={lLabel}>Client Number</label><input style={lightInput} value={form.client_number} placeholder="PO-12345" onChange={e => setForm(f => ({...f, client_number:e.target.value}))} /></div>
@@ -827,7 +829,7 @@ export default function Sites() {
               <div><label style={lLabel}>Scheduled Date *</label><input type="date" style={lightInput} value={form.scheduled_date} onChange={e => setForm(f => ({...f, scheduled_date:e.target.value}))} /></div>
 
               {form.site_type === 'site_scanning' && (
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
+                <div style={{ display:'grid', gridTemplateColumns:isMobile ? '1fr' : '1fr 1fr', gap:'12px' }}>
                   <div><label style={lLabel}>Site Duration (Days)</label><input type="number" min="0" step="0.5" style={lightInput} value={form.site_duration_days} onChange={e => setForm(f => ({...f, site_duration_days:e.target.value}))} /></div>
                   <div><label style={lLabel}>Report Duration (Days)</label><input type="number" min="0" step="0.5" style={lightInput} value={form.report_duration_days} onChange={e => setForm(f => ({...f, report_duration_days:e.target.value}))} /></div>
                 </div>
@@ -841,7 +843,7 @@ export default function Sites() {
                 </div>
               )}
 
-              <div style={{ display:'grid', gridTemplateColumns:form.site_type==='site_scanning'?'1fr 1fr':'1fr', gap:'12px' }}>
+              <div style={{ display:'grid', gridTemplateColumns:form.site_type==='site_scanning' && !isMobile ? '1fr 1fr' : '1fr', gap:'12px' }}>
                 <div><label style={lLabel}>Site Status</label>
                   <select style={lightInput} value={form.site_status} onChange={e => setForm(f => ({...f, site_status:e.target.value}))}>
                     {['upcoming','ongoing','completed','cancelled','postponed'].map(o => <option key={o} value={o}>{o}</option>)}
@@ -879,7 +881,7 @@ export default function Sites() {
 
               <div><label style={lLabel}>Notes</label><textarea style={{...lightInput, resize:'none'}} rows={3} value={form.notes} placeholder="Optional notes…" onChange={e => setForm(f => ({...f, notes:e.target.value}))} /></div>
 
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
+              <div style={{ display:'grid', gridTemplateColumns:isMobile ? '1fr' : '1fr 1fr', gap:'12px' }}>
                 <div>
                   <label style={lLabel}>Delivery Order Number</label>
                   <input
@@ -900,7 +902,7 @@ export default function Sites() {
                 </div>
               </div>
 
-              <div style={{ display:'flex', gap:'12px', paddingTop:'4px', borderTop:'1px solid #f1f5f9' }}>
+              <div style={{ display:'flex', flexDirection:isMobile ? 'column' : 'row', gap:'12px', paddingTop:'4px', borderTop:'1px solid #f1f5f9' }}>
                 <button onClick={handleSave} disabled={saving} style={{ flex:1, padding:'11px', borderRadius:'10px', fontSize:'14px', fontWeight:'800', color:'white', border:'none', cursor:'pointer', fontFamily:'inherit', background:'#2563eb', opacity:saving?0.6:1, boxShadow:'0 2px 8px rgba(37,99,235,.28)' }}>
                   {saving ? 'Saving…' : editSite ? 'Save Changes' : 'Add Site'}
                 </button>
