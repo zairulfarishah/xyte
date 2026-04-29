@@ -436,6 +436,107 @@ export default function Team() {
     )
   }
 
+  if (isMobile) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'radial-gradient(circle at top left, #13315c 0%, #0b1220 38%, #060912 100%)' }}>
+        <input ref={avatarInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarFileChange} />
+        <div style={{ padding: '16px 14px 28px', display: 'grid', gap: '14px' }}>
+          <div style={{ background: 'linear-gradient(135deg, rgba(15,23,42,0.96) 0%, rgba(15,23,42,0.88) 44%, rgba(37,99,235,0.26) 100%)', borderRadius: '22px', border: '1px solid rgba(148,163,184,0.16)', padding: '18px 16px' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 10px', borderRadius: '999px', background: `${insight.color}18`, border: `1px solid ${insight.color}44`, fontSize: '10px', fontWeight: '700', color: insight.color }}>
+              <div style={{ width: 7, height: 7, borderRadius: '50%', background: insight.color }} />
+              {insight.label}
+            </div>
+            <h1 style={{ marginTop: '12px', color: 'white', fontSize: '20px', lineHeight: 1.25, fontWeight: '700' }}>Team</h1>
+            <p style={{ marginTop: '6px', color: '#cbd5e1', fontSize: '12px', lineHeight: 1.6 }}>{insight.body}</p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '10px', marginTop: '16px' }}>
+              {[
+                { label: 'Members', value: members.length },
+                { label: 'Available', value: availableCount },
+                { label: 'Avg Load', value: `${avgWorkload}%` },
+              ].map(item => (
+                <div key={item.label} style={{ background: 'rgba(15,23,42,0.62)', border: '1px solid rgba(148,163,184,0.14)', borderRadius: '16px', padding: '12px' }}>
+                  <p style={{ color: 'white', fontSize: '18px', fontWeight: '800', lineHeight: 1 }}>{item.value}</p>
+                  <p style={{ color: '#94a3b8', fontSize: '10px', marginTop: '6px', textTransform: 'uppercase', letterSpacing: '.06em' }}>{item.label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ background: 'rgba(8, 15, 28, 0.92)', borderRadius: '20px', border: '1px solid rgba(148,163,184,0.12)', padding: '14px' }}>
+            <div style={{ position: 'relative' }}>
+              <Search size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+              <input
+                placeholder="Search member..."
+                value={search}
+                onChange={event => setSearch(event.target.value)}
+                style={{ width: '100%', padding: '10px 12px 10px 36px', borderRadius: '12px', border: '1px solid rgba(148,163,184,0.14)', fontSize: '13px', outline: 'none', color: '#e2e8f0', background: 'rgba(15,23,42,0.86)', boxSizing: 'border-box' }}
+              />
+            </div>
+          </div>
+
+          {selected && (
+            <div style={{ background: 'rgba(8, 15, 28, 0.92)', borderRadius: '20px', border: '1px solid rgba(148,163,184,0.12)', padding: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <Avatar name={selected.full_name} size={54} index={selectedIndex} avatarUrl={selected.avatar_url} onUpload={isZairul ? () => triggerAvatarUpload(selected.id) : null} />
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ color: 'white', fontSize: '16px', fontWeight: '800' }}>{selected.full_name}</p>
+                  <p style={{ color: '#94a3b8', fontSize: '12px', marginTop: '2px' }}>{selected.role}</p>
+                  <p style={{ color: workloadStatus.text, fontSize: '12px', marginTop: '6px', fontWeight: '700' }}>{selected.workload.workload_percentage}% load</p>
+                </div>
+              </div>
+
+              <div style={{ height: '10px', background: 'rgba(148,163,184,0.12)', borderRadius: '999px', overflow: 'hidden', marginTop: '14px' }}>
+                <div style={{ height: '100%', width: `${progressBarWidth}%`, background: workloadStatus.bar, borderRadius: '999px' }} />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '10px', marginTop: '14px' }}>
+                {[
+                  { label: 'PIC', value: selected.pic_count },
+                  { label: 'Crew', value: selected.crew_count },
+                  { label: 'Reports', value: reportQueue.length },
+                ].map(item => (
+                  <div key={item.label} style={{ background: 'rgba(15,23,42,0.72)', border: '1px solid rgba(148,163,184,0.08)', borderRadius: '14px', padding: '10px' }}>
+                    <p style={{ color: 'white', fontSize: '16px', fontWeight: '800' }}>{item.value}</p>
+                    <p style={{ color: '#94a3b8', fontSize: '10px', marginTop: '4px' }}>{item.label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gap: '10px' }}>
+            {filteredMembers.map((member, index) => {
+              const isSelected = selected?.id === member.id
+              const colors = member.workload.status_colors
+
+              return (
+                <button
+                  key={member.id}
+                  onClick={() => setSelectedId(member.id)}
+                  style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '12px', padding: '13px', cursor: 'pointer', borderRadius: '18px', background: isSelected ? 'linear-gradient(135deg, rgba(30,64,175,0.34), rgba(15,23,42,0.92))' : 'rgba(15,23,42,0.72)', border: `1px solid ${isSelected ? 'rgba(96,165,250,0.42)' : 'rgba(148,163,184,0.08)'}` }}
+                >
+                  <Avatar name={member.full_name} size={42} index={index} avatarUrl={member.avatar_url} onUpload={isZairul ? () => triggerAvatarUpload(member.id) : null} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontWeight: '700', fontSize: '13px', color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{member.full_name}</p>
+                    <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{member.role}</p>
+                    <div style={{ height: '6px', background: 'rgba(148,163,184,0.14)', borderRadius: '999px', overflow: 'hidden', marginTop: '10px' }}>
+                      <div style={{ height: '100%', width: `${Math.min(member.workload.workload_percentage, 100)}%`, background: colors.bar, borderRadius: '999px' }} />
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <p style={{ fontSize: '12px', color: '#e2e8f0', fontWeight: '800' }}>{member.workload.workload_percentage}%</p>
+                    <p style={{ fontSize: '10px', color: colors.text, marginTop: '4px', fontWeight: '700' }}>{member.workload.status}</p>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: 'radial-gradient(circle at top left, #13315c 0%, #0b1220 38%, #060912 100%)' }}>
       <input ref={avatarInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarFileChange} />

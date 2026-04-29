@@ -3,6 +3,7 @@ import { supabase } from '../supabase'
 import { FileText, CheckCircle, Clock, AlertCircle, Search, MinusCircle } from 'lucide-react'
 import { notify } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
+import { useViewport } from '../utils/useViewport'
 
 const REPORT_META = {
   pending:        { bg:'#fef3c7', text:'#92400e', border:'#fcd34d', dot:'#f59e0b',  label:'Pending'        },
@@ -53,6 +54,7 @@ function StatusPill({ status, meta }) {
 
 export default function Reports() {
   const { isZairul, fullName } = useAuth()
+  const { isMobile } = useViewport()
   const [sites, setSites]         = useState([])
   const [members, setMembers]     = useState([])
   const [loading, setLoading]     = useState(true)
@@ -126,6 +128,135 @@ export default function Reports() {
       Loading reports…
     </div>
   )
+
+  if (isMobile) {
+    return (
+      <div style={{ minHeight:'100vh', background:'linear-gradient(180deg,#071226 0 88px,#dde4ed 88px 100%)' }}>
+        <div style={{ padding:'18px 14px 0' }}>
+          <h1 style={{ fontSize:'22px', fontWeight:'700', color:'white' }}>Reports</h1>
+          <p style={{ color:'#94a3b8', fontSize:'12px', marginTop:'3px' }}>Simple mobile review flow</p>
+        </div>
+
+        <div style={{ padding:'16px 14px 28px', display:'flex', flexDirection:'column', gap:'14px' }}>
+          {updateError && (
+            <div style={{ background:'#fee2e2', border:'1px solid #fecaca', borderRadius:'12px', padding:'12px 14px', display:'flex', justifyContent:'space-between', alignItems:'center', gap:'12px' }}>
+              <span style={{ fontSize:'12px', color:'#991b1b', fontWeight:'600' }}>Failed to update: {updateError}</span>
+              <button onClick={() => setUpdateError(null)} style={{ background:'none', border:'none', cursor:'pointer', color:'#ef4444', fontWeight:'700', fontSize:'18px', lineHeight:1 }}>x</button>
+            </div>
+          )}
+
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(2, minmax(0, 1fr))', gap:'10px' }}>
+            {STAT_CARDS.map(({ key, label, Icon, grad, shadow }) => (
+              <button
+                key={key}
+                onClick={() => { setTab(label); setPage(1) }}
+                style={{ background:grad, borderRadius:'16px', padding:'14px', border:'none', cursor:'pointer', boxShadow:`0 8px 24px ${shadow}`, textAlign:'left' }}
+              >
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px' }}>
+                  <span style={{ color:'rgba(255,255,255,0.82)', fontSize:'11px', fontWeight:'700' }}>{label}</span>
+                  <Icon size={15} color="white" />
+                </div>
+                <p style={{ fontSize:'26px', fontWeight:'800', color:'white', lineHeight:1, marginTop:'12px' }}>{counts[key]}</p>
+              </button>
+            ))}
+          </div>
+
+          <div style={{ background:'white', borderRadius:'16px', border:'1px solid #e2e8f0', padding:'12px', display:'flex', flexDirection:'column', gap:'10px' }}>
+            <div style={{ position:'relative' }}>
+              <Search size={13} style={{ position:'absolute', left:'10px', top:'50%', transform:'translateY(-50%)', color:'#94a3b8' }} />
+              <input
+                placeholder="Search sites..."
+                value={search}
+                onChange={e => { setSearch(e.target.value); setPage(1) }}
+                style={{ width:'100%', padding:'9px 10px 9px 30px', borderRadius:'10px', border:'1px solid #e2e8f0', fontSize:'13px', outline:'none', color:'#0f172a', background:'white', boxSizing:'border-box' }}
+              />
+            </div>
+
+            <div style={{ display:'flex', gap:'6px', overflowX:'auto' }}>
+              {TABS.map(t => {
+                const active = tab === t
+                const rKey = t === 'All' ? null : t.toLowerCase().replace(' ', '_')
+                const meta = rKey ? REPORT_META[rKey] : null
+                return (
+                  <button
+                    key={t}
+                    onClick={() => { setTab(t); setPage(1) }}
+                    style={{ padding:'7px 12px', borderRadius:'999px', fontSize:'12px', fontWeight:'700', cursor:'pointer', border: active && meta ? `1px solid ${meta.border}` : '1px solid #e2e8f0', background: active ? (meta ? meta.bg : '#0f172a') : '#fff', color: active ? (meta ? meta.text : 'white') : '#64748b', whiteSpace:'nowrap' }}
+                  >
+                    {t}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {paginated.length === 0 ? (
+            <div style={{ background:'white', borderRadius:'16px', border:'1px solid #e2e8f0', padding:'28px 18px', textAlign:'center', color:'#94a3b8', fontSize:'13px' }}>
+              No reports found.
+            </div>
+          ) : (
+            paginated.map((site) => {
+              const pic  = site.site_assignments?.find(a => a.assignment_role === 'PIC')
+              const crew = site.site_assignments?.filter(a => a.assignment_role === 'crew') || []
+              const mi   = members.findIndex(m => m.id === pic?.team_members?.id)
+              const rm   = REPORT_META[site.report_status] || REPORT_META.pending
+
+              return (
+                <div key={site.id} style={{ background:'white', borderRadius:'18px', border:'1px solid #e2e8f0', padding:'14px', boxShadow:'0 4px 18px rgba(15,23,42,.05)' }}>
+                  <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:'10px' }}>
+                    <div style={{ minWidth:0 }}>
+                      <p style={{ fontWeight:'800', color:'#0f172a', fontSize:'14px', lineHeight:1.4 }}>{site.site_name}</p>
+                      <p style={{ color:'#64748b', fontSize:'11px', marginTop:'4px' }}>{site.location}</p>
+                    </div>
+                    <StatusPill status={site.report_status} meta={REPORT_META} />
+                  </div>
+
+                  <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap', marginTop:'12px' }}>
+                    <StatusPill status={site.site_status} meta={STATUS_META} />
+                    <span style={{ fontSize:'11px', color:'#64748b' }}>
+                      {new Date(site.scheduled_date).toLocaleDateString('en-MY', { day:'numeric', month:'short', year:'numeric' })}
+                    </span>
+                  </div>
+
+                  <div style={{ display:'flex', alignItems:'center', gap:'8px', marginTop:'12px' }}>
+                    {pic && <Avatar name={pic.team_members.full_name} size={28} index={mi >= 0 ? mi : 0} avatarUrl={pic.team_members?.avatar_url} />}
+                    <div style={{ minWidth:0 }}>
+                      <p style={{ fontSize:'12px', fontWeight:'700', color:'#0f172a' }}>{pic?.team_members?.full_name || 'No PIC assigned'}</p>
+                      <p style={{ fontSize:'11px', color:'#94a3b8', marginTop:'2px' }}>{crew.length} crew member{crew.length === 1 ? '' : 's'}</p>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop:'14px' }}>
+                    <label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:rm.text, marginBottom:'6px' }}>Update report status</label>
+                    <select
+                      value={site.report_status}
+                      disabled={updating === site.id}
+                      onChange={e => updateReportStatus(site.id, e.target.value)}
+                      style={{ width:'100%', padding:'10px 12px', borderRadius:'10px', border:`1px solid ${rm.border}`, fontSize:'13px', fontWeight:'700', color:rm.text, background:rm.bg, cursor:'pointer', outline:'none', opacity: updating === site.id ? 0.5 : 1 }}
+                    >
+                      {['pending','in_progress','submitted','approved','not_applicable'].map(s => (
+                        <option key={s} value={s} disabled={s === 'approved' && !isZairul}>
+                          {REPORT_META[s]?.label}{s === 'approved' && !isZairul ? ' (Zairul only)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )
+            })
+          )}
+
+          {totalPages > 1 && (
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'10px', background:'white', border:'1px solid #e2e8f0', borderRadius:'16px', padding:'12px 14px' }}>
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} style={{ padding:'8px 12px', borderRadius:'10px', border:'1px solid #e2e8f0', background:'white', cursor: page === 1 ? 'not-allowed' : 'pointer', color: page === 1 ? '#cbd5e1' : '#0f172a', fontSize:'12px', fontWeight:'700' }}>Prev</button>
+              <span style={{ fontSize:'12px', color:'#64748b', fontWeight:'700' }}>Page {page} of {totalPages}</span>
+              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} style={{ padding:'8px 12px', borderRadius:'10px', border:'1px solid #e2e8f0', background:'white', cursor: page === totalPages ? 'not-allowed' : 'pointer', color: page === totalPages ? '#cbd5e1' : '#0f172a', fontSize:'12px', fontWeight:'700' }}>Next</button>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div style={{ minHeight:'100vh', background:'linear-gradient(180deg,#071226 0 88px,#dde4ed 88px 100%)' }}>

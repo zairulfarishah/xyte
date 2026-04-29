@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../supabase'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { useViewport } from '../utils/useViewport'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -32,6 +33,7 @@ function Avatar({ name, size = 18 }) {
 
 export default function CalendarPage() {
   const navigate = useNavigate()
+  const { isMobile } = useViewport()
   const today    = useMemo(() => new Date(), [])
   const [current, setCurrent]   = useState(() => new Date(today.getFullYear(), today.getMonth(), 1))
   const [sites, setSites]       = useState([])
@@ -91,6 +93,103 @@ export default function CalendarPage() {
   }
 
   const monthLabel = current.toLocaleDateString('en-MY', { month: 'long', year: 'numeric' })
+  const agendaDays = useMemo(() => Object.entries(sitesByDate).sort((a, b) => a[0].localeCompare(b[0])), [sitesByDate])
+
+  if (isMobile) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg,#071226 0 88px,#e2e8f0 88px 100%)' }}>
+        <div style={{ padding: '18px 14px 0', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+          <div>
+            <h1 style={{ fontSize: '22px', fontWeight: '700', color: 'white' }}>Calendar</h1>
+            <p style={{ color: '#94a3b8', fontSize: '12px', marginTop: '3px' }}>
+              {sites.length} site{sites.length !== 1 ? 's' : ''} in {monthLabel}
+            </p>
+          </div>
+          <button
+            onClick={() => setCurrent(new Date(today.getFullYear(), today.getMonth(), 1))}
+            style={{ padding: '8px 12px', borderRadius: '10px', background: '#2563eb', border: 'none', color: 'white', fontSize: '12px', fontWeight: '700', cursor: 'pointer', flexShrink: 0 }}
+          >
+            Today
+          </button>
+        </div>
+
+        <div style={{ padding: '14px 14px 28px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'white', border: '1px solid #dbe3ec', borderRadius: '16px', padding: '12px 14px' }}>
+            <button onClick={() => setCurrent(new Date(year, month - 1, 1))} style={{ padding: '8px', borderRadius: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', color: '#0f172a', cursor: 'pointer', display: 'flex' }}>
+              <ChevronLeft size={16} />
+            </button>
+            <div style={{ textAlign: 'center' }}>
+              <p style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>{monthLabel}</p>
+              <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>Agenda view</p>
+            </div>
+            <button onClick={() => setCurrent(new Date(year, month + 1, 1))} style={{ padding: '8px', borderRadius: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', color: '#0f172a', cursor: 'pointer', display: 'flex' }}>
+              <ChevronRight size={16} />
+            </button>
+          </div>
+
+          {loading ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '240px', gap: '10px', color: '#64748b', fontSize: '14px' }}>
+              <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '2px solid #e2e8f0', borderTopColor: '#2563eb', animation: 'spin 0.7s linear infinite' }} />
+              Loading...
+            </div>
+          ) : agendaDays.length === 0 ? (
+            <div style={{ background: 'white', borderRadius: '18px', border: '1px solid #e2e8f0', padding: '28px 20px', textAlign: 'center' }}>
+              <p style={{ fontSize: '14px', fontWeight: '700', color: '#0f172a' }}>No sites scheduled</p>
+              <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>This month is clear.</p>
+            </div>
+          ) : (
+            agendaDays.map(([dateStr, daySites]) => (
+              <div key={dateStr} style={{ background: 'white', borderRadius: '18px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                <div style={{ padding: '14px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                  <div>
+                    <p style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a' }}>
+                      {new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-MY', { weekday: 'short', day: 'numeric', month: 'short' })}
+                    </p>
+                    <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{daySites.length} site{daySites.length !== 1 ? 's' : ''}</p>
+                  </div>
+                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: isToday(Number(dateStr.slice(-2))) ? '#2563eb' : '#cbd5e1' }} />
+                </div>
+
+                <div style={{ padding: '10px', display: 'grid', gap: '10px' }}>
+                  {daySites.map((site) => {
+                    const tc = TYPE_COLORS[site.site_type] || { bg: '#f1f5f9', text: '#475569', border: '#e2e8f0', label: 'Site' }
+                    const pic = site.site_assignments?.find(a => a.assignment_role === 'PIC')
+                    const crew = site.site_assignments?.filter(a => a.assignment_role === 'crew') || []
+
+                    return (
+                      <button
+                        key={site.id}
+                        onClick={() => navigate(`/sites/${site.id}`)}
+                        style={{ width: '100%', textAlign: 'left', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '12px', cursor: 'pointer' }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
+                          <div style={{ minWidth: 0 }}>
+                            <p style={{ fontSize: '13px', fontWeight: '800', color: '#0f172a', lineHeight: 1.4 }}>{site.site_name}</p>
+                            <p style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>{site.location}</p>
+                          </div>
+                          <span style={{ background: tc.bg, color: tc.text, border: `1px solid ${tc.border}`, padding: '3px 8px', borderRadius: '999px', fontSize: '10px', fontWeight: '700', whiteSpace: 'nowrap' }}>
+                            {tc.label}
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
+                          <span style={{ background: '#fff', border: `1px solid ${STATUS_DOT[site.site_status] || '#cbd5e1'}`, color: '#475569', padding: '3px 8px', borderRadius: '999px', fontSize: '10px', fontWeight: '700', textTransform: 'capitalize' }}>
+                            {site.site_status}
+                          </span>
+                          {pic && <span style={{ fontSize: '11px', color: '#475569', fontWeight: '600' }}>PIC: {pic.team_members?.short_name || pic.team_members?.full_name}</span>}
+                          {crew.length > 0 && <span style={{ fontSize: '11px', color: '#94a3b8' }}>{crew.length} crew</span>}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    )
+  }
 
   const SHOW = 2 // max chips before "+X more"
 

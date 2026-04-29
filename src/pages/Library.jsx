@@ -3,6 +3,7 @@ import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { Download, Upload, ChevronDown, ChevronRight, FileText, File, X, Trash2, Eye } from 'lucide-react'
 import mammoth from 'mammoth'
+import { useViewport } from '../utils/useViewport'
 
 const SECTIONS = [
   { key: 'xradar_namelist',  label: 'Xradar Namelist',  type: 'single', color: '#2563eb', bg: '#eff6ff' },
@@ -33,6 +34,7 @@ const lLabel = { display: 'block', fontSize: '12px', fontWeight: '500', color: '
 
 export default function Library() {
   const { isZairul } = useAuth()
+  const { isMobile } = useViewport()
   const [docs, setDocs]               = useState([])
   const [members, setMembers]         = useState([])
   const [loading, setLoading]         = useState(true)
@@ -183,20 +185,20 @@ export default function Library() {
     <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg,#071226 0 88px,#dde4ed 88px 100%)' }}>
 
       {/* Header */}
-      <div style={{ padding: '24px 40px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ padding: isMobile ? '18px 14px 0' : '24px 40px 0', display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'space-between', gap: '12px' }}>
         <div>
           <h1 style={{ fontSize: '22px', fontWeight: '700', color: 'white' }}>Library</h1>
           <p style={{ color: '#94a3b8', fontSize: '13px', marginTop: '2px' }}>Team documents &amp; templates</p>
         </div>
         {isZairul && (
-          <button onClick={openUploadBlank} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#2563eb', color: 'white', border: 'none', padding: '9px 18px', borderRadius: '10px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
+          <button onClick={openUploadBlank} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: '#2563eb', color: 'white', border: 'none', padding: '9px 18px', borderRadius: '10px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', width: isMobile ? '100%' : 'auto' }}>
             <Upload size={14} /> Upload Document
           </button>
         )}
       </div>
 
       {/* Section list */}
-      <div style={{ padding: '24px 40px 48px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <div style={{ padding: isMobile ? '16px 14px 28px' : '24px 40px 48px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {SECTIONS.map(sec => {
           const isOpen = openSecs.has(sec.key)
 
@@ -205,7 +207,7 @@ export default function Library() {
             const doc = getSingle(sec.key)
             return (
               <div key={sec.key} style={{ background: 'white', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
-                <div style={{ padding: '18px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ padding: isMobile ? '14px' : '18px 24px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'space-between', gap: '12px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                     <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: sec.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <FileText size={20} color={sec.color} />
@@ -217,7 +219,7 @@ export default function Library() {
                       </p>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                     {isZairul && (
                       <button onClick={() => openUploadFor(sec.key)} style={uploadBtn}>
                         <Upload size={12} /> Upload
@@ -253,9 +255,9 @@ export default function Library() {
               <div key={sec.key} style={{ background: 'white', borderRadius: '14px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
                 <button
                   onClick={() => toggleSec(sec.key)}
-                  style={{ width: '100%', padding: '18px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+                  style={{ width: '100%', padding: isMobile ? '14px' : '18px 24px', display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', gap: '12px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
                     <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: sec.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <FileText size={20} color={sec.color} />
                     </div>
@@ -264,7 +266,7 @@ export default function Library() {
                       <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '1px' }}>Personal documents · {members.length} members</p>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
                     {isZairul && (
                       <button onClick={e => { e.stopPropagation(); openUploadFor(sec.key) }} style={uploadBtn}>
                         <Upload size={12} /> Upload
@@ -282,14 +284,14 @@ export default function Library() {
                       const doc = getMember(sec.key, m.id)
                       const initials = m.full_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
                       return (
-                        <div key={m.id} style={{ padding: '12px 24px 12px 80px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: idx < members.length - 1 ? '1px solid #f8fafc' : 'none', background: idx % 2 === 0 ? 'white' : '#fafafa' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div key={m.id} style={{ padding: isMobile ? '12px 14px' : '12px 24px 12px 80px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'space-between', gap: '10px', borderBottom: idx < members.length - 1 ? '1px solid #f8fafc' : 'none', background: idx % 2 === 0 ? 'white' : '#fafafa' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
                             <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: sec.color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: '700', color: sec.color, flexShrink: 0 }}>
                               {initials}
                             </div>
                             <p style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a' }}>{m.full_name}</p>
                           </div>
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                             {doc ? (
                               <>
                                 <TypeBadge type={doc.file_type} />
@@ -324,9 +326,9 @@ export default function Library() {
               <div key={sec.key} style={{ background: 'white', borderRadius: '14px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
                 <button
                   onClick={() => toggleSec(sec.key)}
-                  style={{ width: '100%', padding: '18px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+                  style={{ width: '100%', padding: isMobile ? '14px' : '18px 24px', display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', gap: '12px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
                     <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: sec.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0' }}>
                       <File size={20} color={sec.color} />
                     </div>
@@ -335,7 +337,7 @@ export default function Library() {
                       <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '1px' }}>Beam · Slab · Column · Plinth</p>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
                     {isZairul && (
                       <button onClick={e => { e.stopPropagation(); openUploadFor(sec.key) }} style={uploadBtn}>
                         <Upload size={12} /> Upload
@@ -356,9 +358,9 @@ export default function Library() {
                         <span style={{ padding: '6px 12px', borderRadius: '8px', background: '#f8fafc', border: '1px solid #f1f5f9', fontSize: '12px', fontWeight: '600', color: '#cbd5e1' }}>{label}</span>
                       )
                       return (
-                        <div key={sub} style={{ padding: '14px 24px 14px 80px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: idx < FORM_SUBS.length - 1 ? '1px solid #f8fafc' : 'none', background: idx % 2 === 0 ? 'white' : '#fafafa' }}>
+                        <div key={sub} style={{ padding: isMobile ? '12px 14px' : '14px 24px 14px 80px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'space-between', gap: '10px', borderBottom: idx < FORM_SUBS.length - 1 ? '1px solid #f8fafc' : 'none', background: idx % 2 === 0 ? 'white' : '#fafafa' }}>
                           <p style={{ fontSize: '14px', fontWeight: '600', color: '#0f172a' }}>{sub}</p>
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                             {pdfDoc ? (
                               <>
                                 <button onClick={() => handlePreview(pdfDoc)} style={prevBtn} disabled={previewing}>
@@ -404,10 +406,10 @@ export default function Library() {
       {/* Preview Modal */}
       {(preview || previewing) && (
         <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: '24px' }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: isMobile ? '14px' : '24px' }}
           onClick={e => e.target === e.currentTarget && setPreview(null)}
         >
-          <div style={{ background: 'white', borderRadius: '20px', width: '100%', maxWidth: '860px', height: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 32px 80px rgba(0,0,0,0.3)' }}>
+          <div style={{ background: 'white', borderRadius: '20px', width: '100%', maxWidth: '860px', height: isMobile ? '92vh' : '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 32px 80px rgba(0,0,0,0.3)' }}>
             {/* Header */}
             <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
               <div style={{ minWidth: 0 }}>
@@ -447,7 +449,7 @@ export default function Library() {
               )}
               {!previewing && preview?.html != null && (
                 <div
-                  style={{ height: '100%', overflowY: 'auto', padding: '32px 40px', background: 'white', fontSize: '14px', lineHeight: '1.7', color: '#0f172a', fontFamily: 'Georgia, serif' }}
+                  style={{ height: '100%', overflowY: 'auto', padding: isMobile ? '18px' : '32px 40px', background: 'white', fontSize: '14px', lineHeight: '1.7', color: '#0f172a', fontFamily: 'Georgia, serif' }}
                   dangerouslySetInnerHTML={{ __html: preview.html }}
                 />
               )}
@@ -470,7 +472,7 @@ export default function Library() {
             </div>
 
             {/* Modal body */}
-            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
+            <div style={{ padding: isMobile ? '16px 18px' : '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
 
               {/* Section */}
               <div>
@@ -504,7 +506,7 @@ export default function Library() {
 
               {/* Sub + file type picker (Form Template) */}
               {selectedSec?.type === 'sub' && (
-                <div style={{ display: 'flex', gap: '10px' }}>
+                <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '10px' }}>
                   <div style={{ flex: 1 }}>
                     <label style={lLabel}>Template *</label>
                     <select style={lightInput} value={form.subcategory} onChange={e => setForm(f => ({ ...f, subcategory: e.target.value }))}>
@@ -542,7 +544,7 @@ export default function Library() {
               )}
 
               {/* Actions */}
-              <div style={{ display: 'flex', gap: '10px', paddingTop: '4px' }}>
+              <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '10px', paddingTop: '4px' }}>
                 <button
                   onClick={handleUpload}
                   disabled={uploading || !file || !form.section}
