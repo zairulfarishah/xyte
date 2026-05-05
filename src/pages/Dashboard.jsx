@@ -10,6 +10,7 @@ import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
 import { mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../utils/completionMeta'
 import { useViewport } from '../utils/useViewport'
+import { fetchTeamLeaves, getLeaveSummary, getMemberLeaveOnDate, getMembersOnLeave } from '../utils/teamLeaves'
 import 'leaflet/dist/leaflet.css'
 
 function xIcon(color, selected = false) {
@@ -228,6 +229,7 @@ export default function Dashboard() {
   const [quickAssign, setQuickAssign] = useState(null)
   const [quickAssignSaving, setQuickAssignSaving] = useState(false)
   const [mapFilter, setMapFilter] = useState('all')
+  const [leaves, setLeaves] = useState([])
 
   useEffect(() => {
     fetchAll()
@@ -243,6 +245,12 @@ export default function Dashboard() {
     return () => window.removeEventListener('xyte:open-add-site', handleOpenAdd)
   }, [])
 
+  useEffect(() => {
+    const refreshLeaves = () => fetchAll()
+    window.addEventListener('xyte:leaves-updated', refreshLeaves)
+    return () => window.removeEventListener('xyte:leaves-updated', refreshLeaves)
+  }, [])
+
   async function fetchAll() {
     setLoading(true)
 
@@ -251,10 +259,13 @@ export default function Dashboard() {
       .select('*')
       .order('full_name')
 
-    const { data: allSites } = await supabase
-      .from('sites')
-      .select('*, site_assignments(assignment_role, member_id, team_members(id, full_name, avatar_url))')
-      .order('scheduled_date', { ascending: true })
+    const [{ data: allSites }, leaveData] = await Promise.all([
+      supabase
+        .from('sites')
+        .select('*, site_assignments(assignment_role, member_id, team_members(id, full_name, avatar_url))')
+        .order('scheduled_date', { ascending: true }),
+      fetchTeamLeaves().catch(() => []),
+    ])
 
     const siteList = allSites || []
     const memberRecords = (memberData || []).map(member => buildMemberRecord(member, siteList))
@@ -270,11 +281,37 @@ export default function Dashboard() {
     setMembers(memberRecords)
     setSites(siteList)
     setUpcoming(upcomingSites)
+    setLeaves(leaveData || [])
     setLoading(false)
+  }
+
+  function getUnavailableAssignments(memberIds, date) {
+    return memberIds
+      .map(memberId => {
+        const member = members.find(item => item.id === memberId)
+        const leave = getMemberLeaveOnDate(leaves, memberId, date)
+        return leave && member ? { member, leave } : null
+      })
+      .filter(Boolean)
+  }
+
+  function validateLeaveSelections(memberIds, date) {
+    const conflicts = getUnavailableAssignments(memberIds, date)
+    if (conflicts.length === 0) return null
+    const summary = conflicts
+      .map(({ member, leave }) => `${member.full_name} (${leave.leave_type})`)
+      .join(', ')
+    return `These team members are on leave for ${date}: ${summary}`
   }
 
   async function handleAddSave() {
     if (!form.site_name || !form.location || !form.scheduled_date) return
+    const selectedIds = [form.pic_id, ...form.crew_ids].filter(Boolean)
+    const leaveError = validateLeaveSelections(selectedIds, form.scheduled_date)
+    if (leaveError) {
+      alert(leaveError)
+      return
+    }
     setSaving(true)
 
     setUploadError(null)
@@ -406,6 +443,15 @@ export default function Dashboard() {
 
   async function handleQuickAssignSave() {
     if (!quickAssign?.siteId) return
+    const assignedSite = sites.find(site => site.id === quickAssign.siteId)
+    const leaveError = validateLeaveSelections(
+      [quickAssign.picId, ...quickAssign.crewIds].filter(Boolean),
+      assignedSite?.scheduled_date
+    )
+    if (leaveError) {
+      alert(leaveError)
+      return
+    }
     setQuickAssignSaving(true)
 
     await supabase
@@ -453,6 +499,35 @@ export default function Dashboard() {
   })
   const overloaded = members.filter(member => member.workload.workload_percentage > 80)
   const allClear = noPicSites.length === 0 && soonSites.length === 0 && pendingReports.length === 0 && overloaded.length === 0
+  const todayStr = new Date().toISOString().split('T')[0]
+  const membersOnLeaveToday = getMembersOnLeave(leaves, members, todayStr)
+  const leaveConflicts = upcoming
+    .map(site => {
+      const conflicts = (site.site_assignments || [])
+        .map(assignment => ({
+          assignment,
+          leave: getMemberLeaveOnDate(leaves, assignment.member_id, site.scheduled_date),
+        }))
+        .filter(item => item.leave)
+      return conflicts.length > 0 ? { site, conflicts } : null
+    })
+    .filter(Boolean)
+    .slice(0, 3)
+
+  const addFormUnavailable = members
+    .reduce((acc, member) => {
+      const leave = getMemberLeaveOnDate(leaves, member.id, form.scheduled_date)
+      if (leave) acc[member.id] = leave
+      return acc
+    }, {})
+
+  const quickAssignSite = sites.find(site => site.id === quickAssign?.siteId)
+  const quickAssignUnavailable = members
+    .reduce((acc, member) => {
+      const leave = getMemberLeaveOnDate(leaves, member.id, quickAssignSite?.scheduled_date)
+      if (leave) acc[member.id] = leave
+      return acc
+    }, {})
 
   const teamAverage = members.length > 0
     ? Math.round(members.reduce((sum, member) => sum + member.workload.workload_percentage, 0) / members.length)
@@ -792,12 +867,63 @@ export default function Dashboard() {
                   </div>
                 )}
 
-                {members.map((member, index) => (
+                {(membersOnLeaveToday.length > 0 || leaveConflicts.length > 0) && (
+                  <div style={{ display: 'grid', gap: '10px', marginBottom: '14px' }}>
+                    {membersOnLeaveToday.length > 0 && (
+                      <div style={{ padding: '12px 12px 13px', borderRadius: '14px', background: '#eff6ff', border: '1px solid #bfdbfe' }}>
+                        <div style={{ fontSize: '12px', fontWeight: '800', color: '#1d4ed8', marginBottom: '8px' }}>On Leave Today</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {membersOnLeaveToday.map(({ member, leave }) => (
+                            <div key={member.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                              <div style={{ fontSize: '12px', color: '#1e3a8a', fontWeight: '700' }}>{member.full_name}</div>
+                              <div style={{ padding: '4px 8px', borderRadius: '999px', background: 'white', border: '1px solid #bfdbfe', fontSize: '10px', color: '#2563eb', fontWeight: '800', textAlign: 'right' }}>
+                                {getLeaveSummary(leave)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {leaveConflicts.length > 0 && (
+                      <div style={{ padding: '12px 12px 13px', borderRadius: '14px', background: '#fff7ed', border: '1px solid #fdba74' }}>
+                        <div style={{ fontSize: '12px', fontWeight: '800', color: '#c2410c', marginBottom: '8px' }}>Upcoming Leave Conflicts</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {leaveConflicts.map(({ site, conflicts }) => (
+                            <div key={site.id} style={{ display: 'grid', gap: '4px' }}>
+                              <div style={{ fontSize: '12px', color: '#9a3412', fontWeight: '800', lineHeight: 1.5 }}>
+                                {site.site_name} · {formatShortDate(site.scheduled_date)}
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                {conflicts.map(({ assignment, leave }) => (
+                                  <div key={`${site.id}-${assignment.member_id}`} style={{ fontSize: '11px', color: '#b45309', fontWeight: '700', lineHeight: 1.5 }}>
+                                    {assignment.team_members?.full_name} · {getLeaveSummary(leave)}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {members.map((member, index) => {
+                  const leave = getMemberLeaveOnDate(leaves, member.id, todayStr)
+                  return (
                   <div key={member.id} style={{ padding: '14px 0', borderBottom: index === members.length - 1 ? 0 : '1px solid #e5eaf2' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <Avatar name={member.full_name} size={36} index={index} avatarUrl={member.avatar_url} />
                       <div style={{ flex: 1 }}>
-                        <b style={{ fontSize: '14px' }}>{member.full_name}</b>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <b style={{ fontSize: '14px' }}>{member.full_name}</b>
+                          {leave && (
+                            <span style={{ padding: '3px 8px', borderRadius: '999px', background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', fontSize: '10px', fontWeight: '800' }}>
+                              {getLeaveSummary(leave)}
+                            </span>
+                          )}
+                        </div>
                         <p style={{ margin: '3px 0 0', color: '#64748b', fontSize: '12px' }}>{member.role}</p>
                       </div>
                       <div style={{ fontWeight: '850', fontSize: '13px', color: member.workload.workload_percentage > 60 ? '#f59e0b' : '#22c55e' }}>
@@ -808,7 +934,7 @@ export default function Dashboard() {
                       <div style={{ height: '100%', width: `${Math.min(member.workload.workload_percentage, 100)}%`, background: member.workload.status_colors.bar, borderRadius: '999px' }} />
                     </div>
                   </div>
-                ))}
+                )})}
 
                 <button
                   onClick={() => openQuickAssign()}
@@ -1486,18 +1612,28 @@ export default function Dashboard() {
                   onChange={event => setForm(f => ({ ...f, pic_id: event.target.value }))}
                 >
                   <option value="">{form.site_type === 'meeting' ? '- Select Organizer -' : '- Select PIC -'}</option>
-                  {members.map(member => <option key={member.id} value={member.id}>{member.full_name}</option>)}
+                  {members.map(member => {
+                    const leave = addFormUnavailable[member.id]
+                    return (
+                      <option key={member.id} value={member.id} disabled={Boolean(leave)}>
+                        {member.full_name}{leave ? ` - ${getLeaveSummary(leave)}` : ''}
+                      </option>
+                    )
+                  })}
                 </select>
               </div>
 
               <div>
                 <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '8px' }}>{form.site_type === 'meeting' ? 'Attendees' : 'Crew'}</label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {members.map(member => (
-                    <label key={member.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                  {members.map(member => {
+                    const leave = addFormUnavailable[member.id]
+                    return (
+                    <label key={member.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: leave ? 'not-allowed' : 'pointer', opacity: leave ? 0.55 : 1 }}>
                       <input
                         type="checkbox"
                         checked={form.crew_ids.includes(member.id)}
+                        disabled={Boolean(leave)}
                         onChange={() => setForm(f => ({
                           ...f,
                           crew_ids: f.crew_ids.includes(member.id)
@@ -1506,9 +1642,11 @@ export default function Dashboard() {
                         }))}
                         style={{ accentColor: '#2563eb', width: '15px', height: '15px' }}
                       />
-                      <span style={{ fontSize: '13px', color: '#0f172a' }}>{member.full_name}</span>
+                      <span style={{ fontSize: '13px', color: '#0f172a' }}>
+                        {member.full_name}{leave ? ` - ${getLeaveSummary(leave)}` : ''}
+                      </span>
                     </label>
-                  ))}
+                  )})}
                 </div>
               </div>
 
@@ -1719,8 +1857,8 @@ export default function Dashboard() {
                 >
                   <option value="">- Select PIC -</option>
                   {members.map(member => (
-                    <option key={member.id} value={member.id}>
-                      {member.full_name} · {member.workload.workload_percentage}% load
+                    <option key={member.id} value={member.id} disabled={Boolean(quickAssignUnavailable[member.id])}>
+                      {member.full_name} · {member.workload.workload_percentage}% load{quickAssignUnavailable[member.id] ? ` · ${getLeaveSummary(quickAssignUnavailable[member.id])}` : ''}
                     </option>
                   ))}
                 </select>
@@ -1730,14 +1868,17 @@ export default function Dashboard() {
                 <label style={{ fontSize: '12px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '8px' }}>Crew</label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '190px', overflowY: 'auto', paddingRight: '4px' }}>
                   {members.map(member => (
-                    <label key={member.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '9px 10px', borderRadius: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', cursor: 'pointer' }}>
+                    <label key={member.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '9px 10px', borderRadius: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', cursor: quickAssignUnavailable[member.id] ? 'not-allowed' : 'pointer', opacity: quickAssignUnavailable[member.id] ? 0.55 : 1 }}>
                       <div>
                         <div style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a' }}>{member.full_name}</div>
-                        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{member.role} · {member.workload.workload_percentage}% load</div>
+                        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                          {member.role} · {member.workload.workload_percentage}% load{quickAssignUnavailable[member.id] ? ` · ${getLeaveSummary(quickAssignUnavailable[member.id])}` : ''}
+                        </div>
                       </div>
                       <input
                         type="checkbox"
                         checked={quickAssign.crewIds.includes(member.id)}
+                        disabled={Boolean(quickAssignUnavailable[member.id])}
                         onChange={() => setQuickAssign(current => ({
                           ...current,
                           crewIds: current.crewIds.includes(member.id)

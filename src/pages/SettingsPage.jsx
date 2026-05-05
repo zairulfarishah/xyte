@@ -1,11 +1,27 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../supabase'
-import { User, Info, Lock } from 'lucide-react'
+import { User, Info, Lock, CalendarDays, Plus, Pencil, Trash2 } from 'lucide-react'
 import { ROLE_MULTIPLIERS, WEEKLY_CAPACITY_DAYS } from '../utils/workload'
 import { useAuth } from '../context/AuthContext'
 import { useViewport } from '../utils/useViewport'
+import { LEAVE_TYPES, fetchTeamLeaves, saveTeamLeaves } from '../utils/teamLeaves'
 
 const AVATAR_COLORS = ['#2563eb', '#7c3aed', '#db2777', '#059669', '#d97706', '#dc2626']
+
+const SECTIONS = [
+  { key: 'team', label: 'Team Members', icon: User },
+  { key: 'leave', label: 'Team Leave', icon: CalendarDays },
+  { key: 'app', label: 'App Info', icon: Info },
+]
+
+const EMPTY_LEAVE_FORM = {
+  id: null,
+  member_id: '',
+  leave_type: LEAVE_TYPES[0],
+  start_date: '',
+  end_date: '',
+  note: '',
+}
 
 function Avatar({ name, size = 40, index = 0 }) {
   const initials = name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?'
@@ -19,10 +35,10 @@ function Avatar({ name, size = 40, index = 0 }) {
   )
 }
 
-const SECTIONS = [
-  { key: 'team', label: 'Team Members', icon: User },
-  { key: 'app', label: 'App Info', icon: Info },
-]
+function formatLeaveDate(date) {
+  if (!date) return '-'
+  return new Date(date).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })
+}
 
 export default function SettingsPage() {
   const { isZairul } = useAuth()
@@ -31,19 +47,23 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true)
   const [section, setSection] = useState('team')
   const [stats, setStats] = useState({})
+  const [leaves, setLeaves] = useState([])
+  const [leaveForm, setLeaveForm] = useState(EMPTY_LEAVE_FORM)
+  const [leaveSaving, setLeaveSaving] = useState(false)
 
   useEffect(() => { fetchAll() }, [])
 
   async function fetchAll() {
     setLoading(true)
-    const { data: m } = await supabase
-      .from('team_members').select('*').order('created_at')
-    const { data: s } = await supabase
-      .from('sites').select('id, site_status, report_status')
-    const { data: d } = await supabase
-      .from('library_documents').select('id')
+    const [{ data: m }, { data: s }, { data: d }, leaveData] = await Promise.all([
+      supabase.from('team_members').select('*').order('created_at'),
+      supabase.from('sites').select('id, site_status, report_status'),
+      supabase.from('library_documents').select('id'),
+      fetchTeamLeaves().catch(() => []),
+    ])
 
     setMembers(m || [])
+    setLeaves(leaveData || [])
     setStats({
       totalSites: s?.length || 0,
       completed: s?.filter(x => x.site_status === 'completed').length || 0,
@@ -51,6 +71,99 @@ export default function SettingsPage() {
       docs: d?.length || 0,
     })
     setLoading(false)
+  }
+
+  const memberMap = useMemo(
+    () => Object.fromEntries(members.map(member => [member.id, member])),
+    [members]
+  )
+
+  const sortedLeaves = useMemo(
+    () => [...leaves].sort((a, b) => String(a.start_date || '').localeCompare(String(b.start_date || ''))),
+    [leaves]
+  )
+
+  function resetLeaveForm() {
+    setLeaveForm(EMPTY_LEAVE_FORM)
+  }
+
+  function startEditLeave(leave) {
+    setLeaveForm({
+      id: leave.id,
+      member_id: leave.member_id,
+      leave_type: leave.leave_type,
+      start_date: leave.start_date,
+      end_date: leave.end_date || leave.start_date,
+      note: leave.note || '',
+    })
+  }
+
+  async function handleLeaveSave() {
+    if (!leaveForm.member_id || !leaveForm.start_date) {
+      alert('Please select a team member and leave date.')
+      return
+    }
+
+    const start = leaveForm.start_date
+    const end = leaveForm.end_date || leaveForm.start_date
+    if (end < start) {
+      alert('End date cannot be earlier than start date.')
+      return
+    }
+
+    const nextLeave = {
+      id: leaveForm.id || `${leaveForm.member_id}-${start}-${Date.now()}`,
+      member_id: leaveForm.member_id,
+      leave_type: leaveForm.leave_type,
+      start_date: start,
+      end_date: end,
+      note: leaveForm.note.trim(),
+      created_at: leaveForm.id ? leaves.find(item => item.id === leaveForm.id)?.created_at : new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+
+    const duplicate = leaves.find(item =>
+      item.id !== nextLeave.id &&
+      item.member_id === nextLeave.member_id &&
+      !(nextLeave.end_date < item.start_date || nextLeave.start_date > (item.end_date || item.start_date))
+    )
+
+    if (duplicate) {
+      alert('This member already has a leave record overlapping those dates.')
+      return
+    }
+
+    setLeaveSaving(true)
+    try {
+      const nextLeaves = leaveForm.id
+        ? leaves.map(item => item.id === leaveForm.id ? nextLeave : item)
+        : [...leaves, nextLeave]
+
+      await saveTeamLeaves(nextLeaves)
+      setLeaves(nextLeaves)
+      resetLeaveForm()
+      window.dispatchEvent(new CustomEvent('xyte:leaves-updated'))
+    } catch (error) {
+      alert(error.message || 'Unable to save leave.')
+    } finally {
+      setLeaveSaving(false)
+    }
+  }
+
+  async function handleLeaveDelete(leaveId) {
+    if (!confirm('Delete this leave record?')) return
+    setLeaveSaving(true)
+    try {
+      const nextLeaves = leaves.filter(item => item.id !== leaveId)
+      await saveTeamLeaves(nextLeaves)
+      setLeaves(nextLeaves)
+      if (leaveForm.id === leaveId) resetLeaveForm()
+      window.dispatchEvent(new CustomEvent('xyte:leaves-updated'))
+    } catch (error) {
+      alert(error.message || 'Unable to delete leave.')
+    } finally {
+      setLeaveSaving(false)
+    }
   }
 
   if (!isZairul) return (
@@ -192,6 +305,135 @@ export default function SettingsPage() {
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {section === 'leave' && (
+            <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '340px minmax(0, 1fr)', gap: '16px' }}>
+              <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '18px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                  <div>
+                    <h2 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: '#0f172a' }}>Add Leave</h2>
+                    <p style={{ marginTop: '4px', fontSize: '12px', color: '#94a3b8' }}>Blocks assignment on selected dates.</p>
+                  </div>
+                  {leaveForm.id && (
+                    <button onClick={resetLeaveForm} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569', borderRadius: '8px', padding: '7px 10px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
+                      Reset
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#64748b', marginBottom: '6px' }}>Team Member</label>
+                    <select
+                      value={leaveForm.member_id}
+                      onChange={event => setLeaveForm(form => ({ ...form, member_id: event.target.value }))}
+                      style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '13px', background: 'white', color: '#0f172a' }}
+                    >
+                      <option value="">- Select member -</option>
+                      {members.map(member => (
+                        <option key={member.id} value={member.id}>{member.full_name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#64748b', marginBottom: '6px' }}>Leave Type</label>
+                    <select
+                      value={leaveForm.leave_type}
+                      onChange={event => setLeaveForm(form => ({ ...form, leave_type: event.target.value }))}
+                      style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '13px', background: 'white', color: '#0f172a' }}
+                    >
+                      {LEAVE_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+                    </select>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#64748b', marginBottom: '6px' }}>Start Date</label>
+                      <input
+                        type="date"
+                        value={leaveForm.start_date}
+                        onChange={event => setLeaveForm(form => ({ ...form, start_date: event.target.value, end_date: form.end_date || event.target.value }))}
+                        style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '13px', background: 'white', color: '#0f172a' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#64748b', marginBottom: '6px' }}>End Date</label>
+                      <input
+                        type="date"
+                        value={leaveForm.end_date}
+                        onChange={event => setLeaveForm(form => ({ ...form, end_date: event.target.value }))}
+                        style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '13px', background: 'white', color: '#0f172a' }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#64748b', marginBottom: '6px' }}>Note</label>
+                    <textarea
+                      rows={3}
+                      value={leaveForm.note}
+                      onChange={event => setLeaveForm(form => ({ ...form, note: event.target.value }))}
+                      placeholder="Optional note"
+                      style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '13px', background: 'white', color: '#0f172a', resize: 'vertical', fontFamily: 'inherit' }}
+                    />
+                  </div>
+
+                  <button
+                    onClick={handleLeaveSave}
+                    disabled={leaveSaving}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '10px', padding: '11px 12px', fontSize: '13px', fontWeight: '800', cursor: leaveSaving ? 'not-allowed' : 'pointer', opacity: leaveSaving ? 0.7 : 1 }}
+                  >
+                    <Plus size={14} />
+                    {leaveForm.id ? 'Update Leave' : 'Save Leave'}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9' }}>
+                  <h2 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: '#0f172a' }}>Leave Records</h2>
+                  <p style={{ marginTop: '4px', fontSize: '12px', color: '#94a3b8' }}>These records are used by the dashboard and assignment forms.</p>
+                </div>
+                <div style={{ padding: '12px' }}>
+                  {sortedLeaves.length === 0 ? (
+                    <div style={{ padding: '20px', borderRadius: '10px', background: '#f8fafc', color: '#64748b', fontSize: '13px', textAlign: 'center' }}>
+                      No leave records yet.
+                    </div>
+                  ) : sortedLeaves.map((leave, index) => {
+                    const member = memberMap[leave.member_id]
+                    const singleDay = leave.start_date === (leave.end_date || leave.start_date)
+                    return (
+                      <div key={leave.id} style={{ padding: '14px 12px', borderBottom: index === sortedLeaves.length - 1 ? 'none' : '1px solid #eef2f7', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+                        <div style={{ display: 'flex', gap: '12px', minWidth: 0 }}>
+                          <Avatar name={member?.full_name || 'Unknown'} size={38} index={index} />
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: '14px', fontWeight: '700', color: '#0f172a' }}>{member?.full_name || 'Unknown member'}</div>
+                            <div style={{ marginTop: '4px', display: 'inline-flex', padding: '4px 8px', borderRadius: '999px', background: '#fff7ed', color: '#9a3412', border: '1px solid #fdba74', fontSize: '11px', fontWeight: '700' }}>
+                              {leave.leave_type}
+                            </div>
+                            <div style={{ marginTop: '6px', fontSize: '12px', color: '#475569' }}>
+                              {singleDay ? formatLeaveDate(leave.start_date) : `${formatLeaveDate(leave.start_date)} - ${formatLeaveDate(leave.end_date)}`}
+                            </div>
+                            {leave.note && <div style={{ marginTop: '4px', fontSize: '12px', color: '#64748b' }}>{leave.note}</div>}
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                          <button onClick={() => startEditLeave(leave)} style={{ width: '34px', height: '34px', borderRadius: '10px', border: '1px solid #dbeafe', background: '#eff6ff', color: '#2563eb', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+                            <Pencil size={14} />
+                          </button>
+                          <button onClick={() => handleLeaveDelete(leave.id)} style={{ width: '34px', height: '34px', borderRadius: '10px', border: '1px solid #fecaca', background: '#fff1f2', color: '#dc2626', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             </div>

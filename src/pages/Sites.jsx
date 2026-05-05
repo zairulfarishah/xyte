@@ -11,6 +11,7 @@ import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
 import { getSiteHeaderImage } from '../utils/siteHeader'
 import { mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../utils/completionMeta'
+import { fetchTeamLeaves, getLeaveSummary, getMemberLeaveOnDate } from '../utils/teamLeaves'
 import { useViewport } from '../utils/useViewport'
 import 'leaflet/dist/leaflet.css'
 
@@ -151,6 +152,7 @@ export default function Sites() {
   const [quickSaving, setQuickSaving]   = useState(null)
   const [draftStatus, setDraftStatus]   = useState(null)
   const [panelAnchor, setPanelAnchor]   = useState(null)
+  const [leaves, setLeaves]             = useState([])
   const photoInputRef = useRef(null)
   const PER_PAGE = 8
 
@@ -162,16 +164,25 @@ export default function Sites() {
     window.addEventListener('xyte:open-add-site', h)
     return () => window.removeEventListener('xyte:open-add-site', h)
   }, [])
+  useEffect(() => {
+    const h = () => fetchAll()
+    window.addEventListener('xyte:leaves-updated', h)
+    return () => window.removeEventListener('xyte:leaves-updated', h)
+  }, [])
 
   async function fetchAll() {
     setLoading(true)
-    const { data:s } = await supabase
-      .from('sites')
-      .select(`*, site_assignments(assignment_role, team_members(id, full_name, avatar_url))`)
-      .order('scheduled_date', { ascending:false })
-    const { data:m } = await supabase.from('team_members').select('*').order('full_name')
+    const [{ data:s }, { data:m }, leaveData] = await Promise.all([
+      supabase
+        .from('sites')
+        .select(`*, site_assignments(assignment_role, team_members(id, full_name, avatar_url))`)
+        .order('scheduled_date', { ascending:false }),
+      supabase.from('team_members').select('*').order('full_name'),
+      fetchTeamLeaves().catch(() => []),
+    ])
     setSites(s || [])
     setMembers(m || [])
+    setLeaves(leaveData || [])
     setLoading(false)
   }
 
@@ -253,8 +264,26 @@ export default function Sites() {
     setForm(f => ({ ...f, crew_ids: f.crew_ids.includes(id) ? f.crew_ids.filter(x => x!==id) : [...f.crew_ids, id] }))
   }
 
+  function getLeaveConflict(memberIds, date) {
+    const conflicts = memberIds
+      .map(memberId => {
+        const member = members.find(item => item.id === memberId)
+        const leave = getMemberLeaveOnDate(leaves, memberId, date)
+        return leave && member ? { member, leave } : null
+      })
+      .filter(Boolean)
+
+    if (conflicts.length === 0) return null
+    return `These team members are on leave for ${date}: ${conflicts.map(({ member, leave }) => `${member.full_name} (${leave.leave_type})`).join(', ')}`
+  }
+
   async function handleSave() {
     if (!form.site_name || !form.location || !form.scheduled_date) return
+    const leaveError = getLeaveConflict([form.pic_id, ...form.crew_ids].filter(Boolean), form.scheduled_date)
+    if (leaveError) {
+      setUploadError(leaveError)
+      return
+    }
     setSaving(true); setUploadError(null)
     try {
       let photoUrl = form.site_photo_url
@@ -362,6 +391,11 @@ export default function Sites() {
     background:'white', color:'#0f172a', fontFamily:'inherit', boxSizing:'border-box',
   }
   const lLabel = { display:'block', fontSize:'12px', fontWeight:'500', color:'#64748b', marginBottom:'6px' }
+  const unavailableMembers = members.reduce((acc, member) => {
+    const leave = getMemberLeaveOnDate(leaves, member.id, form.scheduled_date)
+    if (leave) acc[member.id] = leave
+    return acc
+  }, {})
 
   if (loading) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'calc(100vh - 54px)', background:'#eef3f8' }}>
@@ -864,16 +898,22 @@ export default function Sites() {
                   setForm(f => ({ ...f, pic_id: picId, crew_ids: f.crew_ids.filter(id => id !== picId) }))
                 }}>
                   <option value="">— Select —</option>
-                  {members.map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
+                  {members.map(m => (
+                    <option key={m.id} value={m.id} disabled={Boolean(unavailableMembers[m.id])}>
+                      {m.full_name}{unavailableMembers[m.id] ? ` - On leave (${unavailableMembers[m.id].leave_type})` : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
 
               <div><label style={{ ...lLabel, marginBottom:'12px' }}>{form.site_type==='meeting'?'Attendees':'Crew'}</label>
                 <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
                   {members.filter(m => m.id !== form.pic_id).map(m => (
-                    <label key={m.id} style={{ display:'flex', alignItems:'center', gap:'12px', cursor:'pointer' }}>
-                      <input type="checkbox" checked={form.crew_ids.includes(m.id)} onChange={() => toggleCrew(m.id)} style={{ width:'16px', height:'16px', accentColor:'#2563eb' }} />
-                      <span style={{ fontSize:'13px', color:'#0f172a' }}>{m.full_name}</span>
+                    <label key={m.id} style={{ display:'flex', alignItems:'center', gap:'12px', cursor: unavailableMembers[m.id] ? 'not-allowed' : 'pointer', opacity: unavailableMembers[m.id] ? 0.55 : 1 }}>
+                      <input type="checkbox" checked={form.crew_ids.includes(m.id)} disabled={Boolean(unavailableMembers[m.id])} onChange={() => toggleCrew(m.id)} style={{ width:'16px', height:'16px', accentColor:'#2563eb' }} />
+                      <span style={{ fontSize:'13px', color:'#0f172a' }}>
+                        {m.full_name}{unavailableMembers[m.id] ? ` - ${getLeaveSummary(unavailableMembers[m.id])}` : ''}
+                      </span>
                     </label>
                   ))}
                 </div>
