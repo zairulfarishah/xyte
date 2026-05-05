@@ -838,6 +838,9 @@ export default function Dashboard() {
                   borderRadius: '16px',
                   boxShadow: '0 18px 45px rgba(15,23,42,.08)',
                   overflow: 'hidden',
+                  position: 'relative',
+                  zIndex: 0,
+                  isolation: 'isolate',
                 }}
               >
                 <div
@@ -900,7 +903,14 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  <MapContainer key={`dashboard-map-${mapCenter[0]}-${mapCenter[1]}-${mapFilter}`} center={mapCenter} zoom={10} style={{ height: '100%', width: '100%' }} zoomControl={false} scrollWheelZoom={false}>
+                  <MapContainer
+                    key={`dashboard-map-${mapCenter[0]}-${mapCenter[1]}-${mapFilter}`}
+                    center={mapCenter}
+                    zoom={10}
+                    style={{ height: '100%', width: '100%' }}
+                    zoomControl={false}
+                    scrollWheelZoom={false}
+                  >
                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                     {filteredMapSites.map(site => (
                       <Marker

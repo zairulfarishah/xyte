@@ -346,7 +346,7 @@ function AppShell() {
         padding: isMobile ? '8px 12px' : isTablet ? '12px 18px' : '14px 28px',
         position: 'sticky',
         top: 0,
-        zIndex: 100,
+        zIndex: 3000,
         borderBottom: '1px solid #1e293b',
       }}>
         {isMobile && (
