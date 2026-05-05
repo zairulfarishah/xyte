@@ -124,7 +124,7 @@ function LocationPicker({ lat, lng, onPick, mapKey }) {
   const center = hasPin ? [parseFloat(lat), parseFloat(lng)] : [3.139, 101.6869]
   return (
     <MapContainer key={mapKey} center={center} zoom={hasPin ? 13 : 10}
-      style={{ height:'160px', borderRadius:'10px', cursor:'crosshair' }} zoomControl={false}>
+      style={{ height:'160px', borderRadius:'10px', cursor:'crosshair' }} zoomControl={false} scrollWheelZoom={false}>
       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="" />
       <MapClickHandler onPick={onPick} />
       {hasPin && <CircleMarker center={[parseFloat(lat), parseFloat(lng)]} radius={9}

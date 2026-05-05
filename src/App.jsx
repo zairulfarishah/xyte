@@ -18,20 +18,20 @@ const Reports = lazy(() => import('./pages/Reports'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 
 const NAV = [
-  { to: '/',         label: 'Dashboard', end: true  },
-  { to: '/sites',    label: 'Sites',     end: false },
-  { to: '/map',      label: 'Map',       end: false },
-  { to: '/team',      label: 'Team',      end: false },
-  { to: '/calendar',  label: 'Calendar',  end: false },
-  { to: '/library',   label: 'Library',   end: false },
-  { to: '/reports',  label: 'Reports',   end: false },
-  { to: '/settings', label: 'Settings',  end: false },
+  { to: '/', label: 'Dashboard', end: true },
+  { to: '/sites', label: 'Sites', end: false },
+  { to: '/map', label: 'Map', end: false },
+  { to: '/team', label: 'Team', end: false },
+  { to: '/calendar', label: 'Calendar', end: false },
+  { to: '/library', label: 'Library', end: false },
+  { to: '/reports', label: 'Reports', end: false },
+  { to: '/settings', label: 'Settings', end: false },
 ]
 
 function timeAgo(dateStr) {
   const diff = Date.now() - new Date(dateStr)
   const m = Math.floor(diff / 60000)
-  if (m < 1)  return 'just now'
+  if (m < 1) return 'just now'
   if (m < 60) return `${m}m ago`
   const h = Math.floor(m / 60)
   if (h < 24) return `${h}h ago`
@@ -39,7 +39,7 @@ function timeAgo(dateStr) {
 }
 
 function SearchOverlay({ onClose }) {
-  const [query, setQuery]     = useState('')
+  const [query, setQuery] = useState('')
   const [results, setResults] = useState({ sites: [], members: [] })
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
@@ -48,7 +48,10 @@ function SearchOverlay({ onClose }) {
   useEffect(() => { inputRef.current?.focus() }, [])
 
   useEffect(() => {
-    if (!query.trim()) { setResults({ sites: [], members: [] }); return }
+    if (!query.trim()) {
+      setResults({ sites: [], members: [] })
+      return
+    }
     setLoading(true)
     const t = setTimeout(async () => {
       const [{ data: sites }, { data: members }] = await Promise.all([
@@ -67,11 +70,17 @@ function SearchOverlay({ onClose }) {
     return () => clearTimeout(t)
   }, [query])
 
-  function go(path) { navigate(path); onClose() }
+  function go(path) {
+    navigate(path)
+    onClose()
+  }
 
   const STATUS_DOT = {
-    upcoming: '#eab308', ongoing: '#f97316', completed: '#22c55e',
-    cancelled: '#ef4444', postponed: '#94a3b8',
+    upcoming: '#eab308',
+    ongoing: '#f97316',
+    completed: '#22c55e',
+    cancelled: '#ef4444',
+    postponed: '#94a3b8',
   }
 
   return (
@@ -80,7 +89,6 @@ function SearchOverlay({ onClose }) {
       onClick={e => e.target === e.currentTarget && onClose()}
     >
       <div style={{ background: 'white', borderRadius: '16px', width: '100%', maxWidth: '560px', overflow: 'hidden', boxShadow: '0 25px 60px rgba(0,0,0,0.25)' }}>
-        {/* Input */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px 20px', borderBottom: '1px solid #f1f5f9' }}>
           <Search size={18} color="#94a3b8" />
           <input
@@ -97,7 +105,6 @@ function SearchOverlay({ onClose }) {
           </button>
         </div>
 
-        {/* Results */}
         {results.sites.length > 0 || results.members.length > 0 ? (
           <div style={{ maxHeight: '420px', overflowY: 'auto' }}>
             {results.sites.length > 0 && (
@@ -137,7 +144,7 @@ function SearchOverlay({ onClose }) {
                     onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   >
-                    <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: ['#2563eb','#7c3aed','#db2777','#059669'][i % 4], display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: ['#2563eb', '#7c3aed', '#db2777', '#059669'][i % 4], display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       <Users size={14} color="white" />
                     </div>
                     <div>
@@ -164,7 +171,9 @@ function NotifDropdown({ notifs, lastSeen, onClose }) {
     <div style={{ position: 'absolute', right: 0, top: '46px', width: '320px', background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 12px 40px rgba(0,0,0,0.18)', zIndex: 1100, overflow: 'hidden' }}>
       <div style={{ padding: '14px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <p style={{ fontWeight: '600', fontSize: '14px', color: '#0f172a' }}>Notifications</p>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', padding: 0 }}><X size={14} /></button>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', padding: 0 }}>
+          <X size={14} />
+        </button>
       </div>
       <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
         {notifs.length === 0 ? (
@@ -212,12 +221,12 @@ function AppShell() {
   const location = useLocation()
   const { user, loading: authLoading, fullName, avatarUrl, memberId } = useAuth()
   const [searchOpen, setSearchOpen] = useState(false)
-  const [notifOpen, setNotifOpen]   = useState(false)
-  const [notifs, setNotifs]         = useState([])
-  const [lastSeen, setLastSeen]     = useState(() => localStorage.getItem('xyte_notif_seen') || '1970-01-01')
+  const [notifOpen, setNotifOpen] = useState(false)
+  const [notifs, setNotifs] = useState([])
+  const [lastSeen, setLastSeen] = useState(() => localStorage.getItem('xyte_notif_seen') || '1970-01-01')
   const [avatarOpen, setAvatarOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const notifRef  = useRef(null)
+  const notifRef = useRef(null)
   const avatarRef = useRef(null)
   const { isMobile, isTablet } = useViewport()
 
@@ -259,7 +268,6 @@ function AppShell() {
         }
       })
       .subscribe()
-    // Also re-fetch when Sites page saves a new site
     const onSaved = () => fetchNotifs()
     window.addEventListener('xyte:site-saved', onSaved)
     return () => {
@@ -302,6 +310,19 @@ function AppShell() {
 
   const unread = notifs.filter(n => new Date(n.created_at) > new Date(lastSeen)).length
 
+  const desktopNavStyle = ({ isActive }) => ({
+    padding: '8px 14px',
+    borderRadius: '999px',
+    textDecoration: 'none',
+    fontSize: '13px',
+    fontWeight: '600',
+    transition: 'all 0.15s',
+    background: isActive ? '#2563eb' : 'transparent',
+    color: isActive ? 'white' : '#94a3b8',
+    whiteSpace: 'nowrap',
+    boxShadow: isActive ? '0 8px 18px rgba(37,99,235,0.28)' : 'none',
+  })
+
   if (authLoading) return (
     <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#0f172a' }}>
       <div style={{ width: '20px', height: '20px', borderRadius: '50%', border: '2px solid #1e3a8a', borderTopColor: '#2563eb', animation: 'spin 0.8s linear infinite' }} />
@@ -316,12 +337,16 @@ function AppShell() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#f1f5f9' }}>
-
-      {/* Top Navbar */}
       <nav style={{
-        background: '#0f172a', flexShrink: 0,
-        display: 'flex', flexDirection: 'column', gap: isMobile ? '8px' : '12px', padding: isMobile ? '8px 12px' : isTablet ? '12px 18px' : '0 28px',
-        position: 'sticky', top: 0, zIndex: 100,
+        background: '#0f172a',
+        flexShrink: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: isMobile ? '8px' : '0',
+        padding: isMobile ? '8px 12px' : isTablet ? '12px 18px' : '14px 28px',
+        position: 'sticky',
+        top: 0,
+        zIndex: 100,
         borderBottom: '1px solid #1e293b',
       }}>
         {isMobile && (
@@ -382,88 +407,98 @@ function AppShell() {
           </div>
         )}
 
-        {/* Logo */}
-        <NavLink to="/" style={{ textDecoration: 'none', display: isMobile ? 'none' : 'flex', flexDirection: 'column', alignItems: 'flex-start', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1 }}>
-            <span style={{ fontSize: '20px', fontWeight: '900', color: '#22c55e', letterSpacing: '-0.03em', lineHeight: 1, textShadow: '0 0 12px rgba(34,197,94,0.5), 0 0 32px rgba(34,197,94,0.15)' }}>X</span>
-            <span style={{ fontSize: '20px', fontWeight: '200', color: 'rgba(255,255,255,0.88)', letterSpacing: '0.02em', lineHeight: 1 }}>yte</span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginTop: '4px' }}>
-            <div style={{ height: '1.5px', width: '44px', borderRadius: '99px', background: 'linear-gradient(90deg,#22c55e,rgba(34,197,94,0))', opacity: 0.95 }} />
-            <div style={{ height: '1.5px', width: '28px', borderRadius: '99px', background: 'linear-gradient(90deg,#22c55e,rgba(34,197,94,0))', opacity: 0.55 }} />
-            <div style={{ height: '1.5px', width: '14px', borderRadius: '99px', background: 'linear-gradient(90deg,#22c55e,rgba(34,197,94,0))', opacity: 0.28 }} />
-          </div>
-        </NavLink>
-
-        {/* Nav links — centered floating pill */}
-        <div style={{ alignSelf: isTablet ? 'stretch' : 'center', width: '100%', overflowX: 'auto', display: isMobile ? 'none' : 'flex', justifyContent: isTablet ? 'flex-start' : 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '2px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '99px', padding: '3px', width: 'max-content', minWidth: isTablet ? '100%' : undefined }}>
-            {NAV.map(({ to, label, end }) => (
-              <NavLink key={to} to={to} end={end} style={({ isActive }) => ({
-                padding: '5px 14px', borderRadius: '99px', textDecoration: 'none',
-                fontSize: '13px', fontWeight: '500', transition: 'all 0.15s',
-                background: isActive ? '#2563eb' : 'transparent',
-                color: isActive ? 'white' : '#94a3b8',
-                whiteSpace: 'nowrap',
-              })}>{label}</NavLink>
-            ))}
-          </div>
-        </div>
-
-        {/* Right icons */}
-        <div style={{ display: isMobile ? 'none' : 'flex', alignItems: 'center', gap: isMobile ? '10px' : '14px', marginLeft: 'auto', flexWrap: 'wrap', justifyContent: 'flex-end', width: isTablet ? '100%' : 'auto' }}>
-          <button
-            onClick={handleOpenAddSite}
-            style={{ display: isMobile ? 'none' : 'flex', alignItems: 'center', gap: '5px', background: '#2563eb', border: 'none', cursor: 'pointer', color: 'white', padding: '6px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: '600', transition: 'background 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.background = '#1d4ed8'}
-            onMouseLeave={e => e.currentTarget.style.background = '#2563eb'}
-          >
-            <Plus size={13} /> Add Site
-          </button>
-
-          <button onClick={() => setSearchOpen(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center', padding: 0, transition: 'color 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.color = 'white'}
-            onMouseLeave={e => e.currentTarget.style.color = '#64748b'}>
-            <Search size={17} />
-          </button>
-
-          <div ref={notifRef} style={{ position: 'relative' }}>
-            <button onClick={handleBell} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center', padding: 0, position: 'relative', transition: 'color 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.color = 'white'}
-              onMouseLeave={e => e.currentTarget.style.color = '#64748b'}>
-              <Bell size={17} />
-              {unread > 0 && (
-                <span style={{ position: 'absolute', top: '-5px', right: '-5px', width: '16px', height: '16px', borderRadius: '50%', background: '#ef4444', color: 'white', fontSize: '9px', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #0f172a' }}>
-                  {unread > 9 ? '9+' : unread}
-                </span>
-              )}
-            </button>
-            {notifOpen && <NotifDropdown notifs={notifs} lastSeen={lastSeen} onClose={() => setNotifOpen(false)} />}
-          </div>
-
-          <div ref={avatarRef} style={{ position: 'relative' }}>
-            <button onClick={() => setAvatarOpen(o => !o)} style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#1d4ed8', border: 'none', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '700', fontSize: '11px', cursor: 'pointer' }}>
-              {avatarUrl
-                ? <img src={avatarUrl} alt={fullName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                : fullName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
-              }
-            </button>
-            {avatarOpen && (
-              <div style={{ position: 'absolute', right: 0, top: '42px', width: '200px', background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 12px 40px rgba(0,0,0,0.18)', zIndex: 1100, overflow: 'hidden' }}>
-                <div style={{ padding: '12px 14px', borderBottom: '1px solid #f1f5f9' }}>
-                  <p style={{ fontWeight: '600', fontSize: '13px', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fullName}</p>
-                  <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</p>
-                </div>
-                <button onClick={handleSignOut} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: '#ef4444', fontSize: '13px', fontWeight: '500' }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#fff1f2'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                >
-                  <LogOut size={14} /> Sign Out
-                </button>
+        {!isMobile && (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: isTablet ? '1fr' : 'minmax(160px,220px) minmax(0,1fr) minmax(220px,280px)',
+            alignItems: 'center',
+            gap: isTablet ? '12px' : '18px',
+            minHeight: isTablet ? 'auto' : '72px',
+            width: '100%',
+          }}>
+            <NavLink to="/" style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: isTablet ? 'center' : 'flex-start', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1 }}>
+                <span style={{ fontSize: '20px', fontWeight: '900', color: '#22c55e', letterSpacing: '-0.03em', lineHeight: 1, textShadow: '0 0 12px rgba(34,197,94,0.5), 0 0 32px rgba(34,197,94,0.15)' }}>X</span>
+                <span style={{ fontSize: '20px', fontWeight: '200', color: 'rgba(255,255,255,0.88)', letterSpacing: '0.02em', lineHeight: 1 }}>yte</span>
               </div>
-            )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginTop: '4px' }}>
+                <div style={{ height: '1.5px', width: '44px', borderRadius: '99px', background: 'linear-gradient(90deg,#22c55e,rgba(34,197,94,0))', opacity: 0.95 }} />
+                <div style={{ height: '1.5px', width: '28px', borderRadius: '99px', background: 'linear-gradient(90deg,#22c55e,rgba(34,197,94,0))', opacity: 0.55 }} />
+                <div style={{ height: '1.5px', width: '14px', borderRadius: '99px', background: 'linear-gradient(90deg,#22c55e,rgba(34,197,94,0))', opacity: 0.28 }} />
+              </div>
+            </NavLink>
+
+            <div style={{ width: '100%', overflowX: 'auto', display: 'flex', justifyContent: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '2px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '999px', padding: '4px', width: 'max-content', maxWidth: '100%' }}>
+                {NAV.map(({ to, label, end }) => (
+                  <NavLink key={to} to={to} end={end} style={desktopNavStyle}>
+                    {label}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', justifyContent: isTablet ? 'center' : 'flex-end', minWidth: 0 }}>
+              <button
+                onClick={handleOpenAddSite}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#2563eb', border: 'none', cursor: 'pointer', color: 'white', padding: '10px 14px', borderRadius: '12px', fontSize: '12px', fontWeight: '700', transition: 'background 0.15s, transform 0.15s', boxShadow: '0 10px 25px rgba(37,99,235,0.28)' }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = '#1d4ed8'
+                  e.currentTarget.style.transform = 'translateY(-1px)'
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = '#2563eb'
+                  e.currentTarget.style.transform = 'translateY(0)'
+                }}
+              >
+                <Plus size={13} /> Add Site
+              </button>
+
+              <button onClick={() => setSearchOpen(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center', padding: 0, transition: 'color 0.15s' }}
+                onMouseEnter={e => e.currentTarget.style.color = 'white'}
+                onMouseLeave={e => e.currentTarget.style.color = '#64748b'}>
+                <Search size={17} />
+              </button>
+
+              <div ref={notifRef} style={{ position: 'relative' }}>
+                <button onClick={handleBell} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center', padding: 0, position: 'relative', transition: 'color 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.color = 'white'}
+                  onMouseLeave={e => e.currentTarget.style.color = '#64748b'}>
+                  <Bell size={17} />
+                  {unread > 0 && (
+                    <span style={{ position: 'absolute', top: '-5px', right: '-5px', width: '16px', height: '16px', borderRadius: '50%', background: '#ef4444', color: 'white', fontSize: '9px', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #0f172a' }}>
+                      {unread > 9 ? '9+' : unread}
+                    </span>
+                  )}
+                </button>
+                {notifOpen && <NotifDropdown notifs={notifs} lastSeen={lastSeen} onClose={() => setNotifOpen(false)} />}
+              </div>
+
+              <div ref={avatarRef} style={{ position: 'relative' }}>
+                <button onClick={() => setAvatarOpen(o => !o)} style={{ width: '34px', height: '34px', borderRadius: '50%', background: '#1d4ed8', border: '1px solid rgba(255,255,255,0.12)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '700', fontSize: '11px', cursor: 'pointer', boxShadow: '0 8px 18px rgba(15,23,42,0.3)' }}>
+                  {avatarUrl
+                    ? <img src={avatarUrl} alt={fullName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : fullName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+                  }
+                </button>
+                {avatarOpen && (
+                  <div style={{ position: 'absolute', right: 0, top: '42px', width: '200px', background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 12px 40px rgba(0,0,0,0.18)', zIndex: 1100, overflow: 'hidden' }}>
+                    <div style={{ padding: '12px 14px', borderBottom: '1px solid #f1f5f9' }}>
+                      <p style={{ fontWeight: '600', fontSize: '13px', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fullName}</p>
+                      <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</p>
+                    </div>
+                    <button onClick={handleSignOut} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: '#ef4444', fontSize: '13px', fontWeight: '500' }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#fff1f2'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                    >
+                      <LogOut size={14} /> Sign Out
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
+        )}
 
         {isMobile && mobileMenuOpen && (
           <div style={{ background: 'rgba(15,23,42,0.98)', border: '1px solid rgba(148,163,184,0.12)', borderRadius: '18px', padding: '12px', display: 'grid', gap: '8px' }}>
@@ -503,19 +538,18 @@ function AppShell() {
         )}
       </nav>
 
-      {/* Main */}
       <main style={{ flex: 1, minWidth: 0 }}>
         <Suspense fallback={<PageLoader />}>
           <Routes>
-            <Route path="/"          element={<Dashboard />}    />
-            <Route path="/sites"     element={<Sites />}        />
-            <Route path="/sites/:id" element={<SiteDetail />}   />
-            <Route path="/map"       element={<MapView />}      />
-            <Route path="/team"      element={<Team />}         />
-            <Route path="/calendar"  element={<CalendarPage />} />
-            <Route path="/library"   element={<Library />}      />
-            <Route path="/reports"   element={<Reports />}      />
-            <Route path="/settings"  element={<SettingsPage />} />
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/sites" element={<Sites />} />
+            <Route path="/sites/:id" element={<SiteDetail />} />
+            <Route path="/map" element={<MapView />} />
+            <Route path="/team" element={<Team />} />
+            <Route path="/calendar" element={<CalendarPage />} />
+            <Route path="/library" element={<Library />} />
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </Suspense>
       </main>

@@ -122,6 +122,7 @@ function LocationPicker({ lat, lng, onPick, mapKey }) {
       zoom={hasPin ? 13 : 10}
       style={{ height: '180px', borderRadius: '12px', cursor: 'crosshair' }}
       zoomControl={false}
+      scrollWheelZoom={false}
     >
       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="" />
       <MapClickHandler onPick={onPick} />
@@ -899,7 +900,7 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  <MapContainer key={`dashboard-map-${mapCenter[0]}-${mapCenter[1]}-${mapFilter}`} center={mapCenter} zoom={10} style={{ height: '100%', width: '100%' }} zoomControl={false}>
+                  <MapContainer key={`dashboard-map-${mapCenter[0]}-${mapCenter[1]}-${mapFilter}`} center={mapCenter} zoom={10} style={{ height: '100%', width: '100%' }} zoomControl={false} scrollWheelZoom={false}>
                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                     {filteredMapSites.map(site => (
                       <Marker

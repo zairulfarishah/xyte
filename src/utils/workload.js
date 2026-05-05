@@ -1,4 +1,4 @@
-const WEEKLY_CAPACITY_DAYS = 5.5
+const WEEKLY_CAPACITY_DAYS = 6.5
 
 // Multipliers per role per site type (PIC scanning gets extra weight for admin/client work)
 const ROLE_MULTIPLIERS = {

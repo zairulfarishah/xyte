@@ -5,7 +5,7 @@ import { ROLE_MULTIPLIERS, WEEKLY_CAPACITY_DAYS } from '../utils/workload'
 import { useAuth } from '../context/AuthContext'
 import { useViewport } from '../utils/useViewport'
 
-const AVATAR_COLORS = ['#2563eb','#7c3aed','#db2777','#059669','#d97706','#dc2626']
+const AVATAR_COLORS = ['#2563eb', '#7c3aed', '#db2777', '#059669', '#d97706', '#dc2626']
 
 function Avatar({ name, size = 40, index = 0 }) {
   const initials = name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?'
@@ -14,23 +14,23 @@ function Avatar({ name, size = 40, index = 0 }) {
       width: size, height: size, borderRadius: '50%',
       background: AVATAR_COLORS[index % AVATAR_COLORS.length],
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: 'white', fontWeight: '700', fontSize: size * 0.35, flexShrink: 0
+      color: 'white', fontWeight: '700', fontSize: size * 0.35, flexShrink: 0,
     }}>{initials}</div>
   )
 }
 
 const SECTIONS = [
-  { key: 'team',         label: 'Team Members',    icon: User     },
-  { key: 'app',          label: 'App Info',         icon: Info     },
+  { key: 'team', label: 'Team Members', icon: User },
+  { key: 'app', label: 'App Info', icon: Info },
 ]
 
 export default function SettingsPage() {
   const { isZairul } = useAuth()
   const { isMobile, isTablet } = useViewport()
-  const [members, setMembers]   = useState([])
-  const [loading, setLoading]   = useState(true)
-  const [section, setSection]   = useState('team')
-  const [stats, setStats]       = useState({})
+  const [members, setMembers] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [section, setSection] = useState('team')
+  const [stats, setStats] = useState({})
 
   useEffect(() => { fetchAll() }, [])
 
@@ -45,18 +45,12 @@ export default function SettingsPage() {
 
     setMembers(m || [])
     setStats({
-      totalSites:    s?.length || 0,
-      completed:     s?.filter(x => x.site_status === 'completed').length || 0,
-      approved:      s?.filter(x => x.report_status === 'approved').length || 0,
-      docs:          d?.length || 0,
+      totalSites: s?.length || 0,
+      completed: s?.filter(x => x.site_status === 'completed').length || 0,
+      approved: s?.filter(x => x.report_status === 'approved').length || 0,
+      docs: d?.length || 0,
     })
     setLoading(false)
-  }
-
-  const inputStyle = {
-    width: '100%', padding: '8px 12px', borderRadius: '8px',
-    border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none',
-    background: '#f8fafc', color: '#0f172a'
   }
 
   if (!isZairul) return (
@@ -79,16 +73,12 @@ export default function SettingsPage() {
 
   return (
     <div style={{ padding: isMobile ? '16px 14px 24px' : '28px' }}>
-
-      {/* Header */}
       <div style={{ marginBottom: '24px' }}>
         <h1 style={{ fontSize: '22px', fontWeight: '700', color: '#0f172a' }}>Settings</h1>
         <p style={{ color: '#64748b', fontSize: '13px', marginTop: '2px' }}>Manage your app configuration</p>
       </div>
 
       <div style={{ display: 'flex', flexDirection: isTablet ? 'column' : 'row', gap: '20px', alignItems: 'flex-start' }}>
-
-        {/* Left nav */}
         <div style={{ width: isTablet ? '100%' : '220px', flexShrink: 0, background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '8px', overflow: 'hidden' }}>
           {SECTIONS.map(({ key, label, icon: Icon }) => (
             <button key={key} onClick={() => setSection(key)} style={{
@@ -98,7 +88,7 @@ export default function SettingsPage() {
               background: section === key ? '#eff6ff' : 'transparent',
               color: section === key ? '#1d4ed8' : '#64748b',
               fontSize: '13px', fontWeight: section === key ? '600' : '400',
-              transition: 'all 0.15s', marginBottom: '2px'
+              transition: 'all 0.15s', marginBottom: '2px',
             }}>
               <Icon size={15} />
               {label}
@@ -106,10 +96,7 @@ export default function SettingsPage() {
           ))}
         </div>
 
-        {/* Right content */}
         <div style={{ flex: 1, minWidth: 0 }}>
-
-          {/* Team Members Section */}
           {section === 'team' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
@@ -122,7 +109,7 @@ export default function SettingsPage() {
                     <div key={m.id} style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                       padding: '12px', borderRadius: '8px', marginBottom: '2px',
-                      transition: 'background 0.1s'
+                      transition: 'background 0.1s',
                     }}
                       onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
@@ -139,7 +126,7 @@ export default function SettingsPage() {
                           background: m.role === 'Team Leader' ? '#eff6ff' : '#faf5ff',
                           color: m.role === 'Team Leader' ? '#1d4ed8' : '#6d28d9',
                           border: `1px solid ${m.role === 'Team Leader' ? '#93c5fd' : '#c4b5fd'}`,
-                          padding: '3px 10px', borderRadius: '99px', fontSize: '11px', fontWeight: '500'
+                          padding: '3px 10px', borderRadius: '99px', fontSize: '11px', fontWeight: '500',
                         }}>{m.role}</span>
                         <span style={{ background: '#dcfce7', color: '#166534', border: '1px solid #4ade80', padding: '3px 10px', borderRadius: '99px', fontSize: '11px', fontWeight: '500' }}>Active</span>
                       </div>
@@ -148,39 +135,48 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {/* Weightage info */}
               <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '20px' }}>
                 <h2 style={{ fontSize: '15px', fontWeight: '600', color: '#0f172a', marginBottom: '4px' }}>Workload Weightage</h2>
                 <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '16px' }}>% of weekly capacity per task type (week = {WEEKLY_CAPACITY_DAYS} days)</p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {[
                     {
-                      label: 'PIC — Site Scanning', color: '#2563eb', bg: '#eff6ff',
-                      desc: 'Liaises with client, manages full process',
+                      label: 'PIC - Site Scanning',
+                      color: '#2563eb',
+                      bg: '#eff6ff',
+                      desc: 'Includes a small coordination premium for the lead person',
                       pct: `${((ROLE_MULTIPLIERS.site_scanning.pic / WEEKLY_CAPACITY_DAYS) * 100).toFixed(0)}% per day`,
                       example: `e.g. 1-day site = ${((1 / WEEKLY_CAPACITY_DAYS) * 100 * ROLE_MULTIPLIERS.site_scanning.pic).toFixed(0)}%`,
                     },
                     {
-                      label: 'Crew — Site Scanning', color: '#7c3aed', bg: '#faf5ff',
-                      desc: 'On-site scanning work',
+                      label: 'Crew - Site Scanning',
+                      color: '#7c3aed',
+                      bg: '#faf5ff',
+                      desc: 'Standard on-site scanning workload',
                       pct: `${((ROLE_MULTIPLIERS.site_scanning.crew / WEEKLY_CAPACITY_DAYS) * 100).toFixed(0)}% per day`,
                       example: `e.g. 1-day site = ${((1 / WEEKLY_CAPACITY_DAYS) * 100 * ROLE_MULTIPLIERS.site_scanning.crew).toFixed(0)}%`,
                     },
                     {
-                      label: 'PIC / Crew — Site Visit', color: '#059669', bg: '#f0fdf4',
-                      desc: 'Fixed half-day visit, same weight for all',
-                      pct: `${((0.5 / WEEKLY_CAPACITY_DAYS) * 100).toFixed(0)}% fixed`,
-                      example: 'Always half day (0.5)',
+                      label: 'Site Visit',
+                      color: '#059669',
+                      bg: '#f0fdf4',
+                      desc: 'Uses the entered duration with the standard multiplier',
+                      pct: `${((1 / WEEKLY_CAPACITY_DAYS) * 100).toFixed(0)}% per day`,
+                      example: `e.g. 0.5-day visit = ${((0.5 / WEEKLY_CAPACITY_DAYS) * 100).toFixed(0)}%`,
                     },
                     {
-                      label: 'Meeting', color: '#d97706', bg: '#fffbeb',
-                      desc: 'Contributes based on meeting duration',
-                      pct: '9–18% per meeting',
-                      example: '2hrs=5% / half day=9% / full day=18%',
+                      label: 'Meeting',
+                      color: '#d97706',
+                      bg: '#fffbeb',
+                      desc: 'Uses the entered duration with the standard multiplier',
+                      pct: `${((1 / WEEKLY_CAPACITY_DAYS) * 100).toFixed(0)}% per day`,
+                      example: `e.g. 0.5-day meeting = ${((0.5 / WEEKLY_CAPACITY_DAYS) * 100).toFixed(0)}%`,
                     },
                     {
-                      label: 'Report Preparation', color: '#dc2626', bg: '#fef2f2',
-                      desc: 'When site moves to report phase',
+                      label: 'Report Preparation',
+                      color: '#dc2626',
+                      bg: '#fef2f2',
+                      desc: 'Only counts after the site is no longer active on-site',
                       pct: `${((1 / WEEKLY_CAPACITY_DAYS) * 100).toFixed(0)}% per day`,
                       example: `e.g. 1-day report = ${((1 / WEEKLY_CAPACITY_DAYS) * 100).toFixed(0)}%`,
                     },
@@ -201,11 +197,8 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* App Info Section */}
           {section === 'app' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-
-              {/* App details */}
               <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '20px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
                   <div style={{ width: '52px', height: '52px', background: '#2563eb', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '700', fontSize: '22px' }}>X</div>
@@ -216,10 +209,10 @@ export default function SettingsPage() {
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
                   {[
-                    { label: 'Total Sites',       value: stats.totalSites },
-                    { label: 'Completed Sites',   value: stats.completed  },
-                    { label: 'Approved Reports',  value: stats.approved   },
-                    { label: 'Library Docs',      value: stats.docs       },
+                    { label: 'Total Sites', value: stats.totalSites },
+                    { label: 'Completed Sites', value: stats.completed },
+                    { label: 'Approved Reports', value: stats.approved },
+                    { label: 'Library Docs', value: stats.docs },
                   ].map(({ label, value }) => (
                     <div key={label} style={{ background: '#f8fafc', borderRadius: '10px', padding: '14px', border: '1px solid #e2e8f0' }}>
                       <p style={{ fontSize: '22px', fontWeight: '700', color: '#0f172a' }}>{value}</p>
@@ -229,17 +222,16 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {/* Tech stack */}
               <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '20px' }}>
                 <h2 style={{ fontSize: '15px', fontWeight: '600', color: '#0f172a', marginBottom: '16px' }}>Tech Stack</h2>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {[
-                    { name: 'React + Vite',   role: 'Frontend framework',   color: '#2563eb' },
-                    { name: 'Tailwind CSS',   role: 'Styling',              color: '#0ea5e9' },
-                    { name: 'Supabase',       role: 'Database + Storage',   color: '#059669' },
-                    { name: 'React Leaflet',  role: 'Map module',           color: '#d97706' },
-                    { name: 'Lucide React',   role: 'Icons',                color: '#7c3aed' },
-                    { name: 'GitHub',         role: 'Code repository',      color: '#0f172a' },
+                    { name: 'React + Vite', role: 'Frontend framework', color: '#2563eb' },
+                    { name: 'Tailwind CSS', role: 'Styling', color: '#0ea5e9' },
+                    { name: 'Supabase', role: 'Database + Storage', color: '#059669' },
+                    { name: 'React Leaflet', role: 'Map module', color: '#d97706' },
+                    { name: 'Lucide React', role: 'Icons', color: '#7c3aed' },
+                    { name: 'GitHub', role: 'Code repository', color: '#0f172a' },
                   ].map(({ name, role, color }) => (
                     <div key={name} style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', gap: '8px', padding: '10px 14px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
