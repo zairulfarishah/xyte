@@ -10,7 +10,7 @@ import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
 import { mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../utils/completionMeta'
 import { useViewport } from '../utils/useViewport'
-import { fetchTeamLeaves, getLeaveSummary, getMemberLeaveOnDate, getMembersOnLeave } from '../utils/teamLeaves'
+import { fetchTeamLeaves, getLeaveSessionLabel, getLeaveSummary, getMemberLeaveOnDate, getMembersOnLeave } from '../utils/teamLeaves'
 import 'leaflet/dist/leaflet.css'
 
 function xIcon(color, selected = false) {
@@ -123,7 +123,7 @@ function LocationPicker({ lat, lng, onPick, mapKey }) {
       zoom={hasPin ? 13 : 10}
       style={{ height: '180px', borderRadius: '12px', cursor: 'crosshair' }}
       zoomControl={false}
-      scrollWheelZoom={false}
+      scrollWheelZoom={true}
     >
       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="" />
       <MapClickHandler onPick={onPick} />
@@ -230,10 +230,17 @@ export default function Dashboard() {
   const [quickAssignSaving, setQuickAssignSaving] = useState(false)
   const [mapFilter, setMapFilter] = useState('all')
   const [leaves, setLeaves] = useState([])
+  const [now, setNow] = useState(() => new Date())
 
   useEffect(() => {
     fetchAll()
   }, [])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
+
 
   useEffect(() => {
     function handleOpenAdd() {
@@ -299,7 +306,7 @@ export default function Dashboard() {
     const conflicts = getUnavailableAssignments(memberIds, date)
     if (conflicts.length === 0) return null
     const summary = conflicts
-      .map(({ member, leave }) => `${member.full_name} (${leave.leave_type})`)
+      .map(({ member, leave }) => `${member.full_name} (${leave.leave_type}, ${getLeaveSessionLabel(leave.leave_session)})`)
       .join(', ')
     return `These team members are on leave for ${date}: ${summary}`
   }
@@ -501,6 +508,14 @@ export default function Dashboard() {
   const allClear = noPicSites.length === 0 && soonSites.length === 0 && pendingReports.length === 0 && overloaded.length === 0
   const todayStr = new Date().toISOString().split('T')[0]
   const membersOnLeaveToday = getMembersOnLeave(leaves, members, todayStr)
+  const upcomingLeaves = leaves
+    .map(leave => ({
+      leave,
+      member: members.find(member => member.id === leave.member_id),
+    }))
+    .filter(item => item.member && String(item.leave.start_date || '') > todayStr)
+    .sort((a, b) => String(a.leave.start_date || '').localeCompare(String(b.leave.start_date || '')))
+    .slice(0, 4)
   const leaveConflicts = upcoming
     .map(site => {
       const conflicts = (site.site_assignments || [])
@@ -655,8 +670,6 @@ export default function Dashboard() {
     () => sites.filter(site => ['upcoming', 'ongoing', 'completed'].includes(site.site_status)).slice(0, 3),
     [sites]
   )
-
-
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
@@ -683,48 +696,82 @@ export default function Dashboard() {
           <section
             style={{
               display: 'grid',
-              gridTemplateColumns: isTablet ? '1fr' : 'minmax(0, 1fr) 500px',
-              gap: '24px',
-              marginBottom: '28px',
-              alignItems: 'center',
+              gridTemplateColumns: isTablet ? '1fr' : 'minmax(240px, 1fr) minmax(280px, 340px) minmax(360px, 500px)',
+              gap: '18px',
+              marginBottom: '24px',
+              alignItems: 'stretch',
             }}
           >
-            <div style={{ color: 'white', padding: '6px 0 4px' }}>
-              <h1 style={{ margin: 0, fontSize: '30px', letterSpacing: '-.05em', fontWeight: '850' }}>
+            <div style={{ color: 'white', padding: '10px 0 6px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <h1 style={{ margin: 0, fontSize: isMobile ? '28px' : '30px', letterSpacing: '-.05em', fontWeight: '850', lineHeight: 1.05 }}>
                 {getGreeting()}, {firstName}!
               </h1>
-              <p style={{ margin: '8px 0 0', color: '#b8c7dd', fontSize: '14px', lineHeight: 1.55 }}>
+              <p style={{ margin: '10px 0 0', color: '#b8c7dd', fontSize: '14px', lineHeight: 1.45 }}>
                 {new Date().toLocaleDateString('en-MY', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · Team command center
               </p>
             </div>
 
             <div
               style={{
-                background: 'linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.06))',
+                display: 'grid',
+                justifyItems: 'center',
+                gap: '8px',
+                padding: isTablet ? '14px 16px' : '16px 18px',
+                borderRadius: '20px',
+                background: 'linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04))',
+                border: '1px solid rgba(148, 163, 184, .18)',
+                boxShadow: '0 12px 28px rgba(2,8,23,.16)',
+                backdropFilter: 'blur(14px)',
                 color: 'white',
-                borderRadius: '24px',
-                padding: '18px 18px',
-                border: '1px solid rgba(148, 163, 184, .28)',
-                boxShadow: '0 20px 40px rgba(2,8,23,.18)',
+                textAlign: 'center',
+                alignContent: 'center',
+              }}
+            >
+              <div style={{ fontSize: '10px', fontWeight: '800', color: '#93c5fd', textTransform: 'uppercase', letterSpacing: '.16em' }}>
+                Malaysia Time
+              </div>
+              <div style={{ display: 'inline-flex', alignItems: 'baseline', gap: '8px' }}>
+                <div style={{ fontSize: isMobile ? '20px' : '24px', fontWeight: '900', letterSpacing: '.08em', color: '#f8fbff', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+                  {now.toLocaleTimeString('en-MY', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false,
+                  })}
+                </div>
+                <div style={{ fontSize: '10px', fontWeight: '800', color: '#cbd5e1', textTransform: 'uppercase', letterSpacing: '.12em' }}>
+                  MYT
+                </div>
+              </div>
+            </div>
+
+            <div
+              style={{
+                background: 'linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04))',
+                color: 'white',
+                borderRadius: '20px',
+                padding: '16px 18px',
+                border: '1px solid rgba(148, 163, 184, .18)',
+                boxShadow: '0 12px 28px rgba(2,8,23,.16)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                gap: '16px',
-                backdropFilter: 'blur(18px)',
-                minHeight: '94px',
+                gap: '14px',
+                backdropFilter: 'blur(14px)',
+                minHeight: '88px',
               }}
             >
               <div style={{ minWidth: 0 }}>
-                <small style={{ fontSize: '12px', fontWeight: '800', color: '#b8c7dd' }}>Today</small>
-                <h2 style={{ margin: '6px 0 0', fontSize: '15px', fontWeight: '750', color: 'white', lineHeight: 1.45 }}>
+                <small style={{ fontSize: '11px', fontWeight: '800', color: '#b8c7dd', textTransform: 'uppercase', letterSpacing: '.08em' }}>Today</small>
+                <h2 style={{ margin: '6px 0 0', fontSize: '15px', fontWeight: '750', color: 'white', lineHeight: 1.35 }}>
                   {focusSite ? `${focusSite.site_name} · ${formatShortDate(focusSite.scheduled_date)} · ${pendingReports.length} report${pendingReports.length === 1 ? '' : 's'} pending` : 'No active focus today'}
                 </h2>
               </div>
               <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                <div style={{ padding: '8px 12px', borderRadius: '999px', background: 'rgba(255,255,255,.10)', fontSize: '12px', fontWeight: '800', color: '#eaf1ff', border: '1px solid rgba(255,255,255,.06)' }}>
+                <div style={{ padding: '7px 11px', borderRadius: '999px', background: 'rgba(255,255,255,.08)', fontSize: '12px', fontWeight: '800', color: '#eaf1ff', border: '1px solid rgba(255,255,255,.05)' }}>
                   {teamAverage}% load
                 </div>
-                <div style={{ padding: '8px 12px', borderRadius: '999px', background: 'rgba(255,255,255,.10)', fontSize: '12px', fontWeight: '800', color: '#eaf1ff', border: '1px solid rgba(255,255,255,.06)' }}>
+                <div style={{ padding: '7px 11px', borderRadius: '999px', background: 'rgba(255,255,255,.08)', fontSize: '12px', fontWeight: '800', color: '#eaf1ff', border: '1px solid rgba(255,255,255,.05)' }}>
                   {upcoming.length} tasks
                 </div>
               </div>
@@ -867,7 +914,7 @@ export default function Dashboard() {
                   </div>
                 )}
 
-                {(membersOnLeaveToday.length > 0 || leaveConflicts.length > 0) && (
+                {(membersOnLeaveToday.length > 0 || leaveConflicts.length > 0 || upcomingLeaves.length > 0) && (
                   <div style={{ display: 'grid', gap: '10px', marginBottom: '14px' }}>
                     {membersOnLeaveToday.length > 0 && (
                       <div style={{ padding: '12px 12px 13px', borderRadius: '14px', background: '#eff6ff', border: '1px solid #bfdbfe' }}>
@@ -878,6 +925,31 @@ export default function Dashboard() {
                               <div style={{ fontSize: '12px', color: '#1e3a8a', fontWeight: '700' }}>{member.full_name}</div>
                               <div style={{ padding: '4px 8px', borderRadius: '999px', background: 'white', border: '1px solid #bfdbfe', fontSize: '10px', color: '#2563eb', fontWeight: '800', textAlign: 'right' }}>
                                 {getLeaveSummary(leave)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {upcomingLeaves.length > 0 && (
+                      <div style={{ padding: '12px 12px 13px', borderRadius: '14px', background: '#f8fafc', border: '1px solid #cbd5e1' }}>
+                        <div style={{ fontSize: '12px', fontWeight: '800', color: '#334155', marginBottom: '8px' }}>Taking Leave Soon</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {upcomingLeaves.map(({ member, leave }) => (
+                            <div key={leave.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'center', gap: '12px', padding: '10px 12px', borderRadius: '12px', background: 'white', border: '1px solid #e2e8f0' }}>
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontSize: '12px', color: '#0f172a', fontWeight: '800', lineHeight: 1.35 }}>
+                                  {member.full_name}
+                                </div>
+                                <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '700', marginTop: '3px', textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                                  {leave.leave_type} · {getLeaveSessionLabel(leave.leave_session)}
+                                </div>
+                              </div>
+                              <div style={{ fontSize: '11px', color: '#475569', fontWeight: '800', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                {leave.start_date === leave.end_date
+                                  ? formatShortDate(leave.start_date)
+                                  : `${formatShortDate(leave.start_date)} - ${formatShortDate(leave.end_date)}`}
                               </div>
                             </div>
                           ))}
@@ -1035,7 +1107,7 @@ export default function Dashboard() {
                     zoom={10}
                     style={{ height: '100%', width: '100%' }}
                     zoomControl={false}
-                    scrollWheelZoom={false}
+                    scrollWheelZoom={true}
                   >
                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                     {filteredMapSites.map(site => (

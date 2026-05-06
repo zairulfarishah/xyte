@@ -33,7 +33,7 @@ const lightInput = {
 const lLabel = { display: 'block', fontSize: '12px', fontWeight: '500', color: '#64748b', marginBottom: '6px' }
 
 export default function Library() {
-  const { isZairul } = useAuth()
+  const { isZairul, memberId: myMemberId } = useAuth()
   const { isMobile } = useViewport()
   const [docs, setDocs]               = useState([])
   const [members, setMembers]         = useState([])
@@ -42,6 +42,7 @@ export default function Library() {
   const [showUpload, setShowUpload]   = useState(false)
   const [uploading, setUploading]     = useState(false)
   const [form, setForm]               = useState({ section: '', member_id: '', subcategory: '', file_type: 'pdf' })
+  const [lockedMemberId, setLockedMemberId] = useState(null) // non-null = member is pre-filled and locked
   const [file, setFile]               = useState(null)
   const [uploadError, setUploadError] = useState(null)
   const [preview, setPreview]         = useState(null) // { doc, url, html }
@@ -71,11 +72,13 @@ export default function Library() {
     })
   }
 
-  function openUploadFor(sectionKey) {
+  function openUploadFor(sectionKey, forceMemberId = null) {
     const sec = SECTIONS.find(s => s.key === sectionKey)
+    const locked = forceMemberId || (!isZairul && sec?.type === 'member' ? myMemberId : null)
+    setLockedMemberId(locked)
     setForm({
       section: sectionKey,
-      member_id: '',
+      member_id: locked || '',
       subcategory: sec?.type === 'sub' ? 'Beam' : '',
       file_type: sectionKey === 'drawing_template' ? 'zip' : 'pdf',
     })
@@ -86,7 +89,9 @@ export default function Library() {
   }
 
   function openUploadBlank() {
-    setForm({ section: '', member_id: '', subcategory: '', file_type: 'pdf' })
+    const locked = !isZairul ? myMemberId : null
+    setLockedMemberId(locked)
+    setForm({ section: '', member_id: locked || '', subcategory: '', file_type: 'pdf' })
     setFile(null)
     setUploadError(null)
     if (fileRef.current) fileRef.current.value = ''
@@ -190,11 +195,9 @@ export default function Library() {
           <h1 style={{ fontSize: '22px', fontWeight: '700', color: 'white' }}>Library</h1>
           <p style={{ color: '#94a3b8', fontSize: '13px', marginTop: '2px' }}>Team documents &amp; templates</p>
         </div>
-        {isZairul && (
-          <button onClick={openUploadBlank} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: '#2563eb', color: 'white', border: 'none', padding: '9px 18px', borderRadius: '10px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', width: isMobile ? '100%' : 'auto' }}>
-            <Upload size={14} /> Upload Document
-          </button>
-        )}
+        <button onClick={openUploadBlank} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: '#2563eb', color: 'white', border: 'none', padding: '9px 18px', borderRadius: '10px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', width: isMobile ? '100%' : 'auto' }}>
+          <Upload size={14} /> Upload Document
+        </button>
       </div>
 
       {/* Section list */}
@@ -283,6 +286,7 @@ export default function Library() {
                     {members.map((m, idx) => {
                       const doc = getMember(sec.key, m.id)
                       const initials = m.full_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+                      const canUpload = isZairul || m.id === myMemberId
                       return (
                         <div key={m.id} style={{ padding: isMobile ? '12px 14px' : '12px 24px 12px 80px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'space-between', gap: '10px', borderBottom: idx < members.length - 1 ? '1px solid #f8fafc' : 'none', background: idx % 2 === 0 ? 'white' : '#fafafa' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
@@ -292,6 +296,11 @@ export default function Library() {
                             <p style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a' }}>{m.full_name}</p>
                           </div>
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                            {canUpload && !doc && (
+                              <button onClick={() => openUploadFor(sec.key, m.id)} style={uploadBtn}>
+                                <Upload size={11} /> Upload
+                              </button>
+                            )}
                             {doc ? (
                               <>
                                 <TypeBadge type={doc.file_type} />
@@ -303,12 +312,17 @@ export default function Library() {
                                 <button onClick={() => handleDownload(doc)} style={dlBtn(sec.color)}>
                                   <Download size={11} /> Download
                                 </button>
+                                {canUpload && (
+                                  <button onClick={() => openUploadFor(sec.key, m.id)} style={uploadBtn}>
+                                    <Upload size={11} /> Replace
+                                  </button>
+                                )}
                                 {isZairul && (
                                   <button onClick={() => handleDelete(doc)} style={delBtn}><Trash2 size={12} /></button>
                                 )}
                               </>
                             ) : (
-                              <span style={{ fontSize: '12px', color: '#cbd5e1' }}>No file</span>
+                              !canUpload && <span style={{ fontSize: '12px', color: '#cbd5e1' }}>No file</span>
                             )}
                           </div>
                         </div>
@@ -480,16 +494,18 @@ export default function Library() {
                 <select style={lightInput} value={form.section} onChange={e => {
                   const key = e.target.value
                   const sec = SECTIONS.find(s => s.key === key)
+                  const locked = !isZairul && sec?.type === 'member' ? myMemberId : null
+                  setLockedMemberId(locked)
                   setForm(f => ({
                     ...f,
                     section: key,
-                    member_id: '',
+                    member_id: locked || '',
                     subcategory: sec?.type === 'sub' ? 'Beam' : '',
                     file_type: key === 'drawing_template' ? 'zip' : 'pdf',
                   }))
                 }}>
                   <option value="">— Select section —</option>
-                  {SECTIONS.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+                  {SECTIONS.filter(s => isZairul || s.type === 'member').map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
                 </select>
               </div>
 
@@ -497,10 +513,16 @@ export default function Library() {
               {selectedSec?.type === 'member' && (
                 <div>
                   <label style={lLabel}>Team Member *</label>
-                  <select style={lightInput} value={form.member_id} onChange={e => setForm(f => ({ ...f, member_id: e.target.value }))}>
-                    <option value="">— Select member —</option>
-                    {members.map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
-                  </select>
+                  {lockedMemberId ? (
+                    <div style={{ ...lightInput, background: '#f8fafc', color: '#475569', cursor: 'not-allowed' }}>
+                      {members.find(m => m.id === lockedMemberId)?.full_name || '—'}
+                    </div>
+                  ) : (
+                    <select style={lightInput} value={form.member_id} onChange={e => setForm(f => ({ ...f, member_id: e.target.value }))}>
+                      <option value="">— Select member —</option>
+                      {members.map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
+                    </select>
+                  )}
                 </div>
               )}
 

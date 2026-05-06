@@ -200,7 +200,7 @@ export default function MapView() {
 
         {/* Map */}
         <div style={{ flex: 1, minHeight: isTablet ? '52vh' : 0, borderRadius: '12px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-          <MapContainer key={activeMapKey} center={activeCenter} zoom={placeResult ? 14 : 10} style={{ height: '100%', minHeight: isTablet ? '52vh' : undefined, width: '100%' }} scrollWheelZoom={false}>
+          <MapContainer key={activeMapKey} center={activeCenter} zoom={placeResult ? 14 : 10} style={{ height: '100%', minHeight: isTablet ? '52vh' : undefined, width: '100%' }} scrollWheelZoom={true}>
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

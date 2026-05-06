@@ -7,9 +7,9 @@ import { useViewport } from '../utils/useViewport'
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 const TYPE_COLORS = {
-  site_scanning: { bg: '#eff6ff', text: '#1d4ed8', border: '#93c5fd', dot: '#2563eb', label: 'Site Scanning' },
-  site_visit:    { bg: '#f0fdf4', text: '#166534', border: '#86efac', dot: '#16a34a', label: 'Site Visit'    },
-  meeting:       { bg: '#faf5ff', text: '#6d28d9', border: '#c4b5fd', dot: '#7c3aed', label: 'Meeting'       },
+  site_scanning: { bg: 'linear-gradient(135deg,#0f2460 0%,#1a4b8c 55%,#0891b2 100%)', text: '#ffffff', border: '#0891b2', dot: '#2563eb', label: 'Site Scanning' },
+  site_visit:    { bg: 'linear-gradient(135deg,#042f2e 0%,#065f46 55%,#0d9488 100%)', text: '#ffffff', border: '#0d9488', dot: '#16a34a', label: 'Site Visit'    },
+  meeting:       { bg: 'linear-gradient(135deg,#1e0a3c 0%,#4c1d95 55%,#7c3aed 100%)', text: '#ffffff', border: '#7c3aed', dot: '#7c3aed', label: 'Meeting'       },
 }
 
 const STATUS_DOT = {
@@ -31,15 +31,27 @@ function Avatar({ name, size = 18 }) {
   )
 }
 
+function formatPrayerTime(timestamp) {
+  if (!timestamp) return '--:--'
+  return new Date(timestamp * 1000).toLocaleTimeString('en-MY', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Kuala_Lumpur',
+  })
+}
+
 export default function CalendarPage() {
   const navigate = useNavigate()
   const { isMobile } = useViewport()
   const today    = useMemo(() => new Date(), [])
+  const [now, setNow] = useState(() => new Date())
   const [current, setCurrent]   = useState(() => new Date(today.getFullYear(), today.getMonth(), 1))
   const [sites, setSites]       = useState([])
   const [loading, setLoading]   = useState(true)
   const [expanded, setExpanded] = useState(null)
   const [dayModal, setDayModal] = useState(null) // { day, ds, sites }
+  const [prayerInfo, setPrayerInfo] = useState({ place: 'Kuala Lumpur', times: null })
 
   const year  = current.getFullYear()
   const month = current.getMonth()
@@ -49,6 +61,51 @@ export default function CalendarPage() {
     fetchSites()
   }, [year, month])
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    const fallbackCoords = { latitude: 3.1390, longitude: 101.6869, place: 'Kuala Lumpur' }
+
+    async function loadPrayerTimes(latitude, longitude, fallbackPlace = 'Kuala Lumpur') {
+      try {
+        const response = await fetch(`https://mpt.i906.my/api/prayer/${latitude},${longitude}`)
+        if (!response.ok) throw new Error('Unable to load prayer times')
+        const payload = await response.json()
+        const todayIndex = now.getDate() - 1
+        const todayTimes = payload?.data?.times?.[todayIndex]
+
+        if (!todayTimes || todayTimes.length < 6) throw new Error('Missing prayer times for today')
+
+        setPrayerInfo({
+          place: payload?.data?.place || fallbackPlace,
+          times: {
+            subuh: todayTimes[0],
+            zohor: todayTimes[2],
+            asar: todayTimes[3],
+            maghrib: todayTimes[4],
+            isyak: todayTimes[5],
+          },
+        })
+      } catch {
+        setPrayerInfo(info => ({ ...info, place: fallbackPlace }))
+      }
+    }
+
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        position => loadPrayerTimes(position.coords.latitude, position.coords.longitude, fallbackCoords.place),
+        () => loadPrayerTimes(fallbackCoords.latitude, fallbackCoords.longitude, fallbackCoords.place),
+        { enableHighAccuracy: false, timeout: 5000, maximumAge: 60 * 60 * 1000 }
+      )
+      return
+    }
+
+    loadPrayerTimes(fallbackCoords.latitude, fallbackCoords.longitude, fallbackCoords.place)
+  }, [now.getFullYear(), now.getMonth(), now.getDate()])
+
   async function fetchSites() {
     setLoading(true)
     const from = `${year}-${String(month + 1).padStart(2, '0')}-01`
@@ -56,7 +113,7 @@ export default function CalendarPage() {
     const to   = `${year}-${String(month + 1).padStart(2, '0')}-${String(last).padStart(2, '0')}`
     const { data } = await supabase
       .from('sites')
-      .select(`id, site_name, site_type, site_status, scheduled_date,
+      .select(`id, site_name, site_type, site_status, scheduled_date, site_photo_url,
         site_assignments(assignment_role, team_members(id, short_name, full_name, avatar_url))`)
       .gte('scheduled_date', from)
       .lte('scheduled_date', to)
@@ -94,6 +151,13 @@ export default function CalendarPage() {
 
   const monthLabel = current.toLocaleDateString('en-MY', { month: 'long', year: 'numeric' })
   const agendaDays = useMemo(() => Object.entries(sitesByDate).sort((a, b) => a[0].localeCompare(b[0])), [sitesByDate])
+  const prayerRows = useMemo(() => ([
+    { label: 'Subuh', value: formatPrayerTime(prayerInfo.times?.subuh) },
+    { label: 'Zohor', value: formatPrayerTime(prayerInfo.times?.zohor) },
+    { label: 'Asar', value: formatPrayerTime(prayerInfo.times?.asar) },
+    { label: 'Maghrib', value: formatPrayerTime(prayerInfo.times?.maghrib) },
+    { label: 'Isyak', value: formatPrayerTime(prayerInfo.times?.isyak) },
+  ]), [prayerInfo])
 
   if (isMobile) {
     return (
@@ -114,6 +178,26 @@ export default function CalendarPage() {
         </div>
 
         <div style={{ padding: '14px 14px 28px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ background: 'rgba(15, 23, 42, 0.88)', border: '1px solid rgba(148,163,184,0.18)', borderRadius: '18px', padding: '14px', display: 'grid', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px' }}>
+              <div>
+                <div style={{ fontSize: '10px', fontWeight: '800', color: '#93c5fd', textTransform: 'uppercase', letterSpacing: '.14em' }}>Malaysia Time</div>
+                <div style={{ marginTop: '6px', fontSize: '22px', fontWeight: '900', color: 'white', letterSpacing: '.08em', fontVariantNumeric: 'tabular-nums' }}>
+                  {now.toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+                </div>
+              </div>
+              <div style={{ fontSize: '10px', fontWeight: '700', color: '#94a3b8', textAlign: 'right' }}>Waktu solat<br />{prayerInfo.place}</div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px' }}>
+              {prayerRows.map(item => (
+                <div key={item.label} style={{ padding: '8px 6px', borderRadius: '12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', textAlign: 'center' }}>
+                  <div style={{ fontSize: '8px', fontWeight: '800', color: '#93c5fd', textTransform: 'uppercase', letterSpacing: '.08em' }}>{item.label}</div>
+                  <div style={{ marginTop: '4px', fontSize: '11px', fontWeight: '800', color: '#f8fbff', fontVariantNumeric: 'tabular-nums' }}>{item.value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'white', border: '1px solid #dbe3ec', borderRadius: '16px', padding: '12px 14px' }}>
             <button onClick={() => setCurrent(new Date(year, month - 1, 1))} style={{ padding: '8px', borderRadius: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', color: '#0f172a', cursor: 'pointer', display: 'flex' }}>
               <ChevronLeft size={16} />
@@ -197,33 +281,62 @@ export default function CalendarPage() {
     <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg,#071226 0 100px,#c8d4e3 100px 100%)' }}>
 
       {/* ── Header ── */}
-      <div style={{ padding: '24px 40px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div>
-          <h1 style={{ fontSize: '22px', fontWeight: '700', color: 'white' }}>Calendar</h1>
-          <p style={{ color: '#94a3b8', fontSize: '13px', marginTop: '2px' }}>
-            {sites.length} site{sites.length !== 1 ? 's' : ''} this month
-          </p>
+      <div style={{ padding: '24px 40px 0', display: 'grid', gap: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '18px' }}>
+          <div>
+            <h1 style={{ fontSize: '22px', fontWeight: '700', color: 'white' }}>Calendar</h1>
+            <p style={{ color: '#94a3b8', fontSize: '13px', marginTop: '2px' }}>
+              {sites.length} site{sites.length !== 1 ? 's' : ''} this month
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button onClick={() => setCurrent(new Date(year, month - 1, 1))} style={{ padding: '8px', borderRadius: '8px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.12)', color: 'white', cursor: 'pointer', display: 'flex' }}>
+              <ChevronLeft size={16} />
+            </button>
+            <span style={{ color: 'white', fontWeight: '700', fontSize: '15px', minWidth: '170px', textAlign: 'center' }}>{monthLabel}</span>
+            <button onClick={() => setCurrent(new Date(year, month + 1, 1))} style={{ padding: '8px', borderRadius: '8px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.12)', color: 'white', cursor: 'pointer', display: 'flex' }}>
+              <ChevronRight size={16} />
+            </button>
+            <button
+              onClick={() => setCurrent(new Date(today.getFullYear(), today.getMonth(), 1))}
+              style={{ padding: '7px 14px', borderRadius: '8px', background: '#2563eb', border: 'none', color: 'white', fontSize: '12px', fontWeight: '600', cursor: 'pointer', marginLeft: '4px' }}
+            >
+              Today
+            </button>
+          </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <button onClick={() => setCurrent(new Date(year, month - 1, 1))} style={{ padding: '8px', borderRadius: '8px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.12)', color: 'white', cursor: 'pointer', display: 'flex' }}>
-            <ChevronLeft size={16} />
-          </button>
-          <span style={{ color: 'white', fontWeight: '700', fontSize: '15px', minWidth: '170px', textAlign: 'center' }}>{monthLabel}</span>
-          <button onClick={() => setCurrent(new Date(year, month + 1, 1))} style={{ padding: '8px', borderRadius: '8px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.12)', color: 'white', cursor: 'pointer', display: 'flex' }}>
-            <ChevronRight size={16} />
-          </button>
-          <button
-            onClick={() => setCurrent(new Date(today.getFullYear(), today.getMonth(), 1))}
-            style={{ padding: '7px 14px', borderRadius: '8px', background: '#2563eb', border: 'none', color: 'white', fontSize: '12px', fontWeight: '600', cursor: 'pointer', marginLeft: '4px' }}
-          >
-            Today
-          </button>
-        </div>
       </div>
 
-      {/* ── Grid ── */}
-      <div style={{ padding: '32px 40px 48px' }}>
+      {/* ── Grid + Prayer sidebar ── */}
+      <div style={{ padding: '20px 40px 48px', display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+
+        {/* Waktu Solat sidebar — top-padded to align with calendar grid (day-header height ≈ 48px + 4px gap) */}
+        <div style={{ width: '160px', flexShrink: 0, paddingTop: '52px' }}>
+          <div style={{ background: '#0f2744', border: '1px solid #1e3a5f', borderRadius: '16px', padding: '14px 12px', display: 'flex', flexDirection: 'column', gap: '10px', boxShadow: '0 8px 24px rgba(2,8,23,.28)' }}>
+            <div>
+              <div style={{ fontSize: '9px', fontWeight: '800', color: '#93c5fd', textTransform: 'uppercase', letterSpacing: '.14em' }}>Malaysia Time</div>
+              <div style={{ marginTop: '4px', fontSize: '18px', fontWeight: '900', color: 'white', letterSpacing: '.06em', fontVariantNumeric: 'tabular-nums' }}>
+                {now.toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+              </div>
+              <div style={{ marginTop: '4px', fontSize: '10px', fontWeight: '600', color: '#64a0d4' }}>{prayerInfo.place}</div>
+            </div>
+            <div style={{ width: '100%', height: '1px', background: '#1e3a5f' }} />
+            <div style={{ fontSize: '9px', fontWeight: '800', color: '#93c5fd', textTransform: 'uppercase', letterSpacing: '.12em' }}>Waktu Solat</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {prayerRows.map(item => (
+                <div key={item.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', borderRadius: '10px', background: '#162e52', border: '1px solid #1e3a5f' }}>
+                  <div style={{ fontSize: '9px', fontWeight: '800', color: '#93c5fd', textTransform: 'uppercase', letterSpacing: '.08em' }}>{item.label}</div>
+                  <div style={{ fontSize: '12px', fontWeight: '800', color: '#f8fbff', fontVariantNumeric: 'tabular-nums' }}>{item.value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Calendar */}
+        <div style={{ flex: 1, minWidth: 0 }}>
 
         {/* Day headers */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '4px', background: '#1e3a5f', borderRadius: '10px', padding: '2px' }}>
@@ -252,7 +365,7 @@ export default function CalendarPage() {
                 <div
                   key={idx}
                   style={{
-                    minHeight: '116px',
+                    minHeight: '100px',
                     background:    day ? (todayCell ? '#dbeafe' : '#f8fafc') : 'transparent',
                     borderRadius:  day ? '10px' : '0',
                     border:        day ? (todayCell ? '2px solid #2563eb' : '1px solid #cbd5e1') : 'none',
@@ -297,12 +410,25 @@ export default function CalendarPage() {
                           <div
                             key={site.id}
                             onClick={() => navigate(`/sites/${site.id}`)}
-                            style={{ background: tc.bg, border: `1px solid ${tc.border}`, borderRadius: '6px', padding: '4px 6px', cursor: 'pointer' }}
-                            onMouseEnter={e => e.currentTarget.style.opacity = '0.8'}
+                            style={{ position: 'relative', borderRadius: '6px', overflow: 'hidden', cursor: 'pointer', border: `1px solid ${tc.border}` }}
+                            onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
                             onMouseLeave={e => e.currentTarget.style.opacity = '1'}
                           >
+                            {/* Photo background */}
+                            {site.site_photo_url && (
+                              <img
+                                src={site.site_photo_url}
+                                alt=""
+                                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }}
+                              />
+                            )}
+                            {/* Dark overlay so text is always readable */}
+                            <div style={{ position: 'absolute', inset: 0, background: site.site_photo_url ? 'linear-gradient(160deg,rgba(0,0,0,0.62) 0%,rgba(0,0,0,0.38) 100%)' : tc.bg, pointerEvents: 'none' }} />
+
+                            {/* Content */}
+                            <div style={{ position: 'relative', padding: '4px 6px' }}>
                             {/* Site name */}
-                            <p style={{ fontSize: '10px', fontWeight: '700', color: tc.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.3 }}>
+                            <p style={{ fontSize: '10px', fontWeight: '700', color: site.site_photo_url ? '#ffffff' : tc.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.3, textShadow: site.site_photo_url ? '0 1px 3px rgba(0,0,0,0.6)' : 'none' }}>
                               {site.site_name}
                             </p>
 
@@ -313,7 +439,7 @@ export default function CalendarPage() {
                                 {pic && (
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
                                     <Avatar name={picName} size={14} />
-                                    <span style={{ fontSize: '9px', fontWeight: '600', color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '48px' }}>{picName}</span>
+                                    <span style={{ fontSize: '9px', fontWeight: '600', color: site.site_photo_url ? '#e2e8f0' : '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '48px', textShadow: site.site_photo_url ? '0 1px 2px rgba(0,0,0,0.6)' : 'none' }}>{picName}</span>
                                   </div>
                                 )}
                                 {/* Crew avatars stacked */}
@@ -333,6 +459,7 @@ export default function CalendarPage() {
                                 )}
                               </div>
                             )}
+                            </div>{/* end content */}
                           </div>
                         )
                       })}
@@ -365,6 +492,7 @@ export default function CalendarPage() {
             </div>
           ))}
         </div>
+        </div>{/* end calendar col */}
       </div>
 
       {/* ── Day modal (tap the count badge) ── */}

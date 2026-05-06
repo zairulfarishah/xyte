@@ -28,6 +28,9 @@ function getAssignmentPercentage(assignment) {
   const siteType     = String(site?.site_type          || 'site_scanning').toLowerCase()
   const role         = String(assignment?.assignment_role || '').toLowerCase()
 
+  // Postponed site — no load on anyone
+  if (siteStatus === 'postponed') return 0
+
   // Active or scheduled site — return early, no double counting with report
   if (['upcoming', 'ongoing'].includes(siteStatus)) {
     const duration    = Number(site?.site_duration_days) || 0
