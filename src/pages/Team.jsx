@@ -154,6 +154,9 @@ export default function Team() {
   const [loading, setLoading] = useState(true)
   const [uploadingFor, setUploadingFor] = useState(null)
   const avatarInputRef = useRef(null)
+  const [editingIc, setEditingIc] = useState(false)
+  const [icValue, setIcValue] = useState('')
+  const [savingIc, setSavingIc] = useState(false)
 
   function triggerAvatarUpload(memberId) {
     setUploadingFor(memberId)
@@ -220,6 +223,19 @@ export default function Team() {
       alert('An unexpected error occurred: ' + err.message)
       setUploadingFor(null)
     }
+  }
+
+  async function saveIcNumber(memberId) {
+    setSavingIc(true)
+    const { error } = await supabase
+      .from('team_members')
+      .update({ ic_number: icValue.trim() || null })
+      .eq('id', memberId)
+    if (!error) {
+      setMembers(prev => prev.map(m => m.id === memberId ? { ...m, ic_number: icValue.trim() || null } : m))
+    }
+    setSavingIc(false)
+    setEditingIc(false)
   }
 
   useEffect(() => {
@@ -513,7 +529,7 @@ export default function Team() {
               return (
                 <button
                   key={member.id}
-                  onClick={() => setSelectedId(member.id)}
+                  onClick={() => { setSelectedId(member.id); setEditingIc(false) }}
                   style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '12px', padding: '13px', cursor: 'pointer', borderRadius: '18px', background: isSelected ? 'linear-gradient(135deg, rgba(30,64,175,0.34), rgba(15,23,42,0.92))' : 'rgba(15,23,42,0.72)', border: `1px solid ${isSelected ? 'rgba(96,165,250,0.42)' : 'rgba(148,163,184,0.08)'}` }}
                 >
                   <Avatar name={member.full_name} size={42} index={index} avatarUrl={member.avatar_url} onUpload={isZairul ? () => triggerAvatarUpload(member.id) : null} />
@@ -653,7 +669,7 @@ export default function Team() {
                 return (
                   <div
                     key={member.id}
-                    onClick={() => setSelectedId(member.id)}
+                    onClick={() => { setSelectedId(member.id); setEditingIc(false) }}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -721,6 +737,38 @@ export default function Team() {
                           <p style={{ color: '#94a3b8', fontSize: '12px', marginTop: '4px' }}>
                             {selected.full_name.toLowerCase().replace(/\s+/g, '.')}@xyte.com
                           </p>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                            {editingIc ? (
+                              <>
+                                <input
+                                  autoFocus
+                                  value={icValue}
+                                  onChange={e => setIcValue(e.target.value)}
+                                  onKeyDown={e => { if (e.key === 'Enter') saveIcNumber(selected.id); if (e.key === 'Escape') setEditingIc(false) }}
+                                  placeholder="e.g. 900101-14-1234"
+                                  style={{ padding: '4px 10px', borderRadius: '7px', border: '1px solid #3b82f6', fontSize: '12px', background: 'rgba(255,255,255,0.08)', color: 'white', outline: 'none', width: '160px' }}
+                                />
+                                <button onClick={() => saveIcNumber(selected.id)} disabled={savingIc} style={{ padding: '4px 10px', borderRadius: '7px', background: '#2563eb', border: 'none', color: 'white', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}>
+                                  {savingIc ? '…' : 'Save'}
+                                </button>
+                                <button onClick={() => setEditingIc(false)} style={{ padding: '4px 8px', borderRadius: '7px', background: 'rgba(255,255,255,0.08)', border: 'none', color: '#94a3b8', fontSize: '11px', cursor: 'pointer' }}>Cancel</button>
+                              </>
+                            ) : (
+                              <>
+                                <span style={{ fontSize: '12px', color: selected.ic_number ? '#94a3b8' : '#475569' }}>
+                                  IC: {selected.ic_number || '—'}
+                                </span>
+                                {isZairul && (
+                                  <button
+                                    onClick={() => { setIcValue(selected.ic_number || ''); setEditingIc(true) }}
+                                    style={{ padding: '2px 8px', borderRadius: '6px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#94a3b8', fontSize: '10px', fontWeight: '600', cursor: 'pointer' }}
+                                  >
+                                    Edit
+                                  </button>
+                                )}
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>

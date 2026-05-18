@@ -11,19 +11,13 @@ const DOC_TYPES = [
   { key: 'ogsp',          label: 'OGSP' },
 ]
 
-const lightInput = {
-  width: '100%', padding: '8px 12px', borderRadius: '8px',
-  border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none',
-  background: 'white', color: '#0f172a', fontFamily: 'inherit', boxSizing: 'border-box',
-}
-
 export default function CompileExport({ members, docs }) {
-  const [open, setOpen]                   = useState(false)
+  const [open, setOpen]                       = useState(false)
   const [selectedMembers, setSelectedMembers] = useState([])
-  const [selectedTypes, setSelectedTypes] = useState(['cidb', 'ntsp'])
-  const [compiling, setCompiling]         = useState(false)
-  const [progress, setProgress]           = useState('')
-  const [done, setDone]                   = useState(false)
+  const [selectedTypes, setSelectedTypes]     = useState(['cidb', 'ntsp'])
+  const [compiling, setCompiling]             = useState(false)
+  const [progress, setProgress]               = useState('')
+  const [done, setDone]                       = useState(false)
 
   function toggleMember(id) {
     setSelectedMembers(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
@@ -52,37 +46,88 @@ export default function CompileExport({ members, docs }) {
     setDone(false)
 
     try {
+      // Fetch full member details including ic_number
+      setProgress('Fetching member details…')
+      const { data: fullMembers } = await supabase
+        .from('team_members')
+        .select('id, full_name, role, ic_number')
+        .in('id', selectedMembers)
+      const memberMap = {}
+      ;(fullMembers || []).forEach(m => { memberMap[m.id] = m })
+
       const mergedPdf = await PDFDocument.create()
       const font      = await mergedPdf.embedFont(StandardFonts.Helvetica)
       const boldFont  = await mergedPdf.embedFont(StandardFonts.HelveticaBold)
 
-      // — Page 1: Namelist —
-      setProgress('Generating namelist…')
       const A4W = 595, A4H = 842
+      const ML = 50, MR = 50  // margins
+
+      // ── Page 1: Namelist ──
+      setProgress('Generating namelist…')
       const page = mergedPdf.addPage([A4W, A4H])
 
-      // dark header bar
-      page.drawRectangle({ x: 0, y: A4H - 70, width: A4W, height: 70, color: rgb(0.059, 0.071, 0.149) })
-      page.drawText('X', { x: 40, y: A4H - 48, font: boldFont, size: 28, color: rgb(0.133, 0.773, 0.369) })
-      page.drawText('yte', { x: 65, y: A4H - 48, font, size: 28, color: rgb(1, 1, 1) })
-      page.drawText('SITE NAMELIST', { x: 40, y: A4H - 120, font: boldFont, size: 18, color: rgb(0.059, 0.071, 0.149) })
+      // Header bar
+      page.drawRectangle({ x: 0, y: A4H - 72, width: A4W, height: 72, color: rgb(0.027, 0.071, 0.153) })
 
+      // Xradar logo text in header
+      page.drawText('XRADAR', { x: ML, y: A4H - 38, font: boldFont, size: 22, color: rgb(0.133, 0.773, 0.369) })
+      page.drawText('Sdn Bhd', { x: ML, y: A4H - 56, font, size: 9, color: rgb(0.6, 0.7, 0.8) })
+
+      // Right side: doc title
+      page.drawText('SITE NAMELIST', { x: A4W - MR - 130, y: A4H - 38, font: boldFont, size: 14, color: rgb(1, 1, 1) })
+
+      // Date line
       const dateStr = new Date().toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' })
-      page.drawText(`Generated: ${dateStr}`, { x: 40, y: A4H - 145, font, size: 10, color: rgb(0.58, 0.635, 0.714) })
-      page.drawLine({ start: { x: 40, y: A4H - 158 }, end: { x: A4W - 40, y: A4H - 158 }, thickness: 1, color: rgb(0.882, 0.910, 0.941) })
+      page.drawText(`Date: ${dateStr}`, { x: A4W - MR - 130, y: A4H - 56, font, size: 9, color: rgb(0.6, 0.7, 0.8) })
 
-      // member list
-      let y = A4H - 185
-      const chosenMembers = selectedMembers.map(id => members.find(m => m.id === id)).filter(Boolean)
+      // Thin green accent line
+      page.drawRectangle({ x: 0, y: A4H - 76, width: A4W, height: 4, color: rgb(0.133, 0.773, 0.369) })
+
+      // Table header
+      const tableTop = A4H - 110
+      const colNo   = ML
+      const colName = ML + 36
+      const colIc   = ML + 240
+      const colRole = ML + 380
+
+      page.drawRectangle({ x: ML - 4, y: tableTop - 4, width: A4W - ML - MR + 8, height: 22, color: rgb(0.027, 0.071, 0.153) })
+      page.drawText('NO.',       { x: colNo,   y: tableTop, font: boldFont, size: 9, color: rgb(0.133, 0.773, 0.369) })
+      page.drawText('FULL NAME', { x: colName, y: tableTop, font: boldFont, size: 9, color: rgb(1, 1, 1) })
+      page.drawText('IC NUMBER', { x: colIc,   y: tableTop, font: boldFont, size: 9, color: rgb(1, 1, 1) })
+      page.drawText('POSITION',  { x: colRole, y: tableTop, font: boldFont, size: 9, color: rgb(1, 1, 1) })
+
+      // Table rows
+      let y = tableTop - 24
+      const chosenMembers = selectedMembers.map(id => memberMap[id] || members.find(m => m.id === id)).filter(Boolean)
+
       chosenMembers.forEach((member, idx) => {
-        page.drawText(`${idx + 1}.`, { x: 40, y, font: boldFont, size: 12, color: rgb(0.149, 0.388, 0.922) })
-        page.drawText(member.full_name, { x: 65, y, font: boldFont, size: 12, color: rgb(0.059, 0.071, 0.149) })
-        y -= 28
+        const rowBg = idx % 2 === 0 ? rgb(0.976, 0.984, 1) : rgb(1, 1, 1)
+        page.drawRectangle({ x: ML - 4, y: y - 6, width: A4W - ML - MR + 8, height: 22, color: rowBg })
+
+        const icText   = member.ic_number || '—'
+        const roleText = member.role      || '—'
+
+        page.drawText(String(idx + 1), { x: colNo, y, font: boldFont, size: 10, color: rgb(0.149, 0.388, 0.922) })
+        page.drawText(member.full_name,  { x: colName, y, font: boldFont, size: 10, color: rgb(0.059, 0.071, 0.149) })
+        page.drawText(icText,            { x: colIc,   y, font, size: 10, color: rgb(0.278, 0.333, 0.412) })
+        page.drawText(roleText,          { x: colRole, y, font, size: 10, color: rgb(0.278, 0.333, 0.412) })
+
+        // bottom border
+        page.drawLine({
+          start: { x: ML - 4, y: y - 6 }, end: { x: A4W - MR + 4, y: y - 6 },
+          thickness: 0.5, color: rgb(0.882, 0.910, 0.941),
+        })
+        y -= 24
       })
 
-      // — Documents grouped by member —
+      // Footer
+      page.drawRectangle({ x: 0, y: 0, width: A4W, height: 36, color: rgb(0.027, 0.071, 0.153) })
+      page.drawText('XRADAR Sdn Bhd — Confidential', { x: ML, y: 13, font, size: 8, color: rgb(0.6, 0.7, 0.8) })
+      page.drawText(`Total: ${chosenMembers.length} member${chosenMembers.length !== 1 ? 's' : ''}`, { x: A4W - MR - 80, y: 13, font: boldFont, size: 8, color: rgb(0.6, 0.7, 0.8) })
+
+      // ── Documents grouped by member ──
       for (const memberId of selectedMembers) {
-        const member = members.find(m => m.id === memberId)
+        const member = memberMap[memberId] || members.find(m => m.id === memberId)
         if (!member) continue
 
         for (const docType of selectedTypes) {
@@ -94,11 +139,10 @@ export default function CompileExport({ members, docs }) {
           try {
             const { data } = await supabase.storage.from('library').createSignedUrl(doc.file_path, 180)
             if (!data?.signedUrl) continue
-            const resp      = await fetch(data.signedUrl)
-            const pdfBytes  = await resp.arrayBuffer()
-            const srcPdf    = await PDFDocument.load(pdfBytes, { ignoreEncryption: true })
-            const indices   = srcPdf.getPageIndices()
-            const copied    = await mergedPdf.copyPages(srcPdf, indices)
+            const resp     = await fetch(data.signedUrl)
+            const pdfBytes = await resp.arrayBuffer()
+            const srcPdf   = await PDFDocument.load(pdfBytes, { ignoreEncryption: true })
+            const copied   = await mergedPdf.copyPages(srcPdf, srcPdf.getPageIndices())
             copied.forEach(p => mergedPdf.addPage(p))
           } catch (err) {
             console.warn(`Skipped ${member.full_name} ${docType}:`, err)
@@ -112,7 +156,7 @@ export default function CompileExport({ members, docs }) {
       const url      = URL.createObjectURL(blob)
       const a        = document.createElement('a')
       a.href         = url
-      a.download     = `compiled_documents_${new Date().toISOString().slice(0, 10)}.pdf`
+      a.download     = `xradar_namelist_${new Date().toISOString().slice(0, 10)}.pdf`
       a.click()
       URL.revokeObjectURL(url)
 
@@ -208,7 +252,7 @@ export default function CompileExport({ members, docs }) {
                       <span style={{ width: '20px', height: '20px', borderRadius: '4px', background: '#2563eb', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: '700', flexShrink: 0 }}>1</span>
                       Namelist ({selectedMembers.length} member{selectedMembers.length !== 1 ? 's' : ''})
                     </div>
-                    {selectedMembers.map((id, mIdx) => {
+                    {selectedMembers.map(id => {
                       const member = members.find(m => m.id === id)
                       if (!member) return null
                       return selectedTypes.map(type => {
@@ -249,7 +293,10 @@ export default function CompileExport({ members, docs }) {
                 disabled={!canCompile || compiling}
                 style={{ flex: 1, padding: '12px', borderRadius: '10px', fontSize: '14px', fontWeight: '700', color: 'white', border: 'none', cursor: !canCompile || compiling ? 'not-allowed' : 'pointer', background: '#2563eb', opacity: !canCompile || compiling ? 0.5 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
               >
-                {compiling ? <><Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> Compiling…</> : <><FileDown size={14} /> Compile &amp; Download PDF</>}
+                {compiling
+                  ? <><Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> Compiling…</>
+                  : <><FileDown size={14} /> Compile &amp; Download PDF</>
+                }
               </button>
               {!compiling && (
                 <button onClick={() => setOpen(false)} style={{ padding: '12px 20px', borderRadius: '10px', fontSize: '14px', fontWeight: '600', color: '#0f172a', cursor: 'pointer', background: '#f1f5f9', border: '1px solid #e2e8f0' }}>
