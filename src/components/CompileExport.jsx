@@ -50,7 +50,7 @@ export default function CompileExport({ members, docs }) {
       setProgress('Fetching member details…')
       const { data: fullMembers } = await supabase
         .from('team_members')
-        .select('id, full_name, role, ic_number')
+        .select('id, full_name, legal_name, role, ic_number')
         .in('id', selectedMembers)
       const memberMap = {}
       ;(fullMembers || []).forEach(m => { memberMap[m.id] = m })
@@ -137,7 +137,7 @@ export default function CompileExport({ members, docs }) {
           page.drawLine({ start: { x, y: rY + rowH }, end: { x, y: rY }, thickness: 0.5, color: rgb(0,0,0) })
         }
 
-        const nameText = fitText(member.full_name || '', colNameW - 8, font, 9.5)
+        const nameText = fitText(member.legal_name || member.full_name || '', colNameW - 8, font, 9.5)
         const icText   = fitText(member.ic_number  || '—', colIcW   - 8, font, 9.5)
         const roleText = fitText(member.role        || '—', colRoleW - 8, font, 9.5)
 
