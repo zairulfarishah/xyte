@@ -575,8 +575,8 @@ export default function Library() {
 
       {/* Preview Modal */}
       {(preview || previewing) && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: isMobile ? '14px' : '24px' }} onClick={e => e.target === e.currentTarget && setPreview(null)}>
-          <div style={{ background: 'white', borderRadius: '20px', width: '100%', maxWidth: '860px', height: isMobile ? '92vh' : '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 32px 80px rgba(0,0,0,0.3)' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 4000, padding: isMobile ? '12px' : '24px', overflowY: 'auto' }} onClick={e => e.target === e.currentTarget && setPreview(null)}>
+          <div style={{ background: 'white', borderRadius: '20px', width: '100%', maxWidth: '860px', height: isMobile ? 'calc(100vh - 24px)' : 'calc(100vh - 48px)', maxHeight: isMobile ? 'calc(100vh - 24px)' : '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 32px 80px rgba(0,0,0,0.3)', flexShrink: 0 }}>
             <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
               <div style={{ minWidth: 0 }}>
                 <p style={{ fontWeight: '700', fontSize: '15px', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{previewing ? 'Loading preview…' : preview?.doc?.file_name}</p>
@@ -602,7 +602,7 @@ export default function Library() {
 
       {/* Upload Modal */}
       {showUpload && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '16px' }} onClick={e => e.target === e.currentTarget && setShowUpload(false)}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 4000, padding: '16px' }} onClick={e => e.target === e.currentTarget && setShowUpload(false)}>
           <div style={{ background: 'white', borderRadius: '20px', width: '100%', maxWidth: '440px', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(15,23,42,.18)' }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
               <p style={{ fontWeight: '700', fontSize: '16px', color: '#0f172a' }}>Upload Document</p>
@@ -678,7 +678,7 @@ export default function Library() {
 
       {/* Add New List Modal */}
       {showAddList && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '16px' }} onClick={e => e.target === e.currentTarget && setShowAddList(false)}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 4000, padding: '16px' }} onClick={e => e.target === e.currentTarget && setShowAddList(false)}>
           <div style={{ background: 'white', borderRadius: '20px', width: '100%', maxWidth: '400px', overflow: 'hidden', boxShadow: '0 24px 64px rgba(15,23,42,.18)' }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <p style={{ fontWeight: '700', fontSize: '16px', color: '#0f172a' }}>New List</p>
@@ -702,7 +702,7 @@ export default function Library() {
 
       {/* Add Form Template Sub-section Modal */}
       {showAddFormSub && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '16px' }} onClick={e => e.target === e.currentTarget && setShowAddFormSub(false)}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 4000, padding: '16px' }} onClick={e => e.target === e.currentTarget && setShowAddFormSub(false)}>
           <div style={{ background: 'white', borderRadius: '20px', width: '100%', maxWidth: '400px', overflow: 'hidden', boxShadow: '0 24px 64px rgba(15,23,42,.18)' }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <p style={{ fontWeight: '700', fontSize: '16px', color: '#0f172a' }}>New Sub-section</p>

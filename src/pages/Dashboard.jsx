@@ -69,7 +69,7 @@ const TYPE_COLORS = {
   meeting: { bg: '#faf5ff', text: '#6d28d9', border: '#c4b5fd' },
 }
 
-const SALESPERSONS = ['GH Tan', 'Chong Jie Yan', 'Jasmin', 'Darren', 'Wendy', 'Zairul']
+const SALESPERSONS = ['GH Tan', 'Chong Jie Yan', 'Jasmin', 'Darren', 'Wendy', 'Zairul', 'Reekha', 'Ryan']
 
 const EMPTY_FORM = {
   site_type: 'site_scanning',
@@ -83,6 +83,8 @@ const EMPTY_FORM = {
   scope_of_work: '',
   salesperson: '',
   scheduled_date: '',
+  end_date: '',
+  site_session: '',
   site_status: 'upcoming',
   report_status: 'pending',
   site_duration_days: '1',
@@ -348,8 +350,17 @@ export default function Dashboard() {
       salesperson: form.salesperson || null,
       site_photo_url: photoUrl || null,
       scheduled_date: form.scheduled_date,
+      end_date: form.end_date || form.scheduled_date || null,
+      site_session: (form.scheduled_date && form.end_date && form.scheduled_date === form.end_date) ? (form.site_session || null) : null,
       site_status: form.site_status,
-      site_duration_days: isSiteVisit ? 0.5 : (parseFloat(form.site_duration_days) || 1),
+      site_duration_days: isSiteVisit ? 0.5 : (() => {
+        if (form.site_type === 'site_scanning') {
+          const isSameDay = form.scheduled_date && form.end_date && form.scheduled_date === form.end_date
+          if (isSameDay) return form.site_session === 'Full Day' ? 1 : 0.5
+          if (form.scheduled_date && form.end_date) return Math.round((new Date(form.end_date) - new Date(form.scheduled_date)) / 86400000) + 1
+        }
+        return parseFloat(form.site_duration_days) || 1
+      })(),
       report_duration_days: isSiteVisit || isMeeting ? 0 : (parseFloat(form.report_duration_days) || 0.5),
       report_status: isSiteVisit || isMeeting ? 'not_applicable' : form.report_status,
       notes: form.notes,
@@ -1594,11 +1605,11 @@ export default function Dashboard() {
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Client Number</label>
+                  <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Client Phone Number</label>
                   <input
                     style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: 'white', color: '#0f172a', boxSizing: 'border-box' }}
                     value={form.client_number}
-                    placeholder="e.g. PO-12345"
+                    placeholder="e.g. +60123456789"
                     onChange={event => setForm(f => ({ ...f, client_number: event.target.value }))}
                   />
                 </div>
@@ -1627,33 +1638,73 @@ export default function Dashboard() {
                 </select>
               </div>
 
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Scheduled Date *</label>
-                <input
-                  type="date"
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: 'white', color: '#0f172a', boxSizing: 'border-box' }}
-                  value={form.scheduled_date}
-                  onChange={event => setForm(f => ({ ...f, scheduled_date: event.target.value }))}
-                />
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Start Date *</label>
+                  <input
+                    type="date"
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: 'white', color: '#0f172a', boxSizing: 'border-box' }}
+                    value={form.scheduled_date}
+                    onChange={event => setForm(f => ({ ...f, scheduled_date: event.target.value, end_date: f.end_date || event.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>End Date *</label>
+                  <input
+                    type="date"
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: 'white', color: '#0f172a', boxSizing: 'border-box' }}
+                    value={form.end_date}
+                    min={form.scheduled_date}
+                    onChange={event => setForm(f => ({ ...f, end_date: event.target.value }))}
+                  />
+                </div>
               </div>
 
-              {form.site_type === 'site_scanning' && (
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
-                  {[{ label: 'Site Duration (Days)', key: 'site_duration_days' }, { label: 'Report Duration (Days)', key: 'report_duration_days' }].map(({ label, key }) => (
-                    <div key={key}>
-                      <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>{label}</label>
+              {form.scheduled_date && form.end_date && form.scheduled_date === form.end_date && (
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Session (Same Day)</label>
+                  <select
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: 'white', color: '#0f172a' }}
+                    value={form.site_session}
+                    onChange={event => setForm(f => ({ ...f, site_session: event.target.value }))}
+                  >
+                    <option value="">— Select Session —</option>
+                    <option value="AM">AM (Morning)</option>
+                    <option value="PM">PM (Afternoon)</option>
+                    <option value="Full Day">Full Day</option>
+                  </select>
+                </div>
+              )}
+
+              {form.site_type === 'site_scanning' && (() => {
+                const isSameDay = form.scheduled_date && form.end_date && form.scheduled_date === form.end_date
+                const diffDays = form.scheduled_date && form.end_date
+                  ? Math.round((new Date(form.end_date) - new Date(form.scheduled_date)) / 86400000) + 1
+                  : null
+                const sameDayDuration = form.site_session === 'Full Day' ? 1 : 0.5
+                const calcDuration = isSameDay ? sameDayDuration : diffDays
+                return (
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Site Duration (Days)</label>
+                      <div style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', background: '#f8fafc', color: '#64748b', boxSizing: 'border-box' }}>
+                        {calcDuration != null ? `${calcDuration} day${calcDuration !== 1 ? 's' : ''}${isSameDay ? ` (${form.site_session || 'half day'})` : ''}` : '—'}
+                      </div>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Report Duration (Days)</label>
                       <input
                         type="number"
                         min="0"
                         step="0.5"
                         style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: 'white', color: '#0f172a', boxSizing: 'border-box' }}
-                        value={form[key]}
-                        onChange={event => setForm(f => ({ ...f, [key]: event.target.value }))}
+                        value={form.report_duration_days}
+                        onChange={event => setForm(f => ({ ...f, report_duration_days: event.target.value }))}
                       />
                     </div>
-                  ))}
-                </div>
-              )}
+                  </div>
+                )
+              })()}
 
               {form.site_type === 'site_visit' && (
                 <div style={{ background: '#f0fdf4', border: '1px solid #4ade80', borderRadius: '8px', padding: '10px 14px' }}>

@@ -113,10 +113,9 @@ export default function CalendarPage() {
     const to   = `${year}-${String(month + 1).padStart(2, '0')}-${String(last).padStart(2, '0')}`
     const { data } = await supabase
       .from('sites')
-      .select(`id, site_name, site_type, site_status, scheduled_date, site_photo_url,
+      .select(`id, site_name, site_type, site_status, scheduled_date, end_date, site_session, site_photo_url,
         site_assignments(assignment_role, team_members(id, short_name, full_name, avatar_url))`)
-      .gte('scheduled_date', from)
-      .lte('scheduled_date', to)
+      .or(`and(scheduled_date.gte.${from},scheduled_date.lte.${to}),and(end_date.gte.${from},end_date.lte.${to}),and(scheduled_date.lte.${from},end_date.gte.${to})`)
       .order('scheduled_date')
     setSites(data || [])
     setLoading(false)
@@ -135,8 +134,15 @@ export default function CalendarPage() {
   const sitesByDate = useMemo(() => {
     const map = {}
     sites.forEach(s => {
-      if (!map[s.scheduled_date]) map[s.scheduled_date] = []
-      map[s.scheduled_date].push(s)
+      const endStr = s.end_date || s.scheduled_date
+      let current = new Date(s.scheduled_date + 'T00:00:00')
+      const endDate = new Date(endStr + 'T00:00:00')
+      while (current <= endDate) {
+        const dateStr = current.toISOString().slice(0, 10)
+        if (!map[dateStr]) map[dateStr] = []
+        map[dateStr].push(s)
+        current.setDate(current.getDate() + 1)
+      }
     })
     return map
   }, [sites])
