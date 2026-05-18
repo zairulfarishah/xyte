@@ -138,7 +138,7 @@ export default function CalendarPage() {
       let current = new Date(s.scheduled_date + 'T00:00:00')
       const endDate = new Date(endStr + 'T00:00:00')
       while (current <= endDate) {
-        const dateStr = current.toISOString().slice(0, 10)
+        const dateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`
         if (!map[dateStr]) map[dateStr] = []
         map[dateStr].push(s)
         current.setDate(current.getDate() + 1)
