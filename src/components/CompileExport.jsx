@@ -77,7 +77,6 @@ export default function CompileExport({ members, docs }) {
       setProgress('Generating namelist…')
       const page = mergedPdf.addPage([A4W, A4H])
 
-      // White background (default)
       // ── Company header ──
       const headerTop = A4H - 40
 
@@ -87,9 +86,16 @@ export default function CompileExport({ members, docs }) {
       page.drawText('17 Jalan PJS 7/21 Bandar Sunway, 46150 Petaling Jaya, Selangor', { x: ML, y: headerTop - 16, font, size: 8.5, color: rgb(0.3, 0.3, 0.3) })
       page.drawText('Tel:  03-74940629     Email:  info@xradar.asia', { x: ML, y: headerTop - 28, font, size: 8.5, color: rgb(0.3, 0.3, 0.3) })
 
-      // Right: Xradar logo (styled text)
-      page.drawText('X', { x: A4W - MR - 72, y: headerTop - 4, font: boldFont, size: 30, color: rgb(0, 0, 0) })
-      page.drawText('radar', { x: A4W - MR - 46, y: headerTop - 4, font, size: 30, color: rgb(0, 0.55, 0.55) })
+      // Right: Xradar logo image
+      try {
+        const logoResp  = await fetch('/xradar-logo.png')
+        const logoBytes = await logoResp.arrayBuffer()
+        const logoImg   = await mergedPdf.embedPng(logoBytes)
+        const logoDims  = logoImg.scaleToFit(110, 44)
+        page.drawImage(logoImg, { x: A4W - MR - logoDims.width, y: headerTop - logoDims.height + 10, width: logoDims.width, height: logoDims.height })
+      } catch {
+        page.drawText('Xradar', { x: A4W - MR - 70, y: headerTop - 10, font: boldFont, size: 22, color: rgb(0, 0, 0) })
+      }
 
       // Divider line
       const divY = headerTop - 42
