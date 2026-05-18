@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { Download, Upload, ChevronDown, ChevronRight, FileText, File, X, Trash2, Eye, Plus } from 'lucide-react'
 import mammoth from 'mammoth'
 import { useViewport } from '../utils/useViewport'
+import CompileExport from '../components/CompileExport'
 
 const SECTIONS = [
   { key: 'xradar_namelist',  label: 'Xradar Namelist',  type: 'single', color: '#2563eb', bg: '#eff6ff' },
@@ -455,6 +456,7 @@ export default function Library() {
           <p style={{ color: '#94a3b8', fontSize: '13px', marginTop: '2px' }}>Team documents &amp; templates</p>
         </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <CompileExport members={members} docs={docs} />
           <button
             onClick={() => { setNewListName(''); setShowAddList(true) }}
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.18)', padding: '9px 16px', borderRadius: '10px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', flex: isMobile ? 1 : 'none' }}
