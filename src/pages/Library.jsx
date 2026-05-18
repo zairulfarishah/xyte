@@ -16,6 +16,8 @@ const SECTIONS = [
   { key: 'drawing_template', label: 'Drawing Template',  type: 'multi',  color: '#475569', bg: '#f1f5f9' },
 ]
 
+const DEFAULT_FORM_SUBS = ['Beam', 'Slab', 'Column', 'Plinth']
+
 const CUSTOM_COLORS = [
   { color: '#7c3aed', bg: '#faf5ff' },
   { color: '#059669', bg: '#f0fdf4' },
@@ -25,8 +27,6 @@ const CUSTOM_COLORS = [
   { color: '#dc2626', bg: '#fef2f2' },
   { color: '#2563eb', bg: '#eff6ff' },
 ]
-
-const FORM_SUBS = ['Beam', 'Slab', 'Column', 'Plinth']
 
 const TYPE_BADGE = {
   pdf:  { bg: '#fee2e2', text: '#991b1b' },
@@ -42,10 +42,11 @@ const lightInput = {
 
 const lLabel = { display: 'block', fontSize: '12px', fontWeight: '500', color: '#64748b', marginBottom: '6px' }
 
-const CUSTOM_SECTIONS_PATH = 'app-data/custom-sections.json'
+const CUSTOM_SECTIONS_PATH  = 'app-data/custom-sections.json'
+const FORM_SUBS_PATH        = 'app-data/form-template-subs.json'
 
-async function fetchCustomSectionsFromStorage() {
-  const { data, error } = await supabase.storage.from('library').download(CUSTOM_SECTIONS_PATH)
+async function loadJson(path) {
+  const { data, error } = await supabase.storage.from('library').download(path)
   if (error) return []
   try {
     const raw = await data.text()
@@ -54,9 +55,9 @@ async function fetchCustomSectionsFromStorage() {
   } catch { return [] }
 }
 
-async function saveCustomSectionsToStorage(sections) {
-  const blob = new Blob([JSON.stringify(sections, null, 2)], { type: 'application/json' })
-  await supabase.storage.from('library').upload(CUSTOM_SECTIONS_PATH, blob, {
+async function saveJson(path, value) {
+  const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' })
+  await supabase.storage.from('library').upload(path, blob, {
     upsert: true, contentType: 'application/json', cacheControl: '0',
   })
 }
@@ -64,25 +65,37 @@ async function saveCustomSectionsToStorage(sections) {
 export default function Library() {
   const { isZairul, memberId: myMemberId } = useAuth()
   const { isMobile } = useViewport()
-  const [docs, setDocs]                     = useState([])
-  const [members, setMembers]               = useState([])
-  const [loading, setLoading]               = useState(true)
-  const [openSecs, setOpenSecs]             = useState(new Set())
-  const [customSections, setCustomSections] = useState([])
-  const [showUpload, setShowUpload]         = useState(false)
-  const [uploading, setUploading]           = useState(false)
-  const [form, setForm]                     = useState({ section: '', member_id: '', subcategory: '', file_type: 'pdf' })
-  const [lockedMemberId, setLockedMemberId] = useState(null)
-  const [file, setFile]                     = useState(null)
-  const [uploadError, setUploadError]       = useState(null)
-  const [preview, setPreview]               = useState(null)
-  const [previewing, setPreviewing]         = useState(false)
-  const [showAddList, setShowAddList]       = useState(false)
-  const [newListName, setNewListName]       = useState('')
-  const [addingList, setAddingList]         = useState(false)
+
+  const [docs, setDocs]                       = useState([])
+  const [members, setMembers]                 = useState([])
+  const [loading, setLoading]                 = useState(true)
+  const [openSecs, setOpenSecs]               = useState(new Set())
+  const [openFormSubs, setOpenFormSubs]       = useState(new Set())
+  const [customSections, setCustomSections]   = useState([])
+  const [customFormSubs, setCustomFormSubs]   = useState([])
+
+  const [showUpload, setShowUpload]           = useState(false)
+  const [uploading, setUploading]             = useState(false)
+  const [form, setForm]                       = useState({ section: '', member_id: '', subcategory: '' })
+  const [lockedMemberId, setLockedMemberId]   = useState(null)
+  const [file, setFile]                       = useState(null)
+  const [uploadError, setUploadError]         = useState(null)
+
+  const [preview, setPreview]                 = useState(null)
+  const [previewing, setPreviewing]           = useState(false)
+
+  const [showAddList, setShowAddList]         = useState(false)
+  const [newListName, setNewListName]         = useState('')
+  const [addingList, setAddingList]           = useState(false)
+
+  const [showAddFormSub, setShowAddFormSub]   = useState(false)
+  const [newFormSubName, setNewFormSubName]   = useState('')
+  const [addingFormSub, setAddingFormSub]     = useState(false)
+
   const fileRef = useRef(null)
 
-  const allSections = [
+  const allFormSubs    = [...DEFAULT_FORM_SUBS, ...customFormSubs]
+  const allSections    = [
     ...SECTIONS,
     ...customSections.map(cs => ({ ...cs, type: 'multi', custom: true })),
   ]
@@ -91,16 +104,18 @@ export default function Library() {
 
   async function fetchAll() {
     setLoading(true)
-    const [{ data: d }, { data: m }, custom] = await Promise.all([
+    const [{ data: d }, { data: m }, custom, formSubs] = await Promise.all([
       supabase.from('library_documents')
         .select('*, team_members(id, full_name)')
         .order('created_at', { ascending: false }),
       supabase.from('team_members').select('id, full_name').order('full_name'),
-      fetchCustomSectionsFromStorage(),
+      loadJson(CUSTOM_SECTIONS_PATH),
+      loadJson(FORM_SUBS_PATH),
     ])
     setDocs(d || [])
     setMembers(m || [])
     setCustomSections(custom)
+    setCustomFormSubs(formSubs)
     setLoading(false)
   }
 
@@ -112,15 +127,22 @@ export default function Library() {
     })
   }
 
-  function openUploadFor(sectionKey, forceMemberId = null) {
+  function toggleFormSub(sub) {
+    setOpenFormSubs(prev => {
+      const next = new Set(prev)
+      next.has(sub) ? next.delete(sub) : next.add(sub)
+      return next
+    })
+  }
+
+  function openUploadFor(sectionKey, subcat = '', forceMemberId = null) {
     const sec = allSections.find(s => s.key === sectionKey)
     const locked = forceMemberId || (!isZairul && sec?.type === 'member' ? myMemberId : null)
     setLockedMemberId(locked)
     setForm({
       section: sectionKey,
       member_id: locked || '',
-      subcategory: sec?.type === 'sub' ? 'Beam' : '',
-      file_type: sectionKey === 'drawing_template' ? 'zip' : 'pdf',
+      subcategory: subcat || (sectionKey === 'form_template' ? (allFormSubs[0] || '') : ''),
     })
     setFile(null)
     setUploadError(null)
@@ -131,7 +153,7 @@ export default function Library() {
   function openUploadBlank() {
     const locked = !isZairul ? myMemberId : null
     setLockedMemberId(locked)
-    setForm({ section: '', member_id: locked || '', subcategory: '', file_type: 'pdf' })
+    setForm({ section: '', member_id: locked || '', subcategory: '' })
     setFile(null)
     setUploadError(null)
     if (fileRef.current) fileRef.current.value = ''
@@ -141,8 +163,8 @@ export default function Library() {
   async function handleUpload() {
     const sec = allSections.find(s => s.key === form.section)
     if (!file || !form.section) return
-    if (sec?.type === 'member' && !form.member_id) { setUploadError('Please select a team member.'); return }
-    if (sec?.type === 'sub' && !form.subcategory)  { setUploadError('Please select a template.'); return }
+    if (sec?.type === 'member' && !form.member_id)   { setUploadError('Please select a team member.'); return }
+    if (form.section === 'form_template' && !form.subcategory) { setUploadError('Please select a sub-section.'); return }
 
     setUploading(true); setUploadError(null)
 
@@ -156,7 +178,7 @@ export default function Library() {
       file_path:   filePath,
       file_name:   file.name,
       file_type:   ext,
-      member_id:   form.member_id  || null,
+      member_id:   form.member_id   || null,
       subcategory: form.subcategory || null,
     })
     if (dbErr) { setUploadError(dbErr.message); setUploading(false); return }
@@ -211,8 +233,23 @@ export default function Library() {
     }
     const updated = customSections.filter(s => s.key !== key)
     setCustomSections(updated)
-    await saveCustomSectionsToStorage(updated)
+    await saveJson(CUSTOM_SECTIONS_PATH, updated)
     setDocs(prev => prev.filter(d => d.section !== key))
+  }
+
+  async function handleDeleteFormSub(sub) {
+    if (!DEFAULT_FORM_SUBS.includes(sub)) {
+      if (!confirm(`Delete sub-section "${sub}" and all its files?`)) return
+      const subDocs = docs.filter(d => d.section === 'form_template' && d.subcategory === sub)
+      for (const doc of subDocs) {
+        await supabase.storage.from('library').remove([doc.file_path])
+        await supabase.from('library_documents').delete().eq('id', doc.id)
+      }
+      const updated = customFormSubs.filter(s => s !== sub)
+      setCustomFormSubs(updated)
+      await saveJson(FORM_SUBS_PATH, updated)
+      setDocs(prev => prev.filter(d => !(d.section === 'form_template' && d.subcategory === sub)))
+    }
   }
 
   async function handleAddList() {
@@ -220,25 +257,33 @@ export default function Library() {
     setAddingList(true)
     const key = 'custom_' + newListName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_') + '_' + Date.now()
     const colorIdx = customSections.length % CUSTOM_COLORS.length
-    const newSection = {
-      key,
-      label: newListName.trim(),
-      custom: true,
-      ...CUSTOM_COLORS[colorIdx],
-      created_at: new Date().toISOString(),
-    }
+    const newSection = { key, label: newListName.trim(), custom: true, ...CUSTOM_COLORS[colorIdx], created_at: new Date().toISOString() }
     const updated = [...customSections, newSection]
     setCustomSections(updated)
-    await saveCustomSectionsToStorage(updated)
+    await saveJson(CUSTOM_SECTIONS_PATH, updated)
     setNewListName('')
     setShowAddList(false)
     setAddingList(false)
   }
 
-  const getSingle = key       => docs.find(d => d.section === key) || null
-  const getMember = (key, id) => docs.find(d => d.section === key && d.member_id === id) || null
-  const getSubDoc = (sub, ft) => docs.find(d => d.section === 'form_template' && d.subcategory === sub && d.file_type === ft) || null
-  const getMulti  = key       => docs.filter(d => d.section === key)
+  async function handleAddFormSub() {
+    if (!newFormSubName.trim()) return
+    const name = newFormSubName.trim()
+    if (allFormSubs.includes(name)) { return }
+    setAddingFormSub(true)
+    const updated = [...customFormSubs, name]
+    setCustomFormSubs(updated)
+    await saveJson(FORM_SUBS_PATH, updated)
+    setNewFormSubName('')
+    setShowAddFormSub(false)
+    setAddingFormSub(false)
+    setOpenFormSubs(prev => new Set([...prev, name]))
+  }
+
+  const getSingle   = key       => docs.find(d => d.section === key) || null
+  const getMember   = (key, id) => docs.find(d => d.section === key && d.member_id === id) || null
+  const getMulti    = key       => docs.filter(d => d.section === key)
+  const getSubDocs  = sub       => docs.filter(d => d.section === 'form_template' && d.subcategory === sub)
 
   const selectedSec = allSections.find(s => s.key === form.section)
 
@@ -258,78 +303,142 @@ export default function Library() {
     return <span style={{ background: b.bg, color: b.text, padding: '2px 7px', borderRadius: '6px', fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{type}</span>
   }
 
+  function DocRow({ doc, color, idx, total }) {
+    return (
+      <div style={{ padding: isMobile ? '10px 14px' : '10px 24px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'space-between', gap: '10px', borderBottom: idx < total - 1 ? '1px solid #f8fafc' : 'none', background: idx % 2 === 0 ? 'white' : '#fafafa' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+          <FileText size={14} color="#94a3b8" style={{ flexShrink: 0 }} />
+          <p style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.file_name}</p>
+        </div>
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <TypeBadge type={doc.file_type} />
+          {doc.file_type !== 'zip' && (
+            <button onClick={() => handlePreview(doc)} style={prevBtn} disabled={previewing}><Eye size={11} /> Preview</button>
+          )}
+          <button onClick={() => handleDownload(doc)} style={dlBtn(color)}><Download size={11} /> Download</button>
+          {isZairul && <button onClick={() => handleDelete(doc)} style={delBtn}><Trash2 size={12} /></button>}
+        </div>
+      </div>
+    )
+  }
+
   function renderMultiSection(sec) {
-    const isOpen = openSecs.has(sec.key)
+    const isOpen    = openSecs.has(sec.key)
     const multiDocs = getMulti(sec.key)
     return (
       <div key={sec.key} style={{ background: 'white', borderRadius: '14px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
         <button
           onClick={() => toggleSec(sec.key)}
-          style={{ width: '100%', padding: isMobile ? '14px' : '18px 24px', display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', gap: '12px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+          style={{ width: '100%', padding: isMobile ? '14px' : '18px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
-            <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: sec.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: sec.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <FileText size={20} color={sec.color} />
             </div>
             <div>
               <p style={{ fontWeight: '700', fontSize: '15px', color: '#0f172a' }}>{sec.label}</p>
+              <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '1px' }}>{multiDocs.length} file{multiDocs.length !== 1 ? 's' : ''}</p>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+            <button onClick={e => { e.stopPropagation(); openUploadFor(sec.key) }} style={uploadBtn}><Upload size={12} /> Upload</button>
+            {isZairul && sec.custom && (
+              <button onClick={e => { e.stopPropagation(); handleDeleteSection(sec.key) }} style={delBtn}><Trash2 size={13} /></button>
+            )}
+            {isOpen ? <ChevronDown size={18} color="#64748b" /> : <ChevronRight size={18} color="#64748b" />}
+          </div>
+        </button>
+        {isOpen && (
+          <div style={{ borderTop: '1px solid #f1f5f9' }}>
+            {multiDocs.length === 0
+              ? <p style={{ padding: '20px 24px', fontSize: '13px', color: '#94a3b8', textAlign: 'center' }}>No files uploaded yet.</p>
+              : multiDocs.map((doc, idx) => <DocRow key={doc.id} doc={doc} color={sec.color} idx={idx} total={multiDocs.length} />)
+            }
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  function renderFormTemplate() {
+    const sec    = SECTIONS.find(s => s.key === 'form_template')
+    const isOpen = openSecs.has('form_template')
+    const totalDocs = docs.filter(d => d.section === 'form_template').length
+    return (
+      <div key="form_template" style={{ background: 'white', borderRadius: '14px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+        <button
+          onClick={() => toggleSec('form_template')}
+          style={{ width: '100%', padding: isMobile ? '14px' : '18px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
+            <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: sec.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0', flexShrink: 0 }}>
+              <File size={20} color={sec.color} />
+            </div>
+            <div>
+              <p style={{ fontWeight: '700', fontSize: '15px', color: '#0f172a' }}>{sec.label}</p>
               <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '1px' }}>
-                {multiDocs.length} file{multiDocs.length !== 1 ? 's' : ''}
+                {allFormSubs.length} sub-section{allFormSubs.length !== 1 ? 's' : ''} · {totalDocs} file{totalDocs !== 1 ? 's' : ''}
               </p>
             </div>
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
-            <button
-              onClick={e => { e.stopPropagation(); openUploadFor(sec.key) }}
-              style={uploadBtn}
-            >
-              <Upload size={12} /> Upload
-            </button>
-            {isZairul && sec.custom && (
-              <button
-                onClick={e => { e.stopPropagation(); handleDeleteSection(sec.key) }}
-                style={delBtn}
-              >
-                <Trash2 size={13} />
-              </button>
-            )}
             {isOpen ? <ChevronDown size={18} color="#64748b" /> : <ChevronRight size={18} color="#64748b" />}
           </div>
         </button>
 
         {isOpen && (
           <div style={{ borderTop: '1px solid #f1f5f9' }}>
-            {multiDocs.length === 0 ? (
-              <p style={{ padding: '20px 24px', fontSize: '13px', color: '#94a3b8', textAlign: 'center' }}>
-                No files uploaded yet.
-              </p>
-            ) : multiDocs.map((doc, idx) => (
-              <div
-                key={doc.id}
-                style={{ padding: isMobile ? '12px 14px' : '12px 24px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'space-between', gap: '10px', borderBottom: idx < multiDocs.length - 1 ? '1px solid #f8fafc' : 'none', background: idx % 2 === 0 ? 'white' : '#fafafa' }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                  <FileText size={15} color="#94a3b8" style={{ flexShrink: 0 }} />
-                  <p style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {doc.file_name}
-                  </p>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <TypeBadge type={doc.file_type} />
-                  {doc.file_type !== 'zip' && (
-                    <button onClick={() => handlePreview(doc)} style={prevBtn} disabled={previewing}>
-                      <Eye size={11} /> Preview
-                    </button>
-                  )}
-                  <button onClick={() => handleDownload(doc)} style={dlBtn(sec.color)}>
-                    <Download size={11} /> Download
+            {allFormSubs.map((sub, subIdx) => {
+              const subDocs   = getSubDocs(sub)
+              const isSubOpen = openFormSubs.has(sub)
+              const isCustom  = !DEFAULT_FORM_SUBS.includes(sub)
+              return (
+                <div key={sub} style={{ borderBottom: subIdx < allFormSubs.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                  <button
+                    onClick={() => toggleFormSub(sub)}
+                    style={{ width: '100%', padding: isMobile ? '11px 14px' : '12px 24px 12px 80px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {isSubOpen ? <ChevronDown size={14} color="#94a3b8" /> : <ChevronRight size={14} color="#94a3b8" />}
+                      <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>{sub}</p>
+                      <span style={{ fontSize: '11px', color: '#94a3b8' }}>{subDocs.length} file{subDocs.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      <button
+                        onClick={e => { e.stopPropagation(); openUploadFor('form_template', sub) }}
+                        style={uploadBtn}
+                      >
+                        <Upload size={11} /> Upload
+                      </button>
+                      {isZairul && isCustom && (
+                        <button onClick={e => { e.stopPropagation(); handleDeleteFormSub(sub) }} style={delBtn}>
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </div>
                   </button>
-                  {isZairul && (
-                    <button onClick={() => handleDelete(doc)} style={delBtn}><Trash2 size={13} /></button>
+
+                  {isSubOpen && (
+                    <div style={{ background: '#fafafa', borderTop: '1px solid #f1f5f9' }}>
+                      {subDocs.length === 0
+                        ? <p style={{ padding: '14px 24px 14px 80px', fontSize: '12px', color: '#94a3b8' }}>No files yet. Upload one above.</p>
+                        : subDocs.map((doc, idx) => <DocRow key={doc.id} doc={doc} color={sec.color} idx={idx} total={subDocs.length} />)
+                      }
+                    </div>
                   )}
                 </div>
-              </div>
-            ))}
+              )
+            })}
+
+            {/* Add sub-section button */}
+            <div style={{ padding: isMobile ? '12px 14px' : '12px 24px 12px 80px' }}>
+              <button
+                onClick={() => { setNewFormSubName(''); setShowAddFormSub(true) }}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', borderRadius: '8px', background: 'none', border: '1px dashed #cbd5e1', fontSize: '12px', fontWeight: '600', color: '#94a3b8', cursor: 'pointer' }}
+              >
+                <Plus size={12} /> Add Sub-section
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -366,66 +475,49 @@ export default function Library() {
         {allSections.map(sec => {
           const isOpen = openSecs.has(sec.key)
 
-          /* ── SINGLE type ── */
           if (sec.type === 'single') {
             const doc = getSingle(sec.key)
             return (
               <div key={sec.key} style={{ background: 'white', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
                 <div style={{ padding: isMobile ? '14px' : '18px 24px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'space-between', gap: '12px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                    <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: sec.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: sec.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       <FileText size={20} color={sec.color} />
                     </div>
                     <div>
                       <p style={{ fontWeight: '700', fontSize: '15px', color: '#0f172a' }}>{sec.label}</p>
-                      <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '1px' }}>
-                        {doc ? doc.file_name : 'No file uploaded yet'}
-                      </p>
+                      <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '1px' }}>{doc ? doc.file_name : 'No file uploaded yet'}</p>
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    {isZairul && (
-                      <button onClick={() => openUploadFor(sec.key)} style={uploadBtn}>
-                        <Upload size={12} /> Upload
-                      </button>
-                    )}
+                    {isZairul && <button onClick={() => openUploadFor(sec.key)} style={uploadBtn}><Upload size={12} /> Upload</button>}
                     {doc ? (
                       <>
                         <TypeBadge type={doc.file_type} />
-                        {doc.file_type !== 'zip' && (
-                          <button onClick={() => handlePreview(doc)} style={prevBtn} disabled={previewing}>
-                            <Eye size={12} /> Preview
-                          </button>
-                        )}
-                        <button onClick={() => handleDownload(doc)} style={dlBtn(sec.color)}>
-                          <Download size={12} /> Download
-                        </button>
-                        {isZairul && (
-                          <button onClick={() => handleDelete(doc)} style={delBtn}><Trash2 size={13} /></button>
-                        )}
+                        {doc.file_type !== 'zip' && <button onClick={() => handlePreview(doc)} style={prevBtn} disabled={previewing}><Eye size={12} /> Preview</button>}
+                        <button onClick={() => handleDownload(doc)} style={dlBtn(sec.color)}><Download size={12} /> Download</button>
+                        {isZairul && <button onClick={() => handleDelete(doc)} style={delBtn}><Trash2 size={13} /></button>}
                       </>
-                    ) : (
-                      <span style={{ fontSize: '12px', color: '#cbd5e1' }}>—</span>
-                    )}
+                    ) : <span style={{ fontSize: '12px', color: '#cbd5e1' }}>—</span>}
                   </div>
                 </div>
               </div>
             )
           }
 
-          /* ── MULTI type (Drawing Template + custom lists) ── */
           if (sec.type === 'multi') return renderMultiSection(sec)
 
-          /* ── MEMBER type ── */
+          if (sec.type === 'sub') return renderFormTemplate()
+
           if (sec.type === 'member') {
             return (
               <div key={sec.key} style={{ background: 'white', borderRadius: '14px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
                 <button
                   onClick={() => toggleSec(sec.key)}
-                  style={{ width: '100%', padding: isMobile ? '14px' : '18px 24px', display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', gap: '12px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+                  style={{ width: '100%', padding: isMobile ? '14px' : '18px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
-                    <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: sec.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: sec.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       <FileText size={20} color={sec.color} />
                     </div>
                     <div>
@@ -434,15 +526,10 @@ export default function Library() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
-                    {isZairul && (
-                      <button onClick={e => { e.stopPropagation(); openUploadFor(sec.key) }} style={uploadBtn}>
-                        <Upload size={12} /> Upload
-                      </button>
-                    )}
+                    {isZairul && <button onClick={e => { e.stopPropagation(); openUploadFor(sec.key) }} style={uploadBtn}><Upload size={12} /> Upload</button>}
                     {isOpen ? <ChevronDown size={18} color="#64748b" /> : <ChevronRight size={18} color="#64748b" />}
                   </div>
                 </button>
-
                 {isOpen && (
                   <div style={{ borderTop: '1px solid #f1f5f9' }}>
                     {members.map((m, idx) => {
@@ -458,110 +545,17 @@ export default function Library() {
                             <p style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a' }}>{m.full_name}</p>
                           </div>
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                            {canUpload && !doc && (
-                              <button onClick={() => openUploadFor(sec.key, m.id)} style={uploadBtn}>
-                                <Upload size={11} /> Upload
-                              </button>
-                            )}
+                            {canUpload && !doc && <button onClick={() => openUploadFor(sec.key, '', m.id)} style={uploadBtn}><Upload size={11} /> Upload</button>}
                             {doc ? (
                               <>
                                 <TypeBadge type={doc.file_type} />
-                                {doc.file_type !== 'zip' && (
-                                  <button onClick={() => handlePreview(doc)} style={prevBtn} disabled={previewing}>
-                                    <Eye size={11} /> Preview
-                                  </button>
-                                )}
-                                <button onClick={() => handleDownload(doc)} style={dlBtn(sec.color)}>
-                                  <Download size={11} /> Download
-                                </button>
-                                {canUpload && (
-                                  <button onClick={() => openUploadFor(sec.key, m.id)} style={uploadBtn}>
-                                    <Upload size={11} /> Replace
-                                  </button>
-                                )}
-                                {isZairul && (
-                                  <button onClick={() => handleDelete(doc)} style={delBtn}><Trash2 size={12} /></button>
-                                )}
+                                {doc.file_type !== 'zip' && <button onClick={() => handlePreview(doc)} style={prevBtn} disabled={previewing}><Eye size={11} /> Preview</button>}
+                                <button onClick={() => handleDownload(doc)} style={dlBtn(sec.color)}><Download size={11} /> Download</button>
+                                {canUpload && <button onClick={() => openUploadFor(sec.key, '', m.id)} style={uploadBtn}><Upload size={11} /> Replace</button>}
+                                {isZairul && <button onClick={() => handleDelete(doc)} style={delBtn}><Trash2 size={12} /></button>}
                               </>
                             ) : (
                               !canUpload && <span style={{ fontSize: '12px', color: '#cbd5e1' }}>No file</span>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )
-          }
-
-          /* ── SUB type (Form Template) ── */
-          if (sec.type === 'sub') {
-            return (
-              <div key={sec.key} style={{ background: 'white', borderRadius: '14px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-                <button
-                  onClick={() => toggleSec(sec.key)}
-                  style={{ width: '100%', padding: isMobile ? '14px' : '18px 24px', display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', gap: '12px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
-                    <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: sec.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0' }}>
-                      <File size={20} color={sec.color} />
-                    </div>
-                    <div>
-                      <p style={{ fontWeight: '700', fontSize: '15px', color: '#0f172a' }}>{sec.label}</p>
-                      <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '1px' }}>Beam · Slab · Column · Plinth</p>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
-                    {isZairul && (
-                      <button onClick={e => { e.stopPropagation(); openUploadFor(sec.key) }} style={uploadBtn}>
-                        <Upload size={12} /> Upload
-                      </button>
-                    )}
-                    {isOpen ? <ChevronDown size={18} color="#64748b" /> : <ChevronRight size={18} color="#64748b" />}
-                  </div>
-                </button>
-
-                {isOpen && (
-                  <div style={{ borderTop: '1px solid #f1f5f9' }}>
-                    {FORM_SUBS.map((sub, idx) => {
-                      const pdfDoc  = getSubDoc(sub, 'pdf')
-                      const docxDoc = getSubDoc(sub, 'docx')
-                      const ghostBtn = label => (
-                        <span style={{ padding: '6px 12px', borderRadius: '8px', background: '#f8fafc', border: '1px solid #f1f5f9', fontSize: '12px', fontWeight: '600', color: '#cbd5e1' }}>{label}</span>
-                      )
-                      return (
-                        <div key={sub} style={{ padding: isMobile ? '12px 14px' : '14px 24px 14px 80px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'space-between', gap: '10px', borderBottom: idx < FORM_SUBS.length - 1 ? '1px solid #f8fafc' : 'none', background: idx % 2 === 0 ? 'white' : '#fafafa' }}>
-                          <p style={{ fontSize: '14px', fontWeight: '600', color: '#0f172a' }}>{sub}</p>
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                            {pdfDoc ? (
-                              <>
-                                <button onClick={() => handlePreview(pdfDoc)} style={prevBtn} disabled={previewing}>
-                                  <Eye size={11} /> PDF
-                                </button>
-                                <button onClick={() => handleDownload(pdfDoc)} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 14px', borderRadius: '8px', background: '#fee2e2', color: '#991b1b', border: 'none', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-                                  <Download size={11} /> PDF
-                                </button>
-                              </>
-                            ) : ghostBtn('PDF')}
-
-                            {docxDoc ? (
-                              <>
-                                <button onClick={() => handlePreview(docxDoc)} style={prevBtn} disabled={previewing}>
-                                  <Eye size={11} /> Word
-                                </button>
-                                <button onClick={() => handleDownload(docxDoc)} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 14px', borderRadius: '8px', background: '#eff6ff', color: '#1d4ed8', border: 'none', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-                                  <Download size={11} /> Word
-                                </button>
-                              </>
-                            ) : ghostBtn('Word')}
-
-                            {isZairul && (
-                              <div style={{ display: 'flex', gap: '4px' }}>
-                                {pdfDoc  && <button onClick={() => handleDelete(pdfDoc)}  style={delBtn}><Trash2 size={12} /></button>}
-                                {docxDoc && <button onClick={() => handleDelete(docxDoc)} style={delBtn}><Trash2 size={12} /></button>}
-                              </div>
                             )}
                           </div>
                         </div>
@@ -579,47 +573,26 @@ export default function Library() {
 
       {/* Preview Modal */}
       {(preview || previewing) && (
-        <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: isMobile ? '14px' : '24px' }}
-          onClick={e => e.target === e.currentTarget && setPreview(null)}
-        >
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: isMobile ? '14px' : '24px' }} onClick={e => e.target === e.currentTarget && setPreview(null)}>
           <div style={{ background: 'white', borderRadius: '20px', width: '100%', maxWidth: '860px', height: isMobile ? '92vh' : '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 32px 80px rgba(0,0,0,0.3)' }}>
             <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
               <div style={{ minWidth: 0 }}>
-                <p style={{ fontWeight: '700', fontSize: '15px', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {previewing ? 'Loading preview…' : preview?.doc?.file_name}
-                </p>
-                {!previewing && preview && (
-                  <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', textTransform: 'uppercase' }}>{preview.doc.file_type}</p>
-                )}
+                <p style={{ fontWeight: '700', fontSize: '15px', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{previewing ? 'Loading preview…' : preview?.doc?.file_name}</p>
+                {!previewing && preview && <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', textTransform: 'uppercase' }}>{preview.doc.file_type}</p>}
               </div>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
-                {preview && (
-                  <button onClick={() => handleDownload(preview.doc)} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 14px', borderRadius: '8px', background: '#2563eb', color: 'white', border: 'none', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-                    <Download size={13} /> Download
-                  </button>
-                )}
-                <button onClick={() => setPreview(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', padding: '4px' }}>
-                  <X size={20} />
-                </button>
+                {preview && <button onClick={() => handleDownload(preview.doc)} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 14px', borderRadius: '8px', background: '#2563eb', color: 'white', border: 'none', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}><Download size={13} /> Download</button>}
+                <button onClick={() => setPreview(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', padding: '4px' }}><X size={20} /></button>
               </div>
             </div>
             <div style={{ flex: 1, overflow: 'hidden', background: '#f8fafc' }}>
               {previewing && (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '12px', color: '#64748b', fontSize: '14px' }}>
-                  <div style={{ width: '18px', height: '18px', borderRadius: '50%', border: '2px solid #e2e8f0', borderTopColor: '#2563eb', animation: 'spin 0.7s linear infinite' }} />
-                  Loading…
+                  <div style={{ width: '18px', height: '18px', borderRadius: '50%', border: '2px solid #e2e8f0', borderTopColor: '#2563eb', animation: 'spin 0.7s linear infinite' }} />Loading…
                 </div>
               )}
-              {!previewing && preview?.doc?.file_type === 'pdf' && (
-                <iframe src={preview.url} style={{ width: '100%', height: '100%', border: 'none' }} title={preview.doc.file_name} />
-              )}
-              {!previewing && preview?.html != null && (
-                <div
-                  style={{ height: '100%', overflowY: 'auto', padding: isMobile ? '18px' : '32px 40px', background: 'white', fontSize: '14px', lineHeight: '1.7', color: '#0f172a', fontFamily: 'Georgia, serif' }}
-                  dangerouslySetInnerHTML={{ __html: preview.html }}
-                />
-              )}
+              {!previewing && preview?.doc?.file_type === 'pdf' && <iframe src={preview.url} style={{ width: '100%', height: '100%', border: 'none' }} title={preview.doc.file_name} />}
+              {!previewing && preview?.html != null && <div style={{ height: '100%', overflowY: 'auto', padding: isMobile ? '18px' : '32px 40px', background: 'white', fontSize: '14px', lineHeight: '1.7', color: '#0f172a', fontFamily: 'Georgia, serif' }} dangerouslySetInnerHTML={{ __html: preview.html }} />}
             </div>
           </div>
         </div>
@@ -627,16 +600,12 @@ export default function Library() {
 
       {/* Upload Modal */}
       {showUpload && (
-        <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '16px' }}
-          onClick={e => e.target === e.currentTarget && setShowUpload(false)}
-        >
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '16px' }} onClick={e => e.target === e.currentTarget && setShowUpload(false)}>
           <div style={{ background: 'white', borderRadius: '20px', width: '100%', maxWidth: '440px', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(15,23,42,.18)' }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
               <p style={{ fontWeight: '700', fontSize: '16px', color: '#0f172a' }}>Upload Document</p>
               <button onClick={() => setShowUpload(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', padding: 0 }}><X size={18} /></button>
             </div>
-
             <div style={{ padding: isMobile ? '16px 18px' : '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
               <div>
                 <label style={lLabel}>Section *</label>
@@ -649,17 +618,26 @@ export default function Library() {
                     ...f,
                     section: key,
                     member_id: locked || '',
-                    subcategory: sec?.type === 'sub' ? 'Beam' : '',
-                    file_type: key === 'drawing_template' ? 'zip' : 'pdf',
+                    subcategory: key === 'form_template' ? (allFormSubs[0] || '') : '',
                   }))
                 }}>
                   <option value="">— Select section —</option>
                   {allSections
-                    .filter(s => isZairul || s.type === 'member' || s.type === 'multi')
+                    .filter(s => isZairul || s.type === 'member' || s.type === 'multi' || s.key === 'form_template')
                     .map(s => <option key={s.key} value={s.key}>{s.label}</option>)
                   }
                 </select>
               </div>
+
+              {form.section === 'form_template' && (
+                <div>
+                  <label style={lLabel}>Sub-section *</label>
+                  <select style={lightInput} value={form.subcategory} onChange={e => setForm(f => ({ ...f, subcategory: e.target.value }))}>
+                    <option value="">— Select sub-section —</option>
+                    {allFormSubs.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              )}
 
               {selectedSec?.type === 'member' && (
                 <div>
@@ -677,57 +655,19 @@ export default function Library() {
                 </div>
               )}
 
-              {selectedSec?.type === 'sub' && (
-                <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '10px' }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={lLabel}>Template *</label>
-                    <select style={lightInput} value={form.subcategory} onChange={e => setForm(f => ({ ...f, subcategory: e.target.value }))}>
-                      {FORM_SUBS.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={lLabel}>File Type *</label>
-                    <select style={lightInput} value={form.file_type} onChange={e => setForm(f => ({ ...f, file_type: e.target.value }))}>
-                      <option value="pdf">PDF</option>
-                      <option value="docx">Word (DOCX)</option>
-                    </select>
-                  </div>
-                </div>
-              )}
-
               <div>
                 <label style={lLabel}>File *</label>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  onChange={e => setFile(e.target.files[0] || null)}
-                  style={{ width: '100%', fontSize: '13px', color: '#64748b' }}
-                />
-                {file && (
-                  <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '5px' }}>
-                    {file.name} — {(file.size / 1024).toFixed(0)} KB
-                  </p>
-                )}
+                <input ref={fileRef} type="file" onChange={e => setFile(e.target.files[0] || null)} style={{ width: '100%', fontSize: '13px', color: '#64748b' }} />
+                {file && <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '5px' }}>{file.name} — {(file.size / 1024).toFixed(0)} KB</p>}
               </div>
 
-              {uploadError && (
-                <p style={{ fontSize: '12px', color: '#ef4444', background: '#fee2e2', padding: '8px 12px', borderRadius: '8px' }}>{uploadError}</p>
-              )}
+              {uploadError && <p style={{ fontSize: '12px', color: '#ef4444', background: '#fee2e2', padding: '8px 12px', borderRadius: '8px' }}>{uploadError}</p>}
 
               <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '10px', paddingTop: '4px' }}>
-                <button
-                  onClick={handleUpload}
-                  disabled={uploading || !file || !form.section}
-                  style={{ flex: 1, padding: '11px', borderRadius: '10px', fontSize: '14px', fontWeight: '700', color: 'white', border: 'none', cursor: uploading || !file || !form.section ? 'not-allowed' : 'pointer', background: '#2563eb', opacity: uploading || !file || !form.section ? 0.5 : 1 }}
-                >
+                <button onClick={handleUpload} disabled={uploading || !file || !form.section} style={{ flex: 1, padding: '11px', borderRadius: '10px', fontSize: '14px', fontWeight: '700', color: 'white', border: 'none', cursor: uploading || !file || !form.section ? 'not-allowed' : 'pointer', background: '#2563eb', opacity: uploading || !file || !form.section ? 0.5 : 1 }}>
                   {uploading ? 'Uploading…' : 'Upload'}
                 </button>
-                <button
-                  onClick={() => setShowUpload(false)}
-                  style={{ flex: 1, padding: '11px', borderRadius: '10px', fontSize: '14px', fontWeight: '600', color: '#0f172a', cursor: 'pointer', background: '#f1f5f9', border: '1px solid #e2e8f0' }}
-                >
-                  Cancel
-                </button>
+                <button onClick={() => setShowUpload(false)} style={{ flex: 1, padding: '11px', borderRadius: '10px', fontSize: '14px', fontWeight: '600', color: '#0f172a', cursor: 'pointer', background: '#f1f5f9', border: '1px solid #e2e8f0' }}>Cancel</button>
               </div>
             </div>
           </div>
@@ -736,10 +676,7 @@ export default function Library() {
 
       {/* Add New List Modal */}
       {showAddList && (
-        <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '16px' }}
-          onClick={e => e.target === e.currentTarget && setShowAddList(false)}
-        >
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '16px' }} onClick={e => e.target === e.currentTarget && setShowAddList(false)}>
           <div style={{ background: 'white', borderRadius: '20px', width: '100%', maxWidth: '400px', overflow: 'hidden', boxShadow: '0 24px 64px rgba(15,23,42,.18)' }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <p style={{ fontWeight: '700', fontSize: '16px', color: '#0f172a' }}>New List</p>
@@ -748,30 +685,37 @@ export default function Library() {
             <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
                 <label style={lLabel}>List Name *</label>
-                <input
-                  style={lightInput}
-                  type="text"
-                  placeholder="e.g. Malaysia Standard Documents"
-                  value={newListName}
-                  onChange={e => setNewListName(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleAddList()}
-                  autoFocus
-                />
+                <input style={lightInput} type="text" placeholder="e.g. Malaysia Standard Documents" value={newListName} onChange={e => setNewListName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddList()} autoFocus />
               </div>
               <div style={{ display: 'flex', gap: '10px' }}>
-                <button
-                  onClick={handleAddList}
-                  disabled={addingList || !newListName.trim()}
-                  style={{ flex: 1, padding: '11px', borderRadius: '10px', fontSize: '14px', fontWeight: '700', color: 'white', border: 'none', cursor: addingList || !newListName.trim() ? 'not-allowed' : 'pointer', background: '#2563eb', opacity: addingList || !newListName.trim() ? 0.5 : 1 }}
-                >
+                <button onClick={handleAddList} disabled={addingList || !newListName.trim()} style={{ flex: 1, padding: '11px', borderRadius: '10px', fontSize: '14px', fontWeight: '700', color: 'white', border: 'none', cursor: addingList || !newListName.trim() ? 'not-allowed' : 'pointer', background: '#2563eb', opacity: addingList || !newListName.trim() ? 0.5 : 1 }}>
                   {addingList ? 'Creating…' : 'Create List'}
                 </button>
-                <button
-                  onClick={() => setShowAddList(false)}
-                  style={{ flex: 1, padding: '11px', borderRadius: '10px', fontSize: '14px', fontWeight: '600', color: '#0f172a', cursor: 'pointer', background: '#f1f5f9', border: '1px solid #e2e8f0' }}
-                >
-                  Cancel
+                <button onClick={() => setShowAddList(false)} style={{ flex: 1, padding: '11px', borderRadius: '10px', fontSize: '14px', fontWeight: '600', color: '#0f172a', cursor: 'pointer', background: '#f1f5f9', border: '1px solid #e2e8f0' }}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Form Template Sub-section Modal */}
+      {showAddFormSub && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '16px' }} onClick={e => e.target === e.currentTarget && setShowAddFormSub(false)}>
+          <div style={{ background: 'white', borderRadius: '20px', width: '100%', maxWidth: '400px', overflow: 'hidden', boxShadow: '0 24px 64px rgba(15,23,42,.18)' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <p style={{ fontWeight: '700', fontSize: '16px', color: '#0f172a' }}>New Sub-section</p>
+              <button onClick={() => setShowAddFormSub(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', padding: 0 }}><X size={18} /></button>
+            </div>
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={lLabel}>Sub-section Name *</label>
+                <input style={lightInput} type="text" placeholder="e.g. Truss, Footing, Wall" value={newFormSubName} onChange={e => setNewFormSubName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddFormSub()} autoFocus />
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={handleAddFormSub} disabled={addingFormSub || !newFormSubName.trim()} style={{ flex: 1, padding: '11px', borderRadius: '10px', fontSize: '14px', fontWeight: '700', color: 'white', border: 'none', cursor: addingFormSub || !newFormSubName.trim() ? 'not-allowed' : 'pointer', background: '#2563eb', opacity: addingFormSub || !newFormSubName.trim() ? 0.5 : 1 }}>
+                  {addingFormSub ? 'Creating…' : 'Create'}
                 </button>
+                <button onClick={() => setShowAddFormSub(false)} style={{ flex: 1, padding: '11px', borderRadius: '10px', fontSize: '14px', fontWeight: '600', color: '#0f172a', cursor: 'pointer', background: '#f1f5f9', border: '1px solid #e2e8f0' }}>Cancel</button>
               </div>
             </div>
           </div>
