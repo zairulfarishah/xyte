@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
-import { Download, Upload, ChevronDown, ChevronRight, FileText, File, X, Trash2, Eye } from 'lucide-react'
+import { Download, Upload, ChevronDown, ChevronRight, FileText, File, X, Trash2, Eye, Plus } from 'lucide-react'
 import mammoth from 'mammoth'
 import { useViewport } from '../utils/useViewport'
 
@@ -13,7 +13,17 @@ const SECTIONS = [
   { key: 'ansp',             label: 'ANSP',              type: 'member', color: '#0891b2', bg: '#ecfeff' },
   { key: 'ogsp',             label: 'OGSP',              type: 'member', color: '#d97706', bg: '#fffbeb' },
   { key: 'form_template',    label: 'Form Template',     type: 'sub',    color: '#0f172a', bg: '#f8fafc' },
-  { key: 'drawing_template', label: 'Drawing Template',  type: 'single', color: '#475569', bg: '#f1f5f9' },
+  { key: 'drawing_template', label: 'Drawing Template',  type: 'multi',  color: '#475569', bg: '#f1f5f9' },
+]
+
+const CUSTOM_COLORS = [
+  { color: '#7c3aed', bg: '#faf5ff' },
+  { color: '#059669', bg: '#f0fdf4' },
+  { color: '#0891b2', bg: '#ecfeff' },
+  { color: '#d97706', bg: '#fffbeb' },
+  { color: '#db2777', bg: '#fdf2f8' },
+  { color: '#dc2626', bg: '#fef2f2' },
+  { color: '#2563eb', bg: '#eff6ff' },
 ]
 
 const FORM_SUBS = ['Beam', 'Slab', 'Column', 'Plinth']
@@ -32,35 +42,65 @@ const lightInput = {
 
 const lLabel = { display: 'block', fontSize: '12px', fontWeight: '500', color: '#64748b', marginBottom: '6px' }
 
+const CUSTOM_SECTIONS_PATH = 'app-data/custom-sections.json'
+
+async function fetchCustomSectionsFromStorage() {
+  const { data, error } = await supabase.storage.from('library').download(CUSTOM_SECTIONS_PATH)
+  if (error) return []
+  try {
+    const raw = await data.text()
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch { return [] }
+}
+
+async function saveCustomSectionsToStorage(sections) {
+  const blob = new Blob([JSON.stringify(sections, null, 2)], { type: 'application/json' })
+  await supabase.storage.from('library').upload(CUSTOM_SECTIONS_PATH, blob, {
+    upsert: true, contentType: 'application/json', cacheControl: '0',
+  })
+}
+
 export default function Library() {
   const { isZairul, memberId: myMemberId } = useAuth()
   const { isMobile } = useViewport()
-  const [docs, setDocs]               = useState([])
-  const [members, setMembers]         = useState([])
-  const [loading, setLoading]         = useState(true)
-  const [openSecs, setOpenSecs]       = useState(new Set())
-  const [showUpload, setShowUpload]   = useState(false)
-  const [uploading, setUploading]     = useState(false)
-  const [form, setForm]               = useState({ section: '', member_id: '', subcategory: '', file_type: 'pdf' })
-  const [lockedMemberId, setLockedMemberId] = useState(null) // non-null = member is pre-filled and locked
-  const [file, setFile]               = useState(null)
-  const [uploadError, setUploadError] = useState(null)
-  const [preview, setPreview]         = useState(null) // { doc, url, html }
-  const [previewing, setPreviewing]   = useState(false)
+  const [docs, setDocs]                     = useState([])
+  const [members, setMembers]               = useState([])
+  const [loading, setLoading]               = useState(true)
+  const [openSecs, setOpenSecs]             = useState(new Set())
+  const [customSections, setCustomSections] = useState([])
+  const [showUpload, setShowUpload]         = useState(false)
+  const [uploading, setUploading]           = useState(false)
+  const [form, setForm]                     = useState({ section: '', member_id: '', subcategory: '', file_type: 'pdf' })
+  const [lockedMemberId, setLockedMemberId] = useState(null)
+  const [file, setFile]                     = useState(null)
+  const [uploadError, setUploadError]       = useState(null)
+  const [preview, setPreview]               = useState(null)
+  const [previewing, setPreviewing]         = useState(false)
+  const [showAddList, setShowAddList]       = useState(false)
+  const [newListName, setNewListName]       = useState('')
+  const [addingList, setAddingList]         = useState(false)
   const fileRef = useRef(null)
+
+  const allSections = [
+    ...SECTIONS,
+    ...customSections.map(cs => ({ ...cs, type: 'multi', custom: true })),
+  ]
 
   useEffect(() => { fetchAll() }, [])
 
   async function fetchAll() {
     setLoading(true)
-    const [{ data: d }, { data: m }] = await Promise.all([
+    const [{ data: d }, { data: m }, custom] = await Promise.all([
       supabase.from('library_documents')
         .select('*, team_members(id, full_name)')
         .order('created_at', { ascending: false }),
       supabase.from('team_members').select('id, full_name').order('full_name'),
+      fetchCustomSectionsFromStorage(),
     ])
     setDocs(d || [])
     setMembers(m || [])
+    setCustomSections(custom)
     setLoading(false)
   }
 
@@ -73,7 +113,7 @@ export default function Library() {
   }
 
   function openUploadFor(sectionKey, forceMemberId = null) {
-    const sec = SECTIONS.find(s => s.key === sectionKey)
+    const sec = allSections.find(s => s.key === sectionKey)
     const locked = forceMemberId || (!isZairul && sec?.type === 'member' ? myMemberId : null)
     setLockedMemberId(locked)
     setForm({
@@ -99,7 +139,7 @@ export default function Library() {
   }
 
   async function handleUpload() {
-    const sec = SECTIONS.find(s => s.key === form.section)
+    const sec = allSections.find(s => s.key === form.section)
     if (!file || !form.section) return
     if (sec?.type === 'member' && !form.member_id) { setUploadError('Please select a team member.'); return }
     if (sec?.type === 'sub' && !form.subcategory)  { setUploadError('Please select a template.'); return }
@@ -144,14 +184,13 @@ export default function Library() {
       return
     }
     if (type === 'docx') {
-      const resp     = await fetch(url)
-      const buf      = await resp.arrayBuffer()
-      const result   = await mammoth.convertToHtml({ arrayBuffer: buf })
+      const resp   = await fetch(url)
+      const buf    = await resp.arrayBuffer()
+      const result = await mammoth.convertToHtml({ arrayBuffer: buf })
       setPreview({ doc, url, html: result.value })
       setPreviewing(false)
       return
     }
-    // fallback — just open
     window.open(url, '_blank')
     setPreviewing(false)
   }
@@ -163,11 +202,45 @@ export default function Library() {
     setDocs(prev => prev.filter(d => d.id !== doc.id))
   }
 
-  const getSingle  = key       => docs.find(d => d.section === key) || null
-  const getMember  = (key, id) => docs.find(d => d.section === key && d.member_id === id) || null
-  const getSubDoc  = (sub, ft) => docs.find(d => d.section === 'form_template' && d.subcategory === sub && d.file_type === ft) || null
+  async function handleDeleteSection(key) {
+    if (!confirm('Delete this entire list and all its files?')) return
+    const sectionDocs = docs.filter(d => d.section === key)
+    for (const doc of sectionDocs) {
+      await supabase.storage.from('library').remove([doc.file_path])
+      await supabase.from('library_documents').delete().eq('id', doc.id)
+    }
+    const updated = customSections.filter(s => s.key !== key)
+    setCustomSections(updated)
+    await saveCustomSectionsToStorage(updated)
+    setDocs(prev => prev.filter(d => d.section !== key))
+  }
 
-  const selectedSec = SECTIONS.find(s => s.key === form.section)
+  async function handleAddList() {
+    if (!newListName.trim()) return
+    setAddingList(true)
+    const key = 'custom_' + newListName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_') + '_' + Date.now()
+    const colorIdx = customSections.length % CUSTOM_COLORS.length
+    const newSection = {
+      key,
+      label: newListName.trim(),
+      custom: true,
+      ...CUSTOM_COLORS[colorIdx],
+      created_at: new Date().toISOString(),
+    }
+    const updated = [...customSections, newSection]
+    setCustomSections(updated)
+    await saveCustomSectionsToStorage(updated)
+    setNewListName('')
+    setShowAddList(false)
+    setAddingList(false)
+  }
+
+  const getSingle = key       => docs.find(d => d.section === key) || null
+  const getMember = (key, id) => docs.find(d => d.section === key && d.member_id === id) || null
+  const getSubDoc = (sub, ft) => docs.find(d => d.section === 'form_template' && d.subcategory === sub && d.file_type === ft) || null
+  const getMulti  = key       => docs.filter(d => d.section === key)
+
+  const selectedSec = allSections.find(s => s.key === form.section)
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
@@ -175,15 +248,92 @@ export default function Library() {
     </div>
   )
 
-  /* ── shared mini styles ── */
-  const uploadBtn  = { display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 12px', borderRadius: '8px', background: '#f1f5f9', border: '1px solid #e2e8f0', fontSize: '12px', fontWeight: '600', color: '#475569', cursor: 'pointer' }
-  const dlBtn      = color => ({ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 14px', borderRadius: '8px', background: color, color: 'white', border: 'none', fontSize: '12px', fontWeight: '600', cursor: 'pointer' })
-  const prevBtn    = { display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px', borderRadius: '8px', background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#475569', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }
-  const delBtn     = { padding: '5px', borderRadius: '6px', background: '#fee2e2', border: 'none', cursor: 'pointer', color: '#ef4444', display: 'flex' }
+  const uploadBtn = { display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 12px', borderRadius: '8px', background: '#f1f5f9', border: '1px solid #e2e8f0', fontSize: '12px', fontWeight: '600', color: '#475569', cursor: 'pointer' }
+  const dlBtn     = color => ({ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 14px', borderRadius: '8px', background: color, color: 'white', border: 'none', fontSize: '12px', fontWeight: '600', cursor: 'pointer' })
+  const prevBtn   = { display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px', borderRadius: '8px', background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#475569', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }
+  const delBtn    = { padding: '5px', borderRadius: '6px', background: '#fee2e2', border: 'none', cursor: 'pointer', color: '#ef4444', display: 'flex' }
 
   function TypeBadge({ type }) {
     const b = TYPE_BADGE[type] || { bg: '#f1f5f9', text: '#475569' }
     return <span style={{ background: b.bg, color: b.text, padding: '2px 7px', borderRadius: '6px', fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{type}</span>
+  }
+
+  function renderMultiSection(sec) {
+    const isOpen = openSecs.has(sec.key)
+    const multiDocs = getMulti(sec.key)
+    return (
+      <div key={sec.key} style={{ background: 'white', borderRadius: '14px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+        <button
+          onClick={() => toggleSec(sec.key)}
+          style={{ width: '100%', padding: isMobile ? '14px' : '18px 24px', display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', gap: '12px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
+            <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: sec.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <FileText size={20} color={sec.color} />
+            </div>
+            <div>
+              <p style={{ fontWeight: '700', fontSize: '15px', color: '#0f172a' }}>{sec.label}</p>
+              <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '1px' }}>
+                {multiDocs.length} file{multiDocs.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+            <button
+              onClick={e => { e.stopPropagation(); openUploadFor(sec.key) }}
+              style={uploadBtn}
+            >
+              <Upload size={12} /> Upload
+            </button>
+            {isZairul && sec.custom && (
+              <button
+                onClick={e => { e.stopPropagation(); handleDeleteSection(sec.key) }}
+                style={delBtn}
+              >
+                <Trash2 size={13} />
+              </button>
+            )}
+            {isOpen ? <ChevronDown size={18} color="#64748b" /> : <ChevronRight size={18} color="#64748b" />}
+          </div>
+        </button>
+
+        {isOpen && (
+          <div style={{ borderTop: '1px solid #f1f5f9' }}>
+            {multiDocs.length === 0 ? (
+              <p style={{ padding: '20px 24px', fontSize: '13px', color: '#94a3b8', textAlign: 'center' }}>
+                No files uploaded yet.
+              </p>
+            ) : multiDocs.map((doc, idx) => (
+              <div
+                key={doc.id}
+                style={{ padding: isMobile ? '12px 14px' : '12px 24px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'space-between', gap: '10px', borderBottom: idx < multiDocs.length - 1 ? '1px solid #f8fafc' : 'none', background: idx % 2 === 0 ? 'white' : '#fafafa' }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                  <FileText size={15} color="#94a3b8" style={{ flexShrink: 0 }} />
+                  <p style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {doc.file_name}
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <TypeBadge type={doc.file_type} />
+                  {doc.file_type !== 'zip' && (
+                    <button onClick={() => handlePreview(doc)} style={prevBtn} disabled={previewing}>
+                      <Eye size={11} /> Preview
+                    </button>
+                  )}
+                  <button onClick={() => handleDownload(doc)} style={dlBtn(sec.color)}>
+                    <Download size={11} /> Download
+                  </button>
+                  {isZairul && (
+                    <button onClick={() => handleDelete(doc)} style={delBtn}><Trash2 size={13} /></button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -195,14 +345,25 @@ export default function Library() {
           <h1 style={{ fontSize: '22px', fontWeight: '700', color: 'white' }}>Library</h1>
           <p style={{ color: '#94a3b8', fontSize: '13px', marginTop: '2px' }}>Team documents &amp; templates</p>
         </div>
-        <button onClick={openUploadBlank} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: '#2563eb', color: 'white', border: 'none', padding: '9px 18px', borderRadius: '10px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', width: isMobile ? '100%' : 'auto' }}>
-          <Upload size={14} /> Upload Document
-        </button>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => { setNewListName(''); setShowAddList(true) }}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.18)', padding: '9px 16px', borderRadius: '10px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', flex: isMobile ? 1 : 'none' }}
+          >
+            <Plus size={14} /> New List
+          </button>
+          <button
+            onClick={openUploadBlank}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: '#2563eb', color: 'white', border: 'none', padding: '9px 18px', borderRadius: '10px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', flex: isMobile ? 1 : 'none' }}
+          >
+            <Upload size={14} /> Upload Document
+          </button>
+        </div>
       </div>
 
       {/* Section list */}
       <div style={{ padding: isMobile ? '16px 14px 28px' : '24px 40px 48px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {SECTIONS.map(sec => {
+        {allSections.map(sec => {
           const isOpen = openSecs.has(sec.key)
 
           /* ── SINGLE type ── */
@@ -252,6 +413,9 @@ export default function Library() {
             )
           }
 
+          /* ── MULTI type (Drawing Template + custom lists) ── */
+          if (sec.type === 'multi') return renderMultiSection(sec)
+
           /* ── MEMBER type ── */
           if (sec.type === 'member') {
             return (
@@ -275,9 +439,7 @@ export default function Library() {
                         <Upload size={12} /> Upload
                       </button>
                     )}
-                    {isOpen
-                      ? <ChevronDown size={18} color="#64748b" />
-                      : <ChevronRight size={18} color="#64748b" />}
+                    {isOpen ? <ChevronDown size={18} color="#64748b" /> : <ChevronRight size={18} color="#64748b" />}
                   </div>
                 </button>
 
@@ -357,9 +519,7 @@ export default function Library() {
                         <Upload size={12} /> Upload
                       </button>
                     )}
-                    {isOpen
-                      ? <ChevronDown size={18} color="#64748b" />
-                      : <ChevronRight size={18} color="#64748b" />}
+                    {isOpen ? <ChevronDown size={18} color="#64748b" /> : <ChevronRight size={18} color="#64748b" />}
                   </div>
                 </button>
 
@@ -424,7 +584,6 @@ export default function Library() {
           onClick={e => e.target === e.currentTarget && setPreview(null)}
         >
           <div style={{ background: 'white', borderRadius: '20px', width: '100%', maxWidth: '860px', height: isMobile ? '92vh' : '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 32px 80px rgba(0,0,0,0.3)' }}>
-            {/* Header */}
             <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
               <div style={{ minWidth: 0 }}>
                 <p style={{ fontWeight: '700', fontSize: '15px', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -445,8 +604,6 @@ export default function Library() {
                 </button>
               </div>
             </div>
-
-            {/* Body */}
             <div style={{ flex: 1, overflow: 'hidden', background: '#f8fafc' }}>
               {previewing && (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '12px', color: '#64748b', fontSize: '14px' }}>
@@ -455,11 +612,7 @@ export default function Library() {
                 </div>
               )}
               {!previewing && preview?.doc?.file_type === 'pdf' && (
-                <iframe
-                  src={preview.url}
-                  style={{ width: '100%', height: '100%', border: 'none' }}
-                  title={preview.doc.file_name}
-                />
+                <iframe src={preview.url} style={{ width: '100%', height: '100%', border: 'none' }} title={preview.doc.file_name} />
               )}
               {!previewing && preview?.html != null && (
                 <div
@@ -479,21 +632,17 @@ export default function Library() {
           onClick={e => e.target === e.currentTarget && setShowUpload(false)}
         >
           <div style={{ background: 'white', borderRadius: '20px', width: '100%', maxWidth: '440px', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(15,23,42,.18)' }}>
-            {/* Modal header */}
             <div style={{ padding: '20px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
               <p style={{ fontWeight: '700', fontSize: '16px', color: '#0f172a' }}>Upload Document</p>
               <button onClick={() => setShowUpload(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', padding: 0 }}><X size={18} /></button>
             </div>
 
-            {/* Modal body */}
             <div style={{ padding: isMobile ? '16px 18px' : '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
-
-              {/* Section */}
               <div>
                 <label style={lLabel}>Section *</label>
                 <select style={lightInput} value={form.section} onChange={e => {
                   const key = e.target.value
-                  const sec = SECTIONS.find(s => s.key === key)
+                  const sec = allSections.find(s => s.key === key)
                   const locked = !isZairul && sec?.type === 'member' ? myMemberId : null
                   setLockedMemberId(locked)
                   setForm(f => ({
@@ -505,11 +654,13 @@ export default function Library() {
                   }))
                 }}>
                   <option value="">— Select section —</option>
-                  {SECTIONS.filter(s => isZairul || s.type === 'member').map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+                  {allSections
+                    .filter(s => isZairul || s.type === 'member' || s.type === 'multi')
+                    .map(s => <option key={s.key} value={s.key}>{s.label}</option>)
+                  }
                 </select>
               </div>
 
-              {/* Member picker */}
               {selectedSec?.type === 'member' && (
                 <div>
                   <label style={lLabel}>Team Member *</label>
@@ -526,7 +677,6 @@ export default function Library() {
                 </div>
               )}
 
-              {/* Sub + file type picker (Form Template) */}
               {selectedSec?.type === 'sub' && (
                 <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '10px' }}>
                   <div style={{ flex: 1 }}>
@@ -545,7 +695,6 @@ export default function Library() {
                 </div>
               )}
 
-              {/* File picker */}
               <div>
                 <label style={lLabel}>File *</label>
                 <input
@@ -565,7 +714,6 @@ export default function Library() {
                 <p style={{ fontSize: '12px', color: '#ef4444', background: '#fee2e2', padding: '8px 12px', borderRadius: '8px' }}>{uploadError}</p>
               )}
 
-              {/* Actions */}
               <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '10px', paddingTop: '4px' }}>
                 <button
                   onClick={handleUpload}
@@ -576,6 +724,50 @@ export default function Library() {
                 </button>
                 <button
                   onClick={() => setShowUpload(false)}
+                  style={{ flex: 1, padding: '11px', borderRadius: '10px', fontSize: '14px', fontWeight: '600', color: '#0f172a', cursor: 'pointer', background: '#f1f5f9', border: '1px solid #e2e8f0' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add New List Modal */}
+      {showAddList && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '16px' }}
+          onClick={e => e.target === e.currentTarget && setShowAddList(false)}
+        >
+          <div style={{ background: 'white', borderRadius: '20px', width: '100%', maxWidth: '400px', overflow: 'hidden', boxShadow: '0 24px 64px rgba(15,23,42,.18)' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <p style={{ fontWeight: '700', fontSize: '16px', color: '#0f172a' }}>New List</p>
+              <button onClick={() => setShowAddList(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', padding: 0 }}><X size={18} /></button>
+            </div>
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={lLabel}>List Name *</label>
+                <input
+                  style={lightInput}
+                  type="text"
+                  placeholder="e.g. Malaysia Standard Documents"
+                  value={newListName}
+                  onChange={e => setNewListName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleAddList()}
+                  autoFocus
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  onClick={handleAddList}
+                  disabled={addingList || !newListName.trim()}
+                  style={{ flex: 1, padding: '11px', borderRadius: '10px', fontSize: '14px', fontWeight: '700', color: 'white', border: 'none', cursor: addingList || !newListName.trim() ? 'not-allowed' : 'pointer', background: '#2563eb', opacity: addingList || !newListName.trim() ? 0.5 : 1 }}
+                >
+                  {addingList ? 'Creating…' : 'Create List'}
+                </button>
+                <button
+                  onClick={() => setShowAddList(false)}
                   style={{ flex: 1, padding: '11px', borderRadius: '10px', fontSize: '14px', fontWeight: '600', color: '#0f172a', cursor: 'pointer', background: '#f1f5f9', border: '1px solid #e2e8f0' }}
                 >
                   Cancel

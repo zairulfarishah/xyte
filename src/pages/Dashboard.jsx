@@ -10,7 +10,7 @@ import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
 import { mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../utils/completionMeta'
 import { useViewport } from '../utils/useViewport'
-import { fetchTeamLeaves, getLeaveSessionLabel, getLeaveSummary, getMemberLeaveOnDate, getMembersOnLeave } from '../utils/teamLeaves'
+import { fetchTeamLeaves, getLeaveSummary, getMemberLeaveOnDate, getMembersOnLeave } from '../utils/teamLeaves'
 import 'leaflet/dist/leaflet.css'
 
 function xIcon(color, selected = false) {
@@ -943,7 +943,7 @@ export default function Dashboard() {
                                   {member.full_name}
                                 </div>
                                 <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '700', marginTop: '3px', textTransform: 'uppercase', letterSpacing: '.04em' }}>
-                                  {leave.leave_type} · {getLeaveSessionLabel(leave.leave_session)}
+                                  {leave.leave_type}{leave.leave_session ? ` · ${leave.leave_session}` : ''}
                                 </div>
                               </div>
                               <div style={{ fontSize: '11px', color: '#475569', fontWeight: '800', textAlign: 'right', whiteSpace: 'nowrap' }}>
