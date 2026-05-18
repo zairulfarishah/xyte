@@ -60,70 +60,94 @@ export default function CompileExport({ members, docs }) {
       const boldFont  = await mergedPdf.embedFont(StandardFonts.HelveticaBold)
 
       const A4W = 595, A4H = 842
-      const ML = 50, MR = 50  // margins
+      const ML = 40, MR = 40
+      const tableW = A4W - ML - MR  // 515
+
+      // helper: truncate text to fit max width
+      function fitText(text, maxWidth, f, size) {
+        if (!text) return ''
+        let t = text
+        while (t.length > 0 && f.widthOfTextAtSize(t, size) > maxWidth) {
+          t = t.slice(0, -1)
+        }
+        return t === text ? text : t + '…'
+      }
 
       // ── Page 1: Namelist ──
       setProgress('Generating namelist…')
       const page = mergedPdf.addPage([A4W, A4H])
 
-      // Header bar
-      page.drawRectangle({ x: 0, y: A4H - 72, width: A4W, height: 72, color: rgb(0.027, 0.071, 0.153) })
+      // White background (default)
+      // ── Company header ──
+      const headerTop = A4H - 40
 
-      // Xradar logo text in header
-      page.drawText('XRADAR', { x: ML, y: A4H - 38, font: boldFont, size: 22, color: rgb(0.133, 0.773, 0.369) })
-      page.drawText('Sdn Bhd', { x: ML, y: A4H - 56, font, size: 9, color: rgb(0.6, 0.7, 0.8) })
+      // Left: company name + details
+      page.drawText('Xradar Asia Sdn Bhd', { x: ML, y: headerTop, font: boldFont, size: 13, color: rgb(0, 0, 0) })
+      page.drawText('(1449462P)', { x: ML + 135, y: headerTop, font, size: 11, color: rgb(0.3, 0.3, 0.3) })
+      page.drawText('17 Jalan PJS 7/21 Bandar Sunway, 46150 Petaling Jaya, Selangor', { x: ML, y: headerTop - 16, font, size: 8.5, color: rgb(0.3, 0.3, 0.3) })
+      page.drawText('Tel:  03-74940629     Email:  info@xradar.asia', { x: ML, y: headerTop - 28, font, size: 8.5, color: rgb(0.3, 0.3, 0.3) })
 
-      // Right side: doc title
-      page.drawText('SITE NAMELIST', { x: A4W - MR - 130, y: A4H - 38, font: boldFont, size: 14, color: rgb(1, 1, 1) })
+      // Right: Xradar logo (styled text)
+      page.drawText('X', { x: A4W - MR - 72, y: headerTop - 4, font: boldFont, size: 30, color: rgb(0, 0, 0) })
+      page.drawText('radar', { x: A4W - MR - 46, y: headerTop - 4, font, size: 30, color: rgb(0, 0.55, 0.55) })
 
-      // Date line
+      // Divider line
+      const divY = headerTop - 42
+      page.drawLine({ start: { x: ML, y: divY }, end: { x: A4W - MR, y: divY }, thickness: 1, color: rgb(0, 0, 0) })
+
+      // ── Table ──
       const dateStr = new Date().toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' })
-      page.drawText(`Date: ${dateStr}`, { x: A4W - MR - 130, y: A4H - 56, font, size: 9, color: rgb(0.6, 0.7, 0.8) })
+      const tableTop = divY - 30
 
-      // Thin green accent line
-      page.drawRectangle({ x: 0, y: A4H - 76, width: A4W, height: 4, color: rgb(0.133, 0.773, 0.369) })
+      // Column positions & widths
+      const colNoX    = ML,       colNoW    = 28
+      const colNameX  = ML + 30,  colNameW  = 210
+      const colIcX    = ML + 242, colIcW    = 140
+      const colRoleX  = ML + 384, colRoleW  = tableW - 384
 
-      // Table header
-      const tableTop = A4H - 110
-      const colNo   = ML
-      const colName = ML + 36
-      const colIc   = ML + 240
-      const colRole = ML + 380
+      const rowH  = 22
+      const hdrH  = 22
 
-      page.drawRectangle({ x: ML - 4, y: tableTop - 4, width: A4W - ML - MR + 8, height: 22, color: rgb(0.027, 0.071, 0.153) })
-      page.drawText('NO.',       { x: colNo,   y: tableTop, font: boldFont, size: 9, color: rgb(0.133, 0.773, 0.369) })
-      page.drawText('FULL NAME', { x: colName, y: tableTop, font: boldFont, size: 9, color: rgb(1, 1, 1) })
-      page.drawText('IC NUMBER', { x: colIc,   y: tableTop, font: boldFont, size: 9, color: rgb(1, 1, 1) })
-      page.drawText('POSITION',  { x: colRole, y: tableTop, font: boldFont, size: 9, color: rgb(1, 1, 1) })
+      // Draw outer border of table header
+      page.drawRectangle({ x: ML, y: tableTop - hdrH, width: tableW, height: hdrH, borderColor: rgb(0,0,0), borderWidth: 0.8, color: rgb(1,1,1) })
 
-      // Table rows
-      let y = tableTop - 24
+      // Header cell dividers
+      for (const x of [colNameX, colIcX, colRoleX]) {
+        page.drawLine({ start: { x, y: tableTop }, end: { x, y: tableTop - hdrH }, thickness: 0.8, color: rgb(0,0,0) })
+      }
+
+      // Header text
+      page.drawText('No',              { x: ML + 8,       y: tableTop - 15, font: boldFont, size: 10, color: rgb(0,0,0) })
+      page.drawText('Name',            { x: colNameX + 4, y: tableTop - 15, font: boldFont, size: 10, color: rgb(0,0,0) })
+      page.drawText('NRIC / Passport', { x: colIcX + 4,   y: tableTop - 15, font: boldFont, size: 10, color: rgb(0,0,0) })
+      page.drawText('Position',        { x: colRoleX + 4, y: tableTop - 15, font: boldFont, size: 10, color: rgb(0,0,0) })
+
+      // Rows
       const chosenMembers = selectedMembers.map(id => memberMap[id] || members.find(m => m.id === id)).filter(Boolean)
+      let rowY = tableTop - hdrH
 
       chosenMembers.forEach((member, idx) => {
-        const rowBg = idx % 2 === 0 ? rgb(0.976, 0.984, 1) : rgb(1, 1, 1)
-        page.drawRectangle({ x: ML - 4, y: y - 6, width: A4W - ML - MR + 8, height: 22, color: rowBg })
+        const rY = rowY - rowH
 
-        const icText   = member.ic_number || '—'
-        const roleText = member.role      || '—'
+        // Row border
+        page.drawRectangle({ x: ML, y: rY, width: tableW, height: rowH, borderColor: rgb(0,0,0), borderWidth: 0.5, color: rgb(1,1,1) })
 
-        page.drawText(String(idx + 1), { x: colNo, y, font: boldFont, size: 10, color: rgb(0.149, 0.388, 0.922) })
-        page.drawText(member.full_name,  { x: colName, y, font: boldFont, size: 10, color: rgb(0.059, 0.071, 0.149) })
-        page.drawText(icText,            { x: colIc,   y, font, size: 10, color: rgb(0.278, 0.333, 0.412) })
-        page.drawText(roleText,          { x: colRole, y, font, size: 10, color: rgb(0.278, 0.333, 0.412) })
+        // Cell dividers
+        for (const x of [colNameX, colIcX, colRoleX]) {
+          page.drawLine({ start: { x, y: rY + rowH }, end: { x, y: rY }, thickness: 0.5, color: rgb(0,0,0) })
+        }
 
-        // bottom border
-        page.drawLine({
-          start: { x: ML - 4, y: y - 6 }, end: { x: A4W - MR + 4, y: y - 6 },
-          thickness: 0.5, color: rgb(0.882, 0.910, 0.941),
-        })
-        y -= 24
+        const nameText = fitText(member.full_name || '', colNameW - 8, font, 9.5)
+        const icText   = fitText(member.ic_number  || '—', colIcW   - 8, font, 9.5)
+        const roleText = fitText(member.role        || '—', colRoleW - 8, font, 9.5)
+
+        page.drawText(String(idx + 1), { x: ML + 8,        y: rY + 7, font, size: 9.5, color: rgb(0,0,0) })
+        page.drawText(nameText,        { x: colNameX + 4,  y: rY + 7, font, size: 9.5, color: rgb(0,0,0) })
+        page.drawText(icText,          { x: colIcX + 4,    y: rY + 7, font, size: 9.5, color: rgb(0,0,0) })
+        page.drawText(roleText,        { x: colRoleX + 4,  y: rY + 7, font, size: 9.5, color: rgb(0,0,0) })
+
+        rowY = rY
       })
-
-      // Footer
-      page.drawRectangle({ x: 0, y: 0, width: A4W, height: 36, color: rgb(0.027, 0.071, 0.153) })
-      page.drawText('XRADAR Sdn Bhd — Confidential', { x: ML, y: 13, font, size: 8, color: rgb(0.6, 0.7, 0.8) })
-      page.drawText(`Total: ${chosenMembers.length} member${chosenMembers.length !== 1 ? 's' : ''}`, { x: A4W - MR - 80, y: 13, font: boldFont, size: 8, color: rgb(0.6, 0.7, 0.8) })
 
       // ── Documents grouped by member ──
       for (const memberId of selectedMembers) {
