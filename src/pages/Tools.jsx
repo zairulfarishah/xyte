@@ -145,6 +145,110 @@ function PageThumbnail({ pdfJsDoc, pageNum, selected, rotation = 0, onToggle }) 
   )
 }
 
+// ── PreviewGrid ───────────────────────────────────────────────────────────────
+
+function PreviewGrid({ tool, pdfJsDoc, pageCount, selectedPages, pageRotations, splitMode, splitValue, wmText, wmOpacity, wmAngle, wmSize }) {
+  const GRID = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(88px, 1fr))', gap: '10px', maxHeight: '520px', overflowY: 'auto' }
+
+  if (tool === 'delete') {
+    const remaining = Array.from({ length: pageCount }, (_, i) => i).filter(i => !selectedPages.has(i))
+    return (
+      <div>
+        <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a', marginBottom: '3px' }}>{remaining.length} pages remaining</p>
+        <p style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '14px' }}>{selectedPages.size} page{selectedPages.size !== 1 ? 's' : ''} will be removed</p>
+        <div style={GRID}>{remaining.map(i => <PageThumbnail key={i} pdfJsDoc={pdfJsDoc} pageNum={i + 1} selected={false} rotation={0} onToggle={() => {}} />)}</div>
+      </div>
+    )
+  }
+
+  if (tool === 'extract') {
+    const pages = [...selectedPages].sort((a, b) => a - b)
+    return (
+      <div>
+        <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a', marginBottom: '14px' }}>{pages.length} pages extracted</p>
+        <div style={GRID}>{pages.map(i => <PageThumbnail key={i} pdfJsDoc={pdfJsDoc} pageNum={i + 1} selected={false} rotation={0} onToggle={() => {}} />)}</div>
+      </div>
+    )
+  }
+
+  if (tool === 'rotate') {
+    const count = Object.keys(pageRotations).length
+    return (
+      <div>
+        <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a', marginBottom: '3px' }}>{count} page{count !== 1 ? 's' : ''} rotated</p>
+        <p style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '14px' }}>Badge shows degrees applied</p>
+        <div style={GRID}>{Array.from({ length: pageCount }, (_, i) => <PageThumbnail key={i} pdfJsDoc={pdfJsDoc} pageNum={i + 1} selected={false} rotation={pageRotations[i] || 0} onToggle={() => {}} />)}</div>
+      </div>
+    )
+  }
+
+  if (tool === 'split') {
+    let chunks = []
+    if (splitMode === 'count') {
+      const n = Math.max(1, parseInt(splitValue) || 1)
+      for (let i = 0; i < pageCount; i += n) chunks.push({ start: i, end: Math.min(i + n - 1, pageCount - 1) })
+    } else {
+      chunks = parseRanges(splitValue, pageCount)
+    }
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxHeight: '540px', overflowY: 'auto' }}>
+        <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>{chunks.length} file{chunks.length !== 1 ? 's' : ''} will be created</p>
+        {chunks.map((chunk, ci) => (
+          <div key={ci}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+              <div style={{ height: '1px', flex: 1, background: '#e2e8f0' }} />
+              <span style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', background: '#f1f5f9', padding: '3px 10px', borderRadius: '99px' }}>
+                Part {ci + 1} · {chunk.end - chunk.start + 1} pages
+              </span>
+              <div style={{ height: '1px', flex: 1, background: '#e2e8f0' }} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(88px, 1fr))', gap: '10px' }}>
+              {Array.from({ length: chunk.end - chunk.start + 1 }, (_, i) => chunk.start + i).map(i => (
+                <PageThumbnail key={i} pdfJsDoc={pdfJsDoc} pageNum={i + 1} selected={false} rotation={0} onToggle={() => {}} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  if (tool === 'watermark') {
+    return (
+      <div>
+        <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a', marginBottom: '3px' }}>Watermark preview</p>
+        <p style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '14px' }}>CSS approximation — actual PDF may vary slightly</p>
+        <div style={GRID}>
+          {Array.from({ length: pageCount }, (_, i) => (
+            <div key={i} style={{ position: 'relative' }}>
+              <PageThumbnail pdfJsDoc={pdfJsDoc} pageNum={i + 1} selected={false} rotation={0} onToggle={() => {}} />
+              <div style={{ position: 'absolute', inset: '0 0 22px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', overflow: 'hidden' }}>
+                <span style={{ fontSize: `${Math.max(7, wmSize * 0.12)}px`, fontWeight: '700', color: `rgba(100,100,100,${wmOpacity / 100})`, transform: `rotate(${wmAngle}deg)`, whiteSpace: 'nowrap', userSelect: 'none' }}>
+                  {wmText}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (tool === 'compress') {
+    return (
+      <div style={{ padding: '28px', background: '#f0fdf4', borderRadius: '12px', border: '1px solid #bbf7d0', textAlign: 'center' }}>
+        <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+          <Minimize2 size={22} color="#16a34a" />
+        </div>
+        <p style={{ fontSize: '14px', fontWeight: '700', color: '#166534', marginBottom: '6px' }}>Ready to compress</p>
+        <p style={{ fontSize: '12px', color: '#15803d', lineHeight: 1.6 }}>Will re-encode with compressed object streams. Click Download to save.</p>
+      </div>
+    )
+  }
+
+  return null
+}
+
 // ── Dropzone ──────────────────────────────────────────────────────────────────
 
 function Dropzone({ multiple = false, onFiles, label = 'Drop PDF here or click to upload' }) {
@@ -193,6 +297,7 @@ function Dropzone({ multiple = false, onFiles, label = 'Drop PDF here or click t
 export default function Tools() {
   const { isMobile } = useViewport()
   const [activeTool, setActiveTool] = useState('merge')
+  const [toolStage, setToolStage] = useState('edit') // 'edit' | 'preview'
 
   // Merge state
   const [mergeFiles, setMergeFiles] = useState([])
@@ -242,6 +347,7 @@ export default function Tools() {
 
   function switchTool(id) {
     setActiveTool(id)
+    setToolStage('edit')
     setDone(false)
     setError('')
     setSelectedPages(new Set())
@@ -257,8 +363,24 @@ export default function Tools() {
     setPageCount(0)
     setSelectedPages(new Set())
     setPageRotations({})
+    setToolStage('edit')
     setDone(false)
     setError('')
+  }
+
+  function handlePreview() {
+    setError('')
+    if (activeTool === 'delete' && selectedPages.size === 0) { setError('Select at least one page to delete.'); return }
+    if (activeTool === 'extract' && selectedPages.size === 0) { setError('Select at least one page to extract.'); return }
+    if (activeTool === 'rotate' && Object.keys(pageRotations).length === 0) { setError('Apply rotation to at least one page first.'); return }
+    if (activeTool === 'split') {
+      const chunks = splitMode === 'count'
+        ? Math.ceil(pageCount / Math.max(1, parseInt(splitValue) || 1))
+        : parseRanges(splitValue, pageCount).length
+      if (chunks === 0) { setError('Invalid split configuration.'); return }
+    }
+    if (activeTool === 'watermark' && !wmText.trim()) { setError('Enter watermark text.'); return }
+    setToolStage('preview')
   }
 
   function togglePage(i) {
@@ -587,8 +709,8 @@ export default function Tools() {
             </div>
           )}
 
-          {/* Page grid (delete / rotate / extract) */}
-          {needsPageGrid && singleFile && pageCount > 0 && (
+          {/* Page grid (delete / rotate / extract) — edit stage */}
+          {needsPageGrid && singleFile && pageCount > 0 && toolStage === 'edit' && (
             <div style={{ background: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
                 <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>
@@ -604,21 +726,41 @@ export default function Tools() {
               </p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(88px, 1fr))', gap: '10px', maxHeight: '520px', overflowY: 'auto', paddingRight: '2px' }}>
                 {Array.from({ length: Math.min(pageCount, 100) }, (_, i) => (
-                  <PageThumbnail
-                    key={i}
-                    pdfJsDoc={pdfJsDoc}
-                    pageNum={i + 1}
-                    selected={selectedPages.has(i)}
-                    rotation={pageRotations[i] || 0}
-                    onToggle={() => togglePage(i)}
-                  />
+                  <PageThumbnail key={i} pdfJsDoc={pdfJsDoc} pageNum={i + 1} selected={selectedPages.has(i)} rotation={pageRotations[i] || 0} onToggle={() => togglePage(i)} />
                 ))}
               </div>
-              {pageCount > 100 && (
-                <p style={{ fontSize: '11px', color: '#94a3b8', textAlign: 'center', marginTop: '12px' }}>
-                  Showing first 100 pages
-                </p>
-              )}
+              {pageCount > 100 && <p style={{ fontSize: '11px', color: '#94a3b8', textAlign: 'center', marginTop: '12px' }}>Showing first 100 pages</p>}
+            </div>
+          )}
+
+          {/* Preview grid — all single-file tools in preview stage */}
+          {activeTool !== 'merge' && singleFile && toolStage === 'preview' && (
+            <div style={{ background: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e' }} />
+                  <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>Preview</p>
+                </div>
+                <button
+                  onClick={() => { setToolStage('edit'); setDone(false) }}
+                  style={{ fontSize: '12px', fontWeight: '600', color: '#64748b', background: 'none', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '6px 12px', cursor: 'pointer' }}
+                >
+                  ← Edit
+                </button>
+              </div>
+              <PreviewGrid
+                tool={activeTool}
+                pdfJsDoc={pdfJsDoc}
+                pageCount={pageCount}
+                selectedPages={selectedPages}
+                pageRotations={pageRotations}
+                splitMode={splitMode}
+                splitValue={splitValue}
+                wmText={wmText}
+                wmOpacity={wmOpacity}
+                wmAngle={wmAngle}
+                wmSize={wmSize}
+              />
             </div>
           )}
         </div>
@@ -636,7 +778,7 @@ export default function Tools() {
             </div>
 
             {/* Rotate options */}
-            {activeTool === 'rotate' && singleFile && (
+            {activeTool === 'rotate' && singleFile && toolStage === 'edit' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '4px' }}>
                 <p style={{ fontSize: '12px', fontWeight: '600', color: '#64748b' }}>Angle per click</p>
                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -670,7 +812,7 @@ export default function Tools() {
             )}
 
             {/* Split options */}
-            {activeTool === 'split' && singleFile && (
+            {activeTool === 'split' && singleFile && toolStage === 'edit' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '4px' }}>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   {[['count', 'Every N pages'], ['range', 'Page ranges']].map(([v, l]) => (
@@ -711,7 +853,7 @@ export default function Tools() {
             )}
 
             {/* Watermark options */}
-            {activeTool === 'watermark' && singleFile && (
+            {activeTool === 'watermark' && singleFile && toolStage === 'edit' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '4px' }}>
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '6px' }}>Text</label>
@@ -738,7 +880,7 @@ export default function Tools() {
             )}
 
             {/* Compress note */}
-            {activeTool === 'compress' && singleFile && (
+            {activeTool === 'compress' && singleFile && toolStage === 'edit' && (
               <div style={{ padding: '12px', background: '#f0fdf4', borderRadius: '10px', border: '1px solid #bbf7d0', marginBottom: '4px' }}>
                 <p style={{ fontSize: '12px', color: '#15803d', lineHeight: 1.6 }}>
                   Re-encodes the PDF with compressed object streams. Reduction typically 5–20%. For heavy compression, use a dedicated PDF compressor.
@@ -763,9 +905,14 @@ export default function Tools() {
               </div>
             )}
 
-            {/* Process button */}
+            {/* Action button */}
             <button
-              onClick={activeTool === 'merge' && mergeStage === 'rearrange' ? handleDownloadMerged : handleProcess}
+              onClick={
+                activeTool === 'merge' && mergeStage === 'rearrange' ? handleDownloadMerged
+                : activeTool !== 'merge' && toolStage === 'preview' ? handleProcess
+                : activeTool !== 'merge' && toolStage === 'edit' ? handlePreview
+                : handleProcess
+              }
               disabled={processing || !canProcess}
               style={{
                 marginTop: '8px',
@@ -782,14 +929,14 @@ export default function Tools() {
                   <div style={{ width: '14px', height: '14px', borderRadius: '50%', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', animation: 'spin 0.6s linear infinite' }} />
                   Processing…
                 </>
+              ) : activeTool === 'merge' && mergeStage === 'upload' ? (
+                <><Download size={14} /> Merge & Preview</>
+              ) : activeTool === 'merge' && mergeStage === 'rearrange' ? (
+                <><Download size={14} /> Download PDF</>
+              ) : toolStage === 'edit' ? (
+                <><Check size={14} /> Preview Result</>
               ) : (
-                <>
-                  <Download size={14} />
-                  {activeTool === 'merge' && mergeStage === 'upload' ? 'Merge & Preview'
-                    : activeTool === 'merge' && mergeStage === 'rearrange' ? 'Download PDF'
-                    : activeTool === 'split' ? 'Split & Download'
-                    : 'Process & Download'}
-                </>
+                <><Download size={14} /> {activeTool === 'split' ? 'Split & Download' : 'Download PDF'}</>
               )}
             </button>
           </div>
