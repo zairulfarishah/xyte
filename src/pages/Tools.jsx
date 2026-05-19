@@ -74,18 +74,22 @@ function parseRanges(str, total) {
 
 function PageThumbnail({ pdfJsDoc, pageNum, selected, rotation = 0, onToggle }) {
   const canvasRef = useRef(null)
+  const containerRef = useRef(null)
   const [rendered, setRendered] = useState(false)
 
   useEffect(() => {
-    if (!pdfJsDoc || !canvasRef.current) return
+    if (!pdfJsDoc || !containerRef.current) return
     let cancelled = false
-    ;(async () => {
+
+    const observer = new IntersectionObserver(async (entries) => {
+      if (!entries[0].isIntersecting) return
+      observer.disconnect()
       await acquireRenderSlot()
       if (cancelled) { releaseRenderSlot(); return }
       try {
         const page = await pdfJsDoc.getPage(pageNum)
         if (cancelled) return
-        const vp = page.getViewport({ scale: 0.22 })
+        const vp = page.getViewport({ scale: 0.15 })
         const canvas = canvasRef.current
         if (!canvas) return
         canvas.width = vp.width
@@ -94,12 +98,15 @@ function PageThumbnail({ pdfJsDoc, pageNum, selected, rotation = 0, onToggle }) 
         if (!cancelled) setRendered(true)
       } catch (_) {}
       finally { releaseRenderSlot() }
-    })()
-    return () => { cancelled = true }
+    }, { threshold: 0.1 })
+
+    observer.observe(containerRef.current)
+    return () => { cancelled = true; observer.disconnect() }
   }, [pdfJsDoc, pageNum])
 
   return (
     <div
+      ref={containerRef}
       onClick={onToggle}
       style={{
         cursor: 'pointer',
@@ -114,7 +121,7 @@ function PageThumbnail({ pdfJsDoc, pageNum, selected, rotation = 0, onToggle }) 
     >
       <div style={{ padding: '6px', transform: rotation ? `rotate(${rotation}deg)` : 'none', transformOrigin: 'center', transition: 'transform 0.25s' }}>
         {!rendered && (
-          <div style={{ height: '110px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ height: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ width: '14px', height: '14px', borderRadius: '50%', border: '2px solid #e2e8f0', borderTopColor: '#2563eb', animation: 'spin 0.6s linear infinite' }} />
           </div>
         )}
@@ -225,7 +232,7 @@ export default function Tools() {
     if (!singleFile) { setPdfJsDoc(null); setPageCount(0); return }
     ;(async () => {
       const buf = await singleFile.arrayBuffer()
-      const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise
+      const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buf), disableFontFace: true }).promise
       setPdfJsDoc(doc)
       setPageCount(doc.numPages)
       setSelectedPages(new Set())
