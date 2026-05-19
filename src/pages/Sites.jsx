@@ -65,12 +65,12 @@ const SITE_TYPES   = [
   { value:'site_visit',    label:'Site Visit'    },
   { value:'meeting',       label:'Meeting'       },
 ]
-const SALESPERSONS = ['GH Tan','Chong Jie Yan','Jasmin','Darren','Wendy','Zairul']
+const SALESPERSONS = ['GH Tan','Chong Jie Yan','Jasmin','Darren','Wendy','Zairul','Reekha','Ryan']
 const TABS         = ['All','Upcoming','Ongoing','Completed','Cancelled','Postponed']
 const EMPTY = {
   site_type:'site_scanning', site_name:'', location:'', latitude:'', longitude:'',
   client_company_name:'', client_name:'', client_number:'', scope_of_work:'',
-  salesperson:'', scheduled_date:'', site_status:'upcoming', report_status:'pending',
+  salesperson:'', scheduled_date:'', end_date:'', site_session:'', site_status:'upcoming', report_status:'pending',
   site_duration_days:'1', report_duration_days:'0.5', notes:'', pic_id:'', crew_ids:[],
   delivery_order_number:'', completion_reason:'',
   site_photo:null, site_photo_preview:null, site_photo_url:'',
@@ -248,6 +248,7 @@ export default function Sites() {
       client_company_name:site.client_company_name||'', client_name:site.client_name||'',
       client_number:site.client_number||'', scope_of_work:site.scope_of_work||'',
       salesperson:site.salesperson||'', scheduled_date:site.scheduled_date,
+      end_date:site.end_date||site.scheduled_date||'', site_session:site.site_session||'',
       site_status:site.site_status,
       site_duration_days:site.site_duration_days?.toString()||'1',
       report_duration_days:site.report_duration_days?.toString()||'0.5',
@@ -307,8 +308,18 @@ export default function Sites() {
         client_company_name:form.client_company_name||null, client_name:form.client_name||null,
         client_number:form.client_number||null, scope_of_work:form.scope_of_work||null,
         salesperson:form.salesperson||null, site_photo_url:photoUrl||null,
-        scheduled_date:form.scheduled_date, site_status:form.site_status,
-        site_duration_days:isSiteVisit ? 0.5 : (parseFloat(form.site_duration_days)||0),
+        scheduled_date:form.scheduled_date,
+        end_date:form.end_date || form.scheduled_date || null,
+        site_session:(form.scheduled_date && form.end_date && form.scheduled_date === form.end_date) ? (form.site_session || null) : null,
+        site_status:form.site_status,
+        site_duration_days:isSiteVisit ? 0.5 : (() => {
+          if (form.site_type === 'site_scanning') {
+            const isSameDay = form.scheduled_date && form.end_date && form.scheduled_date === form.end_date
+            if (isSameDay) return form.site_session === 'Full Day' ? 1 : 0.5
+            if (form.scheduled_date && form.end_date) return Math.round((new Date(form.end_date) - new Date(form.scheduled_date)) / 86400000) + 1
+          }
+          return parseFloat(form.site_duration_days) || 1
+        })(),
         report_duration_days:isSiteVisit||isMeeting ? 0 : (parseFloat(form.report_duration_days)||0),
         report_status:isSiteVisit||isMeeting ? 'not_applicable' : form.report_status,
         notes: mergeCompletionMeta(form.notes, {
@@ -849,7 +860,7 @@ export default function Sites() {
               <div style={{ display:'grid', gridTemplateColumns:isMobile ? '1fr' : '1fr 1fr', gap:'12px' }}>
                 <div><label style={lLabel}>Client Company</label><input style={lightInput} value={form.client_company_name} placeholder="Company name" onChange={e => setForm(f => ({...f, client_company_name:e.target.value}))} /></div>
                 <div><label style={lLabel}>Client Name</label><input style={lightInput} value={form.client_name} placeholder="Contact name" onChange={e => setForm(f => ({...f, client_name:e.target.value}))} /></div>
-                <div><label style={lLabel}>Client Number</label><input style={lightInput} value={form.client_number} placeholder="PO-12345" onChange={e => setForm(f => ({...f, client_number:e.target.value}))} /></div>
+                <div><label style={lLabel}>Client Phone Number</label><input style={lightInput} value={form.client_number} placeholder="e.g. +60123456789" onChange={e => setForm(f => ({...f, client_number:e.target.value}))} /></div>
                 <div>
                   <label style={lLabel}>Salesperson</label>
                   <select style={lightInput} value={form.salesperson} onChange={e => setForm(f => ({...f, salesperson:e.target.value}))}>
@@ -860,14 +871,48 @@ export default function Sites() {
               </div>
 
               <div><label style={lLabel}>Scope of Work</label><textarea style={{...lightInput, resize:'none'}} rows={2} value={form.scope_of_work} placeholder="Describe scope…" onChange={e => setForm(f => ({...f, scope_of_work:e.target.value}))} /></div>
-              <div><label style={lLabel}>Scheduled Date *</label><input type="date" style={lightInput} value={form.scheduled_date} onChange={e => setForm(f => ({...f, scheduled_date:e.target.value}))} /></div>
+              <div style={{ display:'grid', gridTemplateColumns:isMobile ? '1fr' : '1fr 1fr', gap:'12px' }}>
+                <div>
+                  <label style={lLabel}>Start Date *</label>
+                  <input type="date" style={lightInput} value={form.scheduled_date} onChange={e => setForm(f => ({...f, scheduled_date:e.target.value, end_date:f.end_date||e.target.value}))} />
+                </div>
+                <div>
+                  <label style={lLabel}>End Date *</label>
+                  <input type="date" style={lightInput} value={form.end_date} min={form.scheduled_date} onChange={e => setForm(f => ({...f, end_date:e.target.value}))} />
+                </div>
+              </div>
 
-              {form.site_type === 'site_scanning' && (
-                <div style={{ display:'grid', gridTemplateColumns:isMobile ? '1fr' : '1fr 1fr', gap:'12px' }}>
-                  <div><label style={lLabel}>Site Duration (Days)</label><input type="number" min="0" step="0.5" style={lightInput} value={form.site_duration_days} onChange={e => setForm(f => ({...f, site_duration_days:e.target.value}))} /></div>
-                  <div><label style={lLabel}>Report Duration (Days)</label><input type="number" min="0" step="0.5" style={lightInput} value={form.report_duration_days} onChange={e => setForm(f => ({...f, report_duration_days:e.target.value}))} /></div>
+              {form.scheduled_date && form.end_date && form.scheduled_date === form.end_date && (
+                <div>
+                  <label style={lLabel}>Session (Same Day)</label>
+                  <select style={lightInput} value={form.site_session} onChange={e => setForm(f => ({...f, site_session:e.target.value}))}>
+                    <option value="">— Select Session —</option>
+                    <option value="AM">AM (Morning)</option>
+                    <option value="PM">PM (Afternoon)</option>
+                    <option value="Full Day">Full Day</option>
+                  </select>
                 </div>
               )}
+
+              {form.site_type === 'site_scanning' && (() => {
+                const isSameDay = form.scheduled_date && form.end_date && form.scheduled_date === form.end_date
+                const diffDays = form.scheduled_date && form.end_date
+                  ? Math.round((new Date(form.end_date) - new Date(form.scheduled_date)) / 86400000) + 1
+                  : null
+                const sameDayDuration = form.site_session === 'Full Day' ? 1 : 0.5
+                const calcDuration = isSameDay ? sameDayDuration : diffDays
+                return (
+                  <div style={{ display:'grid', gridTemplateColumns:isMobile ? '1fr' : '1fr 1fr', gap:'12px' }}>
+                    <div>
+                      <label style={lLabel}>Site Duration (Days)</label>
+                      <div style={{ ...lightInput, background:'#f8fafc', color:'#64748b' }}>
+                        {calcDuration != null ? `${calcDuration} day${calcDuration !== 1 ? 's' : ''}${isSameDay ? ` (${form.site_session || 'half day'})` : ''}` : '—'}
+                      </div>
+                    </div>
+                    <div><label style={lLabel}>Report Duration (Days)</label><input type="number" min="0" step="0.5" style={lightInput} value={form.report_duration_days} onChange={e => setForm(f => ({...f, report_duration_days:e.target.value}))} /></div>
+                  </div>
+                )
+              })()}
               {form.site_type === 'site_visit' && <div style={{ padding:'12px 16px', borderRadius:'10px', fontSize:'12px', fontWeight:'600', color:'#0d9488', background:'#f0fdf4', border:'1px solid #6ee7b7' }}>Duration: Half Day (0.5) — fixed for site visits</div>}
               {form.site_type === 'meeting' && (
                 <div><label style={lLabel}>Meeting Duration</label>
