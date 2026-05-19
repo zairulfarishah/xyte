@@ -5,12 +5,27 @@ import {
 } from 'lucide-react'
 import { PDFDocument, degrees, rgb, StandardFonts } from 'pdf-lib'
 import * as pdfjsLib from 'pdfjs-dist'
+import pdfjsWorkerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { useViewport } from '../utils/useViewport'
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
-  import.meta.url
-).href
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerSrc
+
+// Semaphore: max 4 pages rendering at once
+let _activeRenders = 0
+const _renderQueue = []
+function acquireRenderSlot() {
+  return new Promise(resolve => {
+    function attempt() {
+      if (_activeRenders < 4) { _activeRenders++; resolve() }
+      else _renderQueue.push(attempt)
+    }
+    attempt()
+  })
+}
+function releaseRenderSlot() {
+  _activeRenders--
+  if (_renderQueue.length) _renderQueue.shift()()
+}
 
 const TOOLS = [
   { id: 'merge',     label: 'Merge',        Icon: Layers,    color: '#2563eb' },
@@ -65,6 +80,8 @@ function PageThumbnail({ pdfJsDoc, pageNum, selected, rotation = 0, onToggle }) 
     if (!pdfJsDoc || !canvasRef.current) return
     let cancelled = false
     ;(async () => {
+      await acquireRenderSlot()
+      if (cancelled) { releaseRenderSlot(); return }
       try {
         const page = await pdfJsDoc.getPage(pageNum)
         if (cancelled) return
@@ -76,6 +93,7 @@ function PageThumbnail({ pdfJsDoc, pageNum, selected, rotation = 0, onToggle }) 
         await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise
         if (!cancelled) setRendered(true)
       } catch (_) {}
+      finally { releaseRenderSlot() }
     })()
     return () => { cancelled = true }
   }, [pdfJsDoc, pageNum])
