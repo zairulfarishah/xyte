@@ -197,8 +197,8 @@ export default function Tools() {
   // Merge state
   const [mergeFiles, setMergeFiles] = useState([])
   const [mergeStage, setMergeStage] = useState('upload') // 'upload' | 'rearrange'
-  const [mergedBytes, setMergedBytes] = useState(null)
-  const [mergedPdfJsDoc, setMergedPdfJsDoc] = useState(null)
+  // pageOrder: array of { fileIdx, pageNum } — built from source files, merged on download
+  const [mergeFileDocs, setMergeFileDocs] = useState([]) // pdfjs docs, one per source file
   const [mergedPageCount, setMergedPageCount] = useState(0)
   const [pageOrder, setPageOrder] = useState([])
   const [dragIndex, setDragIndex] = useState(null)
@@ -247,8 +247,7 @@ export default function Tools() {
     setSelectedPages(new Set())
     setPageRotations({})
     setMergeStage('upload')
-    setMergedBytes(null)
-    setMergedPdfJsDoc(null)
+    setMergeFileDocs([])
     setPageOrder([])
   }
 
@@ -285,19 +284,19 @@ export default function Tools() {
     try {
       if (activeTool === 'merge') {
         if (mergeFiles.length < 2) throw new Error('Upload at least 2 PDF files to merge.')
-        const out = await PDFDocument.create()
-        for (const f of mergeFiles) {
-          const src = await PDFDocument.load(await f.arrayBuffer())
-          const pages = await out.copyPages(src, src.getPageIndices())
-          pages.forEach(p => out.addPage(p))
-        }
-        const bytes = await out.save()
-        setMergedBytes(bytes)
-        const doc = await pdfjsLib.getDocument({ data: new Uint8Array(bytes) }).promise
-        setMergedPdfJsDoc(doc)
-        const count = doc.numPages
-        setMergedPageCount(count)
-        setPageOrder(Array.from({ length: count }, (_, i) => i))
+        // Load each source file into pdfjs for thumbnail rendering (no merge yet)
+        const docs = await Promise.all(mergeFiles.map(async f => {
+          const buf = await f.arrayBuffer()
+          return pdfjsLib.getDocument({ data: new Uint8Array(buf), disableFontFace: true }).promise
+        }))
+        setMergeFileDocs(docs)
+        // Build page order from source files
+        const order = []
+        docs.forEach((doc, fileIdx) => {
+          for (let p = 1; p <= doc.numPages; p++) order.push({ fileIdx, pageNum: p })
+        })
+        setPageOrder(order)
+        setMergedPageCount(order.length)
         setMergeStage('rearrange')
         setProcessing(false)
         return
@@ -393,10 +392,13 @@ export default function Tools() {
     setProcessing(true)
     setError('')
     try {
-      const src = await PDFDocument.load(mergedBytes)
+      // Load source files with pdf-lib for the actual merge
+      const srcDocs = await Promise.all(mergeFiles.map(f => f.arrayBuffer().then(b => PDFDocument.load(b))))
       const out = await PDFDocument.create()
-      const pages = await out.copyPages(src, pageOrder)
-      pages.forEach(p => out.addPage(p))
+      for (const { fileIdx, pageNum } of pageOrder) {
+        const [page] = await out.copyPages(srcDocs[fileIdx], [pageNum - 1])
+        out.addPage(page)
+      }
       downloadBlob(await out.save(), 'merged.pdf')
       setDone(true)
     } catch (e) {
@@ -523,14 +525,14 @@ export default function Tools() {
                   <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{mergedPageCount} pages — drag to reorder</p>
                 </div>
                 <button
-                  onClick={() => { setMergeStage('upload'); setMergedBytes(null); setMergedPdfJsDoc(null); setPageOrder([]); setDone(false) }}
+                  onClick={() => { setMergeStage('upload'); setMergeFileDocs([]); setPageOrder([]); setDone(false) }}
                   style={{ fontSize: '12px', fontWeight: '600', color: '#64748b', background: 'none', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '6px 12px', cursor: 'pointer' }}
                 >
                   ← Back
                 </button>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(88px, 1fr))', gap: '10px', maxHeight: '520px', overflowY: 'auto', paddingRight: '2px' }}>
-                {pageOrder.map((originalPage, orderIdx) => (
+                {pageOrder.map(({ fileIdx, pageNum }, orderIdx) => (
                   <div
                     key={orderIdx}
                     draggable
@@ -548,8 +550,8 @@ export default function Tools() {
                     }}
                   >
                     <PageThumbnail
-                      pdfJsDoc={mergedPdfJsDoc}
-                      pageNum={originalPage + 1}
+                      pdfJsDoc={mergeFileDocs[fileIdx]}
+                      pageNum={pageNum}
                       selected={false}
                       rotation={0}
                       onToggle={() => {}}
