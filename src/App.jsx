@@ -15,6 +15,7 @@ const Team = lazy(() => import('./pages/Team'))
 const CalendarPage = lazy(() => import('./pages/Calendar'))
 const Library = lazy(() => import('./pages/Library'))
 const Reports = lazy(() => import('./pages/Reports'))
+const Tools = lazy(() => import('./pages/Tools'))
 const TaskPage = lazy(() => import('./pages/Task'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 
@@ -26,6 +27,7 @@ const NAV = [
   { to: '/calendar', label: 'Calendar', end: false },
   { to: '/library', label: 'Library', end: false },
   { to: '/reports', label: 'Reports', end: false },
+  { to: '/tools', label: 'Tools', end: false },
   { to: '/tasks', label: 'Tasks', end: false },
   { to: '/settings', label: 'Settings', end: false },
 ]
@@ -551,6 +553,7 @@ function AppShell() {
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/library" element={<Library />} />
             <Route path="/reports" element={<Reports />} />
+            <Route path="/tools" element={<Tools />} />
             <Route path="/tasks" element={<TaskPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
