@@ -23,7 +23,7 @@ const TOOLS = [
 ]
 
 const TIPS = {
-  merge:     'Upload PDFs in the order you want them merged. Use the arrows to reorder.',
+  merge:     'Upload PDFs, merge them, then drag the page thumbnails to reorder before downloading.',
   delete:    'Click thumbnails to select pages for deletion. Remaining pages are saved.',
   rotate:    'Select pages, choose an angle, then click "Apply Rotation". You can apply multiple times.',
   extract:   'Select the pages you want to keep in the output file.',
@@ -171,6 +171,13 @@ export default function Tools() {
 
   // Merge state
   const [mergeFiles, setMergeFiles] = useState([])
+  const [mergeStage, setMergeStage] = useState('upload') // 'upload' | 'rearrange'
+  const [mergedBytes, setMergedBytes] = useState(null)
+  const [mergedPdfJsDoc, setMergedPdfJsDoc] = useState(null)
+  const [mergedPageCount, setMergedPageCount] = useState(0)
+  const [pageOrder, setPageOrder] = useState([])
+  const [dragIndex, setDragIndex] = useState(null)
+  const [dragOverIndex, setDragOverIndex] = useState(null)
 
   // Single-file state
   const [singleFile, setSingleFile] = useState(null)
@@ -214,6 +221,10 @@ export default function Tools() {
     setError('')
     setSelectedPages(new Set())
     setPageRotations({})
+    setMergeStage('upload')
+    setMergedBytes(null)
+    setMergedPdfJsDoc(null)
+    setPageOrder([])
   }
 
   function resetSingleFile() {
@@ -255,7 +266,16 @@ export default function Tools() {
           const pages = await out.copyPages(src, src.getPageIndices())
           pages.forEach(p => out.addPage(p))
         }
-        downloadBlob(await out.save(), 'merged.pdf')
+        const bytes = await out.save()
+        setMergedBytes(bytes)
+        const doc = await pdfjsLib.getDocument({ data: new Uint8Array(bytes) }).promise
+        setMergedPdfJsDoc(doc)
+        const count = doc.numPages
+        setMergedPageCount(count)
+        setPageOrder(Array.from({ length: count }, (_, i) => i))
+        setMergeStage('rearrange')
+        setProcessing(false)
+        return
 
       } else if (activeTool === 'delete') {
         if (!singleFile) throw new Error('Upload a PDF first.')
@@ -344,9 +364,40 @@ export default function Tools() {
     }
   }
 
+  async function handleDownloadMerged() {
+    setProcessing(true)
+    setError('')
+    try {
+      const src = await PDFDocument.load(mergedBytes)
+      const out = await PDFDocument.create()
+      const pages = await out.copyPages(src, pageOrder)
+      pages.forEach(p => out.addPage(p))
+      downloadBlob(await out.save(), 'merged.pdf')
+      setDone(true)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  function handlePageDrop(dropIndex) {
+    if (dragIndex === null || dragIndex === dropIndex) return
+    setPageOrder(prev => {
+      const next = [...prev]
+      const [moved] = next.splice(dragIndex, 1)
+      next.splice(dropIndex, 0, moved)
+      return next
+    })
+    setDragIndex(null)
+    setDragOverIndex(null)
+  }
+
   const tool = TOOLS.find(t => t.id === activeTool)
   const needsPageGrid = ['delete', 'rotate', 'extract'].includes(activeTool)
-  const canProcess = activeTool === 'merge' ? mergeFiles.length >= 2 : singleFile !== null
+  const canProcess = activeTool === 'merge'
+    ? (mergeStage === 'upload' ? mergeFiles.length >= 2 : true)
+    : singleFile !== null
 
   const splitFileCount = (() => {
     if (activeTool !== 'split' || !singleFile || splitMode !== 'count') return null
@@ -435,6 +486,52 @@ export default function Tools() {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* MERGE: rearrange stage */}
+          {activeTool === 'merge' && mergeStage === 'rearrange' && (
+            <div style={{ background: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                <div>
+                  <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>Rearrange pages</p>
+                  <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{mergedPageCount} pages — drag to reorder</p>
+                </div>
+                <button
+                  onClick={() => { setMergeStage('upload'); setMergedBytes(null); setMergedPdfJsDoc(null); setPageOrder([]); setDone(false) }}
+                  style={{ fontSize: '12px', fontWeight: '600', color: '#64748b', background: 'none', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '6px 12px', cursor: 'pointer' }}
+                >
+                  ← Back
+                </button>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(88px, 1fr))', gap: '10px', maxHeight: '520px', overflowY: 'auto', paddingRight: '2px' }}>
+                {pageOrder.map((originalPage, orderIdx) => (
+                  <div
+                    key={orderIdx}
+                    draggable
+                    onDragStart={() => setDragIndex(orderIdx)}
+                    onDragOver={e => { e.preventDefault(); setDragOverIndex(orderIdx) }}
+                    onDrop={() => handlePageDrop(orderIdx)}
+                    onDragEnd={() => { setDragIndex(null); setDragOverIndex(null) }}
+                    style={{
+                      cursor: 'grab',
+                      opacity: dragIndex === orderIdx ? 0.4 : 1,
+                      outline: dragOverIndex === orderIdx && dragIndex !== orderIdx ? '2px dashed #2563eb' : 'none',
+                      outlineOffset: '2px',
+                      borderRadius: '10px',
+                      transition: 'opacity 0.15s',
+                    }}
+                  >
+                    <PageThumbnail
+                      pdfJsDoc={mergedPdfJsDoc}
+                      pageNum={originalPage + 1}
+                      selected={false}
+                      rotation={0}
+                      onToggle={() => {}}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -641,7 +738,7 @@ export default function Tools() {
 
             {/* Process button */}
             <button
-              onClick={handleProcess}
+              onClick={activeTool === 'merge' && mergeStage === 'rearrange' ? handleDownloadMerged : handleProcess}
               disabled={processing || !canProcess}
               style={{
                 marginTop: '8px',
@@ -661,7 +758,8 @@ export default function Tools() {
               ) : (
                 <>
                   <Download size={14} />
-                  {activeTool === 'merge' ? 'Merge & Download'
+                  {activeTool === 'merge' && mergeStage === 'upload' ? 'Merge & Preview'
+                    : activeTool === 'merge' && mergeStage === 'rearrange' ? 'Download PDF'
                     : activeTool === 'split' ? 'Split & Download'
                     : 'Process & Download'}
                 </>
