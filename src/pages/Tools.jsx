@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import {
   Upload, Trash2, RotateCw, Scissors, Layers, Type, Minimize2,
-  X, Download, ArrowUp, ArrowDown, FileText, Check, GripVertical,
+  X, Download, ArrowUp, ArrowDown, FileText, Check, GripVertical, ArrowLeftRight,
 } from 'lucide-react'
 import { PDFDocument, degrees, rgb, StandardFonts } from 'pdf-lib'
 import * as pdfjsLib from 'pdfjs-dist'
@@ -28,17 +28,19 @@ function releaseRenderSlot() {
 }
 
 const TOOLS = [
-  { id: 'merge',     label: 'Merge',        Icon: Layers,    color: '#2563eb' },
-  { id: 'delete',    label: 'Delete Pages', Icon: Trash2,    color: '#ef4444' },
-  { id: 'rotate',    label: 'Rotate',       Icon: RotateCw,  color: '#f59e0b' },
-  { id: 'extract',   label: 'Extract',      Icon: Scissors,  color: '#8b5cf6' },
-  { id: 'split',     label: 'Split',        Icon: FileText,  color: '#06b6d4' },
-  { id: 'watermark', label: 'Watermark',    Icon: Type,      color: '#ec4899' },
-  { id: 'compress',  label: 'Compress',     Icon: Minimize2, color: '#10b981' },
+  { id: 'merge',     label: 'Merge',        Icon: Layers,         color: '#2563eb' },
+  { id: 'rearrange', label: 'Rearrange',    Icon: ArrowLeftRight, color: '#7c3aed' },
+  { id: 'delete',    label: 'Delete Pages', Icon: Trash2,         color: '#ef4444' },
+  { id: 'rotate',    label: 'Rotate',       Icon: RotateCw,       color: '#f59e0b' },
+  { id: 'extract',   label: 'Extract',      Icon: Scissors,       color: '#8b5cf6' },
+  { id: 'split',     label: 'Split',        Icon: FileText,       color: '#06b6d4' },
+  { id: 'watermark', label: 'Watermark',    Icon: Type,           color: '#ec4899' },
+  { id: 'compress',  label: 'Compress',     Icon: Minimize2,      color: '#10b981' },
 ]
 
 const TIPS = {
   merge:     'Upload PDFs, merge them, then drag the page thumbnails to reorder before downloading.',
+  rearrange: 'Drag page thumbnails to change their order within the PDF, then download.',
   delete:    'Click thumbnails to select pages for deletion. Remaining pages are saved.',
   rotate:    'Select pages, choose an angle, then click "Apply Rotation". You can apply multiple times.',
   extract:   'Select the pages you want to keep in the output file.',
@@ -309,6 +311,11 @@ export default function Tools() {
   const [dragIndex, setDragIndex] = useState(null)
   const [dragOverIndex, setDragOverIndex] = useState(null)
 
+  // Rearrange state (single PDF page reorder)
+  const [rearrangeOrder, setRearrangeOrder] = useState([])
+  const [rearrangeDragIndex, setRearrangeDragIndex] = useState(null)
+  const [rearrangeDragOver, setRearrangeDragOver] = useState(null)
+
   // Single-file state
   const [singleFile, setSingleFile] = useState(null)
   const [pdfJsDoc, setPdfJsDoc] = useState(null)
@@ -342,6 +349,7 @@ export default function Tools() {
       setPageCount(doc.numPages)
       setSelectedPages(new Set())
       setPageRotations({})
+      setRearrangeOrder(Array.from({ length: doc.numPages }, (_, i) => i))
     })()
   }, [singleFile])
 
@@ -355,6 +363,7 @@ export default function Tools() {
     setMergeStage('upload')
     setMergeFileDocs([])
     setPageOrder([])
+    setRearrangeOrder([])
   }
 
   function resetSingleFile() {
@@ -364,6 +373,7 @@ export default function Tools() {
     setSelectedPages(new Set())
     setPageRotations({})
     setToolStage('edit')
+    setRearrangeOrder([])
     setDone(false)
     setError('')
   }
@@ -496,6 +506,14 @@ export default function Tools() {
         }
         downloadBlob(await pdf.save(), `${stripExt(singleFile.name)}_watermarked.pdf`)
 
+      } else if (activeTool === 'rearrange') {
+        if (!singleFile) throw new Error('Upload a PDF first.')
+        const src = await PDFDocument.load(await singleFile.arrayBuffer())
+        const out = await PDFDocument.create()
+        const pages = await out.copyPages(src, rearrangeOrder)
+        pages.forEach(p => out.addPage(p))
+        downloadBlob(await out.save(), `${stripExt(singleFile.name)}_rearranged.pdf`)
+
       } else if (activeTool === 'compress') {
         if (!singleFile) throw new Error('Upload a PDF first.')
         const pdf = await PDFDocument.load(await singleFile.arrayBuffer())
@@ -544,6 +562,7 @@ export default function Tools() {
 
   const tool = TOOLS.find(t => t.id === activeTool)
   const needsPageGrid = ['delete', 'rotate', 'extract'].includes(activeTool)
+  const isRearrange = activeTool === 'rearrange'
   const canProcess = activeTool === 'merge'
     ? (mergeStage === 'upload' ? mergeFiles.length >= 2 : true)
     : singleFile !== null
@@ -678,6 +697,56 @@ export default function Tools() {
                       rotation={0}
                       onToggle={() => {}}
                     />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* REARRANGE: draggable page grid */}
+          {activeTool === 'rearrange' && singleFile && pageCount > 0 && (
+            <div style={{ background: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                <div>
+                  <p style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>Rearrange pages</p>
+                  <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{pageCount} pages — drag to reorder</p>
+                </div>
+                <button
+                  onClick={() => setRearrangeOrder(Array.from({ length: pageCount }, (_, i) => i))}
+                  style={{ fontSize: '12px', fontWeight: '600', color: '#64748b', background: 'none', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '6px 12px', cursor: 'pointer' }}
+                >
+                  Reset order
+                </button>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(88px, 1fr))', gap: '10px', maxHeight: '520px', overflowY: 'auto' }}>
+                {rearrangeOrder.map((origPage, orderIdx) => (
+                  <div
+                    key={orderIdx}
+                    draggable
+                    onDragStart={() => setRearrangeDragIndex(orderIdx)}
+                    onDragOver={e => { e.preventDefault(); setRearrangeDragOver(orderIdx) }}
+                    onDrop={() => {
+                      if (rearrangeDragIndex === null || rearrangeDragIndex === orderIdx) return
+                      setRearrangeOrder(prev => {
+                        const next = [...prev]
+                        const [moved] = next.splice(rearrangeDragIndex, 1)
+                        next.splice(orderIdx, 0, moved)
+                        return next
+                      })
+                      setRearrangeDragIndex(null)
+                      setRearrangeDragOver(null)
+                    }}
+                    onDragEnd={() => { setRearrangeDragIndex(null); setRearrangeDragOver(null) }}
+                    style={{
+                      cursor: 'grab',
+                      opacity: rearrangeDragIndex === orderIdx ? 0.4 : 1,
+                      outline: rearrangeDragOver === orderIdx && rearrangeDragIndex !== orderIdx ? '2px dashed #7c3aed' : 'none',
+                      outlineOffset: '2px',
+                      borderRadius: '10px',
+                      transition: 'opacity 0.15s',
+                    }}
+                  >
+                    <PageThumbnail pdfJsDoc={pdfJsDoc} pageNum={origPage + 1} selected={false} rotation={0} onToggle={() => {}} />
                   </div>
                 ))}
               </div>
@@ -909,6 +978,7 @@ export default function Tools() {
             <button
               onClick={
                 activeTool === 'merge' && mergeStage === 'rearrange' ? handleDownloadMerged
+                : isRearrange ? handleProcess
                 : activeTool !== 'merge' && toolStage === 'preview' ? handleProcess
                 : activeTool !== 'merge' && toolStage === 'edit' ? handlePreview
                 : handleProcess
@@ -932,6 +1002,8 @@ export default function Tools() {
               ) : activeTool === 'merge' && mergeStage === 'upload' ? (
                 <><Download size={14} /> Merge & Preview</>
               ) : activeTool === 'merge' && mergeStage === 'rearrange' ? (
+                <><Download size={14} /> Download PDF</>
+              ) : isRearrange ? (
                 <><Download size={14} /> Download PDF</>
               ) : toolStage === 'edit' ? (
                 <><Check size={14} /> Preview Result</>
