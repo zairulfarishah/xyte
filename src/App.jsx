@@ -18,6 +18,7 @@ const Reports = lazy(() => import('./pages/Reports'))
 const Tools = lazy(() => import('./pages/Tools'))
 const TaskPage = lazy(() => import('./pages/Task'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
+const ReportBuilder = lazy(() => import('./pages/ReportBuilder'))
 
 const NAV = [
   { to: '/', label: 'Dashboard', end: true },
@@ -27,6 +28,7 @@ const NAV = [
   { to: '/calendar', label: 'Calendar', end: false },
   { to: '/library', label: 'Library', end: false },
   { to: '/reports', label: 'Reports', end: false },
+  { to: '/report-builder', label: 'Xport', end: false },
   { to: '/tools', label: 'Tools', end: false },
   { to: '/tasks', label: 'Tasks', end: false },
   { to: '/settings', label: 'Settings', end: false },
@@ -556,6 +558,7 @@ function AppShell() {
             <Route path="/tools" element={<Tools />} />
             <Route path="/tasks" element={<TaskPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/report-builder" element={<ReportBuilder />} />
           </Routes>
         </Suspense>
       </main>
