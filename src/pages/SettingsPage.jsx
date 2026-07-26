@@ -5,6 +5,7 @@ import { ROLE_MULTIPLIERS, WEEKLY_CAPACITY_DAYS } from '../utils/workload'
 import { useAuth } from '../context/AuthContext'
 import { useViewport } from '../utils/useViewport'
 import { LEAVE_TYPES, fetchTeamLeaves, saveTeamLeaves } from '../utils/teamLeaves'
+import { formatPhoneDisplay, isValidPhone, normalizePhone } from '../utils/whatsapp'
 
 const AVATAR_COLORS = ['#2563eb', '#7c3aed', '#db2777', '#059669', '#d97706', '#dc2626']
 
@@ -50,6 +51,9 @@ export default function SettingsPage() {
   const [leaves, setLeaves] = useState([])
   const [leaveForm, setLeaveForm] = useState(EMPTY_LEAVE_FORM)
   const [leaveSaving, setLeaveSaving] = useState(false)
+  const [phoneDraft, setPhoneDraft] = useState({})
+  const [phoneSaving, setPhoneSaving] = useState(null)
+  const [phoneError, setPhoneError] = useState('')
 
   useEffect(() => { fetchAll() }, [])
 
@@ -77,6 +81,36 @@ export default function SettingsPage() {
     () => Object.fromEntries(members.map(member => [member.id, member])),
     [members]
   )
+
+  async function savePhone(member) {
+    const raw = phoneDraft[member.id] ?? ''
+    const trimmed = raw.trim()
+
+    if (trimmed && !isValidPhone(trimmed)) {
+      setPhoneError(`${member.full_name}: enter a valid number, e.g. 012-345 6789`)
+      return
+    }
+
+    setPhoneError('')
+    setPhoneSaving(member.id)
+    const value = trimmed ? normalizePhone(trimmed) : null
+    const { error } = await supabase.from('team_members').update({ phone: value }).eq('id', member.id)
+    setPhoneSaving(null)
+
+    if (error) {
+      setPhoneError(error.message.includes('phone')
+        ? 'The team_members table has no "phone" column yet — run the migration first.'
+        : error.message)
+      return
+    }
+
+    setMembers(prev => prev.map(m => m.id === member.id ? { ...m, phone: value } : m))
+    setPhoneDraft(prev => {
+      const next = { ...prev }
+      delete next[member.id]
+      return next
+    })
+  }
 
   const sortedLeaves = useMemo(
     () => [...leaves].sort((a, b) => String(a.start_date || '').localeCompare(String(b.start_date || ''))),
@@ -215,7 +249,10 @@ export default function SettingsPage() {
               <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
                 <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9' }}>
                   <h2 style={{ fontSize: '15px', fontWeight: '600', color: '#0f172a' }}>Team Members</h2>
-                  <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>Your current Xradar team</p>
+                  <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>Your current Xradar team — a phone number enables the WhatsApp button on each site</p>
+                  {phoneError && (
+                    <p style={{ fontSize: '12px', color: '#b91c1c', fontWeight: '600', marginTop: '8px' }}>{phoneError}</p>
+                  )}
                 </div>
                 <div style={{ padding: '8px' }}>
                   {members.map((m, i) => (
@@ -231,10 +268,34 @@ export default function SettingsPage() {
                         <Avatar name={m.full_name} size={40} index={i} />
                         <div>
                           <p style={{ fontWeight: '600', fontSize: '14px', color: '#0f172a' }}>{m.full_name}</p>
-                          <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '1px' }}>{m.role}</p>
+                          <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '1px' }}>
+                            {m.role}{m.phone ? ` · ${formatPhoneDisplay(m.phone)}` : ''}
+                          </p>
                         </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <input
+                          value={phoneDraft[m.id] ?? m.phone ?? ''}
+                          onChange={e => setPhoneDraft(prev => ({ ...prev, [m.id]: e.target.value }))}
+                          placeholder="012-345 6789"
+                          style={{
+                            width: '140px', padding: '6px 10px', borderRadius: '8px',
+                            border: '1px solid #e2e8f0', fontSize: '12px', color: '#0f172a',
+                          }}
+                        />
+                        <button
+                          onClick={() => savePhone(m)}
+                          disabled={phoneSaving === m.id || (phoneDraft[m.id] ?? m.phone ?? '') === (m.phone ?? '')}
+                          style={{
+                            padding: '6px 12px', borderRadius: '8px', border: '1px solid #bfdbfe',
+                            background: (phoneDraft[m.id] ?? m.phone ?? '') === (m.phone ?? '') ? '#f8fafc' : '#eff6ff',
+                            color: (phoneDraft[m.id] ?? m.phone ?? '') === (m.phone ?? '') ? '#94a3b8' : '#1d4ed8',
+                            fontSize: '11px', fontWeight: '700',
+                            cursor: (phoneDraft[m.id] ?? m.phone ?? '') === (m.phone ?? '') ? 'default' : 'pointer',
+                          }}
+                        >
+                          {phoneSaving === m.id ? 'Saving…' : 'Save'}
+                        </button>
                         <span style={{
                           background: m.role === 'Team Leader' ? '#eff6ff' : '#faf5ff',
                           color: m.role === 'Team Leader' ? '#1d4ed8' : '#6d28d9',

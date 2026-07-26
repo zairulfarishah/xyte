@@ -3,16 +3,17 @@ import { Link, useLocation } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker, useMapEvents } from 'react-leaflet'
 import { supabase } from '../supabase'
 import {
-  Pencil, Trash2, Search, ArrowUpRight, MapPin, X, Camera,
+  Pencil, Trash2, Search, ArrowUpRight, MapPin, MessageCircle, X, Camera,
   Calendar, Clock, CheckCircle,
 } from 'lucide-react'
-import { notify, notifyMany } from '../utils/notify'
+import { notify, notifyAssignments, notifyMany } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
 import { getSiteHeaderImage } from '../utils/siteHeader'
 import { mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../utils/completionMeta'
 import { fetchTeamLeaves, getLeaveSummary, getMemberLeaveOnDate } from '../utils/teamLeaves'
 import { useViewport } from '../utils/useViewport'
+import { buildAssignmentMessage, openWhatsApp } from '../utils/whatsapp'
 import 'leaflet/dist/leaflet.css'
 
 /* ── Design tokens (Dashboard light-mode parity) ── */
@@ -153,11 +154,20 @@ export default function Sites() {
   const [draftStatus, setDraftStatus]   = useState(null)
   const [panelAnchor, setPanelAnchor]   = useState(null)
   const [leaves, setLeaves]             = useState([])
+  const [waMenu, setWaMenu]             = useState(null)
   const photoInputRef = useRef(null)
   const PER_PAGE = 8
 
   const location = useLocation()
   useEffect(() => { fetchAll() }, [])
+
+  // Close the WhatsApp picker on any outside click
+  useEffect(() => {
+    if (!waMenu) return
+    const close = () => setWaMenu(null)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [waMenu])
   useEffect(() => { if (location.state?.openAdd) openAdd() }, [location.state])
   useEffect(() => {
     const h = () => openAdd()
@@ -175,7 +185,7 @@ export default function Sites() {
     const [{ data:s }, { data:m }, leaveData] = await Promise.all([
       supabase
         .from('sites')
-        .select(`*, site_assignments(assignment_role, team_members(id, full_name, avatar_url))`)
+        .select(`*, site_assignments(assignment_role, team_members(id, full_name, avatar_url, phone))`)
         .order('scheduled_date', { ascending:false }),
       supabase.from('team_members').select('*').order('full_name'),
       fetchTeamLeaves().catch(() => []),
@@ -351,21 +361,14 @@ export default function Sites() {
         form.crew_ids.forEach(id => { if (id!==form.pic_id) assignments.push({ site_id:siteId, member_id:id, assignment_role:'crew' }) })
         if (assignments.length > 0) await supabase.from('site_assignments').insert(assignments)
 
-        // Notify PIC
-        if (form.pic_id) {
-          await notify(
-            `You have been assigned as PIC for "${form.site_name}" on ${new Date(form.scheduled_date).toLocaleDateString('en-MY',{day:'numeric',month:'short',year:'numeric'})}`,
-            fullName, form.pic_id
-          )
-        }
-        // Notify crew
-        const crewOnly = form.crew_ids.filter(id => id !== form.pic_id)
-        if (crewOnly.length > 0) {
-          await notifyMany(
-            `You have been assigned as crew for "${form.site_name}" on ${new Date(form.scheduled_date).toLocaleDateString('en-MY',{day:'numeric',month:'short',year:'numeric'})}`,
-            fullName, crewOnly
-          )
-        }
+        // Notify PIC and crew
+        await notifyAssignments({
+          siteName: form.site_name,
+          scheduledDate: form.scheduled_date,
+          picId: form.pic_id,
+          crewIds: form.crew_ids,
+          actor: fullName,
+        })
       }
       await notify(`${editSite?'Updated':'Added'} site: ${form.site_name}`, fullName)
       window.dispatchEvent(new CustomEvent('xyte:site-saved'))
@@ -483,6 +486,12 @@ export default function Sites() {
               const memberIdx = members.findIndex(m => m.id === pic?.team_members?.id)
               const isExpanded = expandedCard === site.id
               const glow = CARD_GLOW[site.site_type] || CARD_GLOW.site_scanning
+              // Assigned members reachable on WhatsApp — PIC first
+              const waTargets = [
+                ...(pic ? [{ role: 'PIC', member: pic.team_members }] : []),
+                ...crew.map(c => ({ role: 'crew', member: c.team_members })),
+              ].filter(t => t.member?.phone)
+              const waOpen = waMenu === site.id
               const completionMeta = parseCompletionMeta(site.notes || '')
 
               return (
@@ -625,6 +634,45 @@ export default function Sites() {
                         }}>
                         <Pencil size={11} /> Update
                       </button>
+                      {waTargets.length > 0 && (
+                        <div style={{ position:'relative', flexShrink:0 }}>
+                          <button
+                            title={waTargets.length === 1 ? `WhatsApp ${waTargets[0].member.full_name}` : 'WhatsApp the team'}
+                            onClick={e => {
+                              e.stopPropagation()
+                              if (waTargets.length === 1) {
+                                const { role, member } = waTargets[0]
+                                openWhatsApp(member.phone, buildAssignmentMessage({ role, memberName: member.full_name, site, sender: fullName }))
+                                return
+                              }
+                              setWaMenu(waOpen ? null : site.id)
+                            }}
+                            style={{ width:34,height:34,borderRadius:'8px',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',background: waOpen ? '#dcfce7' : '#f0fdf4',border:'1px solid #86efac',color:'#15803d',transition:'all .15s' }}
+                            onMouseEnter={e => { e.currentTarget.style.background='#dcfce7' }}
+                            onMouseLeave={e => { e.currentTarget.style.background = waOpen ? '#dcfce7' : '#f0fdf4' }}>
+                            <MessageCircle size={12} />
+                          </button>
+                          {waOpen && (
+                            <div style={{ position:'absolute', bottom:'40px', right:0, zIndex:30, width:'200px', background:'white', border:'1px solid #e2e8f0', borderRadius:'10px', boxShadow:'0 12px 30px rgba(15,23,42,.16)', overflow:'hidden' }}>
+                              <div style={{ padding:'8px 12px', borderBottom:'1px solid #f1f5f9', fontSize:'10px', fontWeight:'800', color:'#94a3b8', letterSpacing:'.06em' }}>SEND BRIEF TO</div>
+                              {waTargets.map(({ role, member }) => (
+                                <button key={member.id}
+                                  onClick={e => {
+                                    e.stopPropagation()
+                                    openWhatsApp(member.phone, buildAssignmentMessage({ role, memberName: member.full_name, site, sender: fullName }))
+                                    setWaMenu(null)
+                                  }}
+                                  style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px', padding:'9px 12px', background:'white', border:'none', borderBottom:'1px solid #f8fafc', cursor:'pointer', fontFamily:'inherit', fontSize:'12px', fontWeight:'700', color:'#0f172a', textAlign:'left' }}
+                                  onMouseEnter={e => { e.currentTarget.style.background='#f0fdf4' }}
+                                  onMouseLeave={e => { e.currentTarget.style.background='white' }}>
+                                  <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{member.full_name}</span>
+                                  <span style={{ fontSize:'9px', fontWeight:'800', color: role === 'PIC' ? '#1d4ed8' : '#64748b', flexShrink:0 }}>{role === 'PIC' ? 'PIC' : 'CREW'}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <button onClick={() => openEdit(site)}
                         style={{ width:34,height:34,borderRadius:'8px',cursor:'pointer',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',background:'#fff7ed',border:'1px solid #fed7aa',color:'#d97706',transition:'all .15s' }}
                         onMouseEnter={e => { e.currentTarget.style.background='#ffedd5' }}

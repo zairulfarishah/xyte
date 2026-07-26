@@ -15,3 +15,27 @@ export async function notifyMany(message, actor = 'System', recipientIds = []) {
   const { error } = await supabase.from('notifications').insert(rows)
   if (error) console.warn('Bulk notification skipped:', error.message)
 }
+
+export function formatAssignmentDate(date) {
+  if (!date) return 'a date to be confirmed'
+  const parsed = new Date(`${String(date).slice(0, 10)}T00:00:00`)
+  if (Number.isNaN(parsed.getTime())) return 'a date to be confirmed'
+  return parsed.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+export function getAssignmentMessage(role, siteName, scheduledDate) {
+  const label = role === 'PIC' ? 'PIC' : 'crew'
+  return `You have been assigned as ${label} for "${siteName}" on ${formatAssignmentDate(scheduledDate)}`
+}
+
+// Personal notification to the PIC and each crew member of a site
+export async function notifyAssignments({ siteName, scheduledDate, picId, crewIds = [], actor = 'System' }) {
+  if (picId) {
+    await notify(getAssignmentMessage('PIC', siteName, scheduledDate), actor, picId)
+  }
+
+  const crewOnly = crewIds.filter(id => id && id !== picId)
+  if (crewOnly.length > 0) {
+    await notifyMany(getAssignmentMessage('crew', siteName, scheduledDate), actor, crewOnly)
+  }
+}
