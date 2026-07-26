@@ -28,11 +28,12 @@ const NAV = [
   { to: '/calendar', label: 'Calendar', end: false },
   { to: '/library', label: 'Library', end: false },
   { to: '/reports', label: 'Reports', end: false },
-  { to: '/report-builder', label: 'Xport', end: false },
-  { to: '/tools', label: 'Tools', end: false },
+  // Hidden for now — routes still work by direct URL
+  { to: '/report-builder', label: 'Xport', end: false, hidden: true },
+  { to: '/tools', label: 'Tools', end: false, hidden: true },
   { to: '/tasks', label: 'Tasks', end: false },
   { to: '/settings', label: 'Settings', end: false },
-]
+].filter(item => !item.hidden)
 
 function timeAgo(dateStr) {
   const diff = Date.now() - new Date(dateStr)
