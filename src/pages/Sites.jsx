@@ -14,6 +14,7 @@ import { mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement
 import { fetchTeamLeaves, getLeaveSummary, getMemberLeaveOnDate } from '../utils/teamLeaves'
 import { useViewport } from '../utils/useViewport'
 import { buildAssignmentMessage, openWhatsApp } from '../utils/whatsapp'
+import { getSiteTitle } from '../utils/siteTitle'
 import 'leaflet/dist/leaflet.css'
 
 /* ── Design tokens (Dashboard light-mode parity) ── */
@@ -393,7 +394,12 @@ export default function Sites() {
 
   const filtered = sites
     .filter(s => tab==='All' || s.site_status===tab.toLowerCase())
-    .filter(s => !search || s.site_name.toLowerCase().includes(search.toLowerCase()) || s.location.toLowerCase().includes(search.toLowerCase()))
+    .filter(s => {
+      if (!search) return true
+      const needle = search.toLowerCase()
+      return [s.site_name, s.location, s.client_company_name]
+        .some(field => String(field || '').toLowerCase().includes(needle))
+    })
 
   const totalPages = Math.ceil(filtered.length / PER_PAGE)
   const paginated  = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE)
@@ -529,8 +535,8 @@ export default function Sites() {
                         </div>
                         <Pill status={site.site_status} colors={STATUS_COLORS} />
                       </div>
-                      <p style={{ margin:0, fontSize:'15px', fontWeight:'800', color:'white', letterSpacing:'-.02em', textShadow:'0 2px 10px rgba(0,0,0,.7)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', lineHeight:1.25 }}>
-                        {site.site_name}
+                      <p title={getSiteTitle(site)} style={{ margin:0, fontSize:'15px', fontWeight:'800', color:'white', letterSpacing:'-.02em', textShadow:'0 2px 10px rgba(0,0,0,.7)', lineHeight:1.25, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>
+                        {getSiteTitle(site)}
                       </p>
                     </div>
                   </div>
@@ -745,7 +751,7 @@ export default function Sites() {
               {/* Header */}
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'14px' }}>
                 <div>
-                  <p style={{ margin:0, fontSize:'13px', fontWeight:'800', color:'#0f172a', lineHeight:1.3 }}>{site.site_name}</p>
+                  <p style={{ margin:0, fontSize:'13px', fontWeight:'800', color:'#0f172a', lineHeight:1.3 }}>{getSiteTitle(site)}</p>
                   <p style={{ margin:'2px 0 0', fontSize:'11px', color:'#94a3b8', fontWeight:'500' }}>Update status</p>
                 </div>
                 <button onClick={close} style={{ background:'none', border:'none', cursor:'pointer', color:'#94a3b8', padding:'4px', borderRadius:'6px' }}>
