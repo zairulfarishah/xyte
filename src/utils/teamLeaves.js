@@ -105,6 +105,12 @@ export function getMembersOnLeave(leaves, members, date) {
     .filter(item => item.leave)
 }
 
+export function getLeaveSessionLabel(session) {
+  if (session === 'AM_ONLY') return 'AM Only'
+  if (session === 'PM_ONLY') return 'PM Only'
+  return 'Full Day'
+}
+
 export function getLeaveSummary(leave) {
   if (!leave) return ''
   const start = normalizeDate(leave.start_date)

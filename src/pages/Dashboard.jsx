@@ -5,12 +5,12 @@ import L from 'leaflet'
 import { Link } from 'react-router-dom'
 import { ArrowUpRight, CheckCircle, Plus, Pencil, Sparkles, Camera } from 'lucide-react'
 import { calculateWorkload } from '../utils/workload'
-import { notify } from '../utils/notify'
+import { notify, notifyAssignments } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
 import { mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../utils/completionMeta'
 import { useViewport } from '../utils/useViewport'
-import { fetchTeamLeaves, getLeaveSummary, getMemberLeaveOnDate, getMembersOnLeave } from '../utils/teamLeaves'
+import { fetchTeamLeaves, getLeaveSessionLabel, getLeaveSummary, getMemberLeaveOnDate, getMembersOnLeave } from '../utils/teamLeaves'
 import 'leaflet/dist/leaflet.css'
 
 function xIcon(color, selected = false) {
@@ -198,6 +198,63 @@ function formatShortDate(date) {
   return new Date(date).toLocaleDateString('en-MY', { day: 'numeric', month: 'short' })
 }
 
+// Milestone-weighted completion: driven by the actual site + report workflow
+function getSiteProgress(site) {
+  const siteStatus = String(site?.site_status || '').toLowerCase()
+  const reportStatus = String(site?.report_status || '').toLowerCase()
+
+  if (siteStatus === 'completed') {
+    if (reportStatus === 'approved' || reportStatus === 'not_applicable') return 100
+    if (reportStatus === 'submitted') return 85
+    if (reportStatus === 'in_progress') return 65
+    return 50   // fieldwork done, report not started
+  }
+
+  if (reportStatus === 'approved') return 100
+  if (reportStatus === 'submitted') return 85
+  if (reportStatus === 'in_progress') return 65
+
+  if (siteStatus === 'ongoing') return 35
+  if (siteStatus === 'postponed') return 0
+  return 10     // upcoming
+}
+
+function getProgressStage(site) {
+  const siteStatus = String(site?.site_status || '').toLowerCase()
+  const reportStatus = String(site?.report_status || '').toLowerCase()
+
+  if (reportStatus === 'approved') return 'Report approved'
+  if (reportStatus === 'submitted') return 'Report submitted'
+  if (reportStatus === 'in_progress') return 'Report in progress'
+  if (siteStatus === 'completed') return reportStatus === 'not_applicable' ? 'Completed' : 'Report not started'
+  if (siteStatus === 'ongoing') return 'On site'
+  if (siteStatus === 'postponed') return 'Postponed'
+  return 'Scheduled'
+}
+
+// Days a site is past due: upcoming past its date, or ongoing past its end date
+function getDaysOverdue(site, today = new Date()) {
+  const status = String(site?.site_status || '').toLowerCase()
+  const start = site?.scheduled_date ? new Date(`${String(site.scheduled_date).slice(0, 10)}T00:00:00`) : null
+  if (!start || Number.isNaN(start.getTime())) return 0
+
+  const ref = new Date(today)
+  ref.setHours(0, 0, 0, 0)
+
+  if (status === 'upcoming') {
+    return Math.max(0, Math.round((ref - start) / 86400000))
+  }
+
+  if (status === 'ongoing') {
+    const end = site?.scheduled_end_date
+      ? new Date(`${String(site.scheduled_end_date).slice(0, 10)}T00:00:00`)
+      : new Date(start.getTime() + (Math.max(1, Math.ceil(Number(site?.site_duration_days) || 1)) - 1) * 86400000)
+    return Math.max(0, Math.round((ref - end) / 86400000))
+  }
+
+  return 0
+}
+
 function formatLongDate(date) {
   return new Date(date).toLocaleDateString('en-MY', {
     weekday: 'short',
@@ -375,6 +432,14 @@ export default function Dashboard() {
         if (id !== form.pic_id) assignments.push({ site_id: data.id, member_id: id, assignment_role: 'crew' })
       })
       if (assignments.length > 0) await supabase.from('site_assignments').insert(assignments)
+
+      await notifyAssignments({
+        siteName: form.site_name,
+        scheduledDate: form.scheduled_date,
+        picId: form.pic_id,
+        crewIds: form.crew_ids,
+        actor: fullName,
+      })
     }
 
     await notify(`Added new site: ${form.site_name}`, fullName)
@@ -492,6 +557,15 @@ export default function Dashboard() {
     }
 
     const targetSite = sites.find(site => site.id === quickAssign.siteId)
+
+    await notifyAssignments({
+      siteName: targetSite?.site_name || 'site',
+      scheduledDate: targetSite?.scheduled_date,
+      picId: quickAssign.picId,
+      crewIds: quickAssign.crewIds,
+      actor: fullName,
+    })
+
     await notify(`Updated assignments for ${targetSite?.site_name || 'site'}`, fullName)
     setQuickAssignSaving(false)
     setQuickAssign(null)
@@ -515,8 +589,13 @@ export default function Dashboard() {
     const diff = (new Date(site.scheduled_date) - new Date()) / (1000 * 60 * 60 * 24)
     return diff >= 0 && diff <= 2 && site.site_status === 'upcoming'
   })
+  const overdueSites = sites
+    .map(site => ({ site, days: getDaysOverdue(site) }))
+    .filter(item => item.days > 0)
+    .sort((a, b) => b.days - a.days)
   const overloaded = members.filter(member => member.workload.workload_percentage > 80)
-  const allClear = noPicSites.length === 0 && soonSites.length === 0 && pendingReports.length === 0 && overloaded.length === 0
+  const allClear = noPicSites.length === 0 && soonSites.length === 0 && pendingReports.length === 0
+    && overdueSites.length === 0 && overloaded.length === 0
   const todayStr = new Date().toISOString().split('T')[0]
   const membersOnLeaveToday = getMembersOnLeave(leaves, members, todayStr)
   const upcomingLeaves = leaves
@@ -677,10 +756,26 @@ export default function Dashboard() {
     [sites]
   )
 
-  const progressSites = useMemo(
-    () => sites.filter(site => ['upcoming', 'ongoing', 'completed'].includes(site.site_status)).slice(0, 3),
-    [sites]
-  )
+  // Most relevant first: on-site now, then imminent, then finished jobs with an open report
+  const progressSites = useMemo(() => {
+    const rank = site => {
+      const status = String(site.site_status || '').toLowerCase()
+      const report = String(site.report_status || '').toLowerCase()
+      if (status === 'ongoing') return 0
+      if (status === 'upcoming') return 1
+      if (status === 'completed' && ['pending', 'in_progress', 'submitted'].includes(report)) return 2
+      return 3
+    }
+
+    return sites
+      .filter(site => ['upcoming', 'ongoing', 'completed'].includes(String(site.site_status || '').toLowerCase()))
+      .sort((a, b) => {
+        const byRank = rank(a) - rank(b)
+        if (byRank !== 0) return byRank
+        return new Date(a.scheduled_date) - new Date(b.scheduled_date)
+      })
+      .slice(0, 3)
+  }, [sites])
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
@@ -1161,15 +1256,15 @@ export default function Dashboard() {
                   </div>
                   <div style={{ padding: '14px 18px 16px', minHeight: '216px' }}>
                     {progressSites.map(site => {
-                      const progress = site.site_status === 'completed'
-                        ? 100
-                        : site.site_status === 'ongoing'
-                          ? 60
-                          : site.report_status === 'submitted'
-                            ? 85
-                            : site.report_status === 'in_progress'
-                              ? 50
-                              : 25
+                      const progress = getSiteProgress(site)
+                      const stage = getProgressStage(site)
+                      const overdueDays = getDaysOverdue(site)
+                      const siteStatus = String(site.site_status || '').toLowerCase()
+                      const reportStatus = String(site.report_status || '').toLowerCase()
+                      const scanDone = siteStatus === 'completed'
+                      const scanActive = siteStatus === 'ongoing'
+                      const reportNA = reportStatus === 'not_applicable'
+                      const dataDone = !reportNA && (scanDone || reportStatus !== 'pending')
 
                       return (
                         <div key={site.id} style={{ padding: '12px 0', borderBottom: '1px solid #eef2f7' }}>
@@ -1177,13 +1272,16 @@ export default function Dashboard() {
                             {site.site_name}
                             <span style={{ color: '#64748b', fontSize: '12px' }}>{progress}%</span>
                           </div>
+                          <div style={{ marginTop: '3px', fontSize: '11px', fontWeight: '700', color: overdueDays > 0 ? '#b91c1c' : '#94a3b8' }}>
+                            {stage}{overdueDays > 0 ? ` · overdue ${overdueDays}d` : ''}
+                          </div>
                           <div style={{ marginTop: '10px', height: '8px', background: '#edf2f7', borderRadius: '999px', overflow: 'hidden' }}>
                             <div style={{ width: `${progress}%`, height: '100%', background: progress >= 80 ? '#22c55e' : progress >= 50 ? '#2563eb' : '#f59e0b', borderRadius: '999px' }} />
                           </div>
                           <div style={{ marginTop: '9px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                            <span style={{ borderRadius: '999px', padding: '5px 8px', background: '#dcfce7', color: '#166534', fontSize: '11px', fontWeight: '800' }}>Scan</span>
-                            <span style={{ borderRadius: '999px', padding: '5px 8px', background: site.site_status === 'completed' || site.report_status !== 'pending' ? '#dcfce7' : '#f1f5f9', color: site.site_status === 'completed' || site.report_status !== 'pending' ? '#166534' : '#475569', fontSize: '11px', fontWeight: '800' }}>Data</span>
-                            <span style={{ borderRadius: '999px', padding: '5px 8px', background: site.report_status === 'approved' ? '#dcfce7' : site.report_status === 'not_applicable' ? '#f1f5f9' : '#fee2e2', color: site.report_status === 'approved' ? '#166534' : site.report_status === 'not_applicable' ? '#475569' : '#991b1b', fontSize: '11px', fontWeight: '800' }}>Report</span>
+                            <span style={{ borderRadius: '999px', padding: '5px 8px', background: scanDone ? '#dcfce7' : scanActive ? '#fef9c3' : '#f1f5f9', color: scanDone ? '#166534' : scanActive ? '#854d0e' : '#475569', fontSize: '11px', fontWeight: '800' }}>Scan</span>
+                            <span style={{ borderRadius: '999px', padding: '5px 8px', background: dataDone ? '#dcfce7' : '#f1f5f9', color: dataDone ? '#166534' : '#475569', fontSize: '11px', fontWeight: '800' }}>Data</span>
+                            <span style={{ borderRadius: '999px', padding: '5px 8px', background: reportStatus === 'approved' ? '#dcfce7' : reportNA ? '#f1f5f9' : '#fee2e2', color: reportStatus === 'approved' ? '#166534' : reportNA ? '#475569' : '#991b1b', fontSize: '11px', fontWeight: '800' }}>{reportNA ? 'No report' : 'Report'}</span>
                           </div>
                         </div>
                       )
@@ -1212,7 +1310,18 @@ export default function Dashboard() {
                       </div>
                     ) : (
                       <div>
-                        {noPicSites.map(site => (
+                        {overdueSites.slice(0, 3).map(({ site, days }) => (
+                          <div key={`overdue-${site.id}`} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '10px 12px', borderRadius: '10px', background: '#fef2f2', border: '1px solid #fecaca', marginBottom: '8px' }}>
+                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#dc2626', flexShrink: 0, marginTop: '4px' }} />
+                            <div>
+                              <div style={{ fontSize: '12px', fontWeight: '700', color: '#991b1b' }}>
+                                {site.site_status === 'ongoing' ? `Running ${days}d past end date` : `Started ${days}d ago — still marked upcoming`}
+                              </div>
+                              <div style={{ fontSize: '12px', color: '#b91c1c', marginTop: '1px' }}>{site.site_name} — update status</div>
+                            </div>
+                          </div>
+                        ))}
+                        {noPicSites.slice(0, 3).map(site => (
                           <div key={site.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '10px 12px', borderRadius: '10px', background: '#eff6ff', border: '1px solid #bfdbfe', marginBottom: '8px' }}>
                             <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#2563eb', flexShrink: 0, marginTop: '4px' }} />
                             <div>
@@ -1221,7 +1330,7 @@ export default function Dashboard() {
                             </div>
                           </div>
                         ))}
-                        {soonSites.map(site => (
+                        {soonSites.slice(0, 3).map(site => (
                           <div key={site.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '10px 12px', borderRadius: '10px', background: '#fefce8', border: '1px solid #fde68a', marginBottom: '8px' }}>
                             <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f59e0b', flexShrink: 0, marginTop: '4px' }} />
                             <div>
@@ -1239,7 +1348,7 @@ export default function Dashboard() {
                             </div>
                           </div>
                         ))}
-                        {overloaded.map(member => (
+                        {overloaded.slice(0, 3).map(member => (
                           <div key={member.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '10px 12px', borderRadius: '10px', background: '#fff7ed', border: '1px solid #fed7aa', marginBottom: '8px' }}>
                             <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f97316', flexShrink: 0, marginTop: '4px' }} />
                             <div>
