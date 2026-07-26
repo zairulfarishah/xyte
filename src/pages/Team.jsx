@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { Search, MapPin, Calendar, TrendingUp, Users, Briefcase, Activity, Clock, FileText, Radar, Camera } from 'lucide-react'
-import { calculateWorkload } from '../utils/workload'
+import { calculateWorkload, getWeekBounds } from '../utils/workload'
 import { useViewport } from '../utils/useViewport'
+import { fetchTeamLeaves, getMemberLeaveOnDate } from '../utils/teamLeaves'
 
 const AVATAR_COLORS = ['#2563eb', '#7c3aed', '#db2777', '#059669', '#d97706', '#dc2626']
 
@@ -105,7 +106,23 @@ function siteHasReport(site) {
   return siteType === 'site_scanning' && reportStatus !== 'not_applicable'
 }
 
-function buildMemberRecord(member, sites) {
+// Leave days (Mon-Sat) the member loses in the current workload week
+function getLeaveDaysThisWeek(leaves, memberId) {
+  const { start, end } = getWeekBounds()
+  let days = 0
+
+  for (let day = new Date(start); day < end; day.setDate(day.getDate() + 1)) {
+    if (day.getDay() === 0) continue
+    const iso = new Date(day.getTime() - day.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+    const leave = getMemberLeaveOnDate(leaves, memberId, iso)
+    if (!leave) continue
+    days += leave.leave_session === 'FULL_DAY' ? 1 : 0.5
+  }
+
+  return days
+}
+
+function buildMemberRecord(member, sites, leaves = []) {
   const assignments = sites.flatMap(site =>
     (site.site_assignments || [])
       .filter(assignment => assignment.member_id === member.id)
@@ -122,7 +139,7 @@ function buildMemberRecord(member, sites) {
     pic_count: picCount,
     crew_count: crewCount,
     report_involved_count: reportInvolvedCount,
-    workload: calculateWorkload(assignments),
+    workload: calculateWorkload(assignments, { leaveDays: getLeaveDaysThisWeek(leaves, member.id) }),
   }
 }
 
@@ -271,8 +288,10 @@ export default function Team() {
       .select('*, site_assignments(assignment_role, member_id, team_members(full_name))')
       .order('scheduled_date', { ascending: true })
 
+    const leaveData = await fetchTeamLeaves().catch(() => [])
+
     const sites = siteData || []
-    const memberRecords = (memberData || []).map(member => buildMemberRecord(member, sites))
+    const memberRecords = (memberData || []).map(member => buildMemberRecord(member, sites, leaveData))
 
     setMembers(memberRecords)
     setAllSites(sites)
@@ -311,8 +330,8 @@ export default function Team() {
 
   const activeSites = useMemo(
     () => selectedSites.filter(site =>
-      ['ongoing', 'report_pending'].includes(String(site.site_status || '').toLowerCase()) ||
-      ['pending', 'in_progress', 'submitted', 'report_pending'].includes(String(site.report_status || '').toLowerCase())
+      String(site.site_status || '').toLowerCase() === 'ongoing' ||
+      ['pending', 'in_progress', 'submitted'].includes(String(site.report_status || '').toLowerCase())
     ),
     [selectedSites]
   )
@@ -328,7 +347,7 @@ export default function Team() {
   }, [selectedSites])
 
   const completedSites = selectedSites.filter(site => String(site.site_status || '').toLowerCase() === 'completed')
-  const reportQueue = selectedSites.filter(site => ['pending', 'in_progress', 'submitted', 'report_pending'].includes(String(site.report_status || '').toLowerCase()))
+  const reportQueue = selectedSites.filter(site => ['pending', 'in_progress', 'submitted'].includes(String(site.report_status || '').toLowerCase()))
 
   const workloadStatus = selected?.workload?.status_colors
   const progressBarWidth = selected ? Math.min(selected.workload.workload_percentage, 100) : 0
