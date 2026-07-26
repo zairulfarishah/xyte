@@ -642,7 +642,10 @@ export default function Sites() {
                               e.stopPropagation()
                               if (waTargets.length === 1) {
                                 const { role, member } = waTargets[0]
-                                openWhatsApp(member.phone, buildAssignmentMessage({ role, memberName: member.full_name, site, sender: fullName }))
+                                openWhatsApp(member.phone, buildAssignmentMessage({
+                                  role, memberName: member.full_name, site,
+                                  pic: pic?.team_members, crew: crew.map(c => c.team_members),
+                                }))
                                 return
                               }
                               setWaMenu(waOpen ? null : site.id)
@@ -659,7 +662,10 @@ export default function Sites() {
                                 <button key={member.id}
                                   onClick={e => {
                                     e.stopPropagation()
-                                    openWhatsApp(member.phone, buildAssignmentMessage({ role, memberName: member.full_name, site, sender: fullName }))
+                                    openWhatsApp(member.phone, buildAssignmentMessage({
+                                  role, memberName: member.full_name, site,
+                                  pic: pic?.team_members, crew: crew.map(c => c.team_members),
+                                }))
                                     setWaMenu(null)
                                   }}
                                   style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px', padding:'9px 12px', background:'white', border:'none', borderBottom:'1px solid #f8fafc', cursor:'pointer', fontFamily:'inherit', fontSize:'12px', fontWeight:'700', color:'#0f172a', textAlign:'left' }}

@@ -39,24 +39,38 @@ export function buildWhatsAppUrl(phone, message = '') {
 }
 
 // Assignment brief sent to a PIC or crew member
-export function buildAssignmentMessage({ role, memberName, site, sender }) {
+// Plain-text labels only — emoji render as tofu on some devices
+export function buildAssignmentMessage({ role, memberName, site, pic = null, crew = [] }) {
   const label = String(role || '').toLowerCase() === 'pic' ? 'PIC' : 'crew'
+  const duration = Number(site?.site_duration_days) || 0
+  const dateLine = duration > 1
+    ? `${formatAssignmentDate(site?.scheduled_date)} (${duration} days)`
+    : formatAssignmentDate(site?.scheduled_date)
+
   const lines = [
     `Hi ${String(memberName || '').split(' ')[0] || 'there'},`,
     '',
     `You are assigned as *${label}* for:`,
-    `📍 ${site?.site_name || 'Site'}`,
-    `🗓️ ${formatAssignmentDate(site?.scheduled_date)}`,
+    '',
+    `*Site:* ${site?.site_name || '-'}`,
+    `*Date:* ${dateLine}`,
   ]
 
-  if (site?.location) lines.push(`🧭 ${site.location}`)
+  if (site?.location) lines.push(`*Location:* ${site.location}`)
   if (site?.latitude && site?.longitude) {
-    lines.push(`🗺️ https://maps.google.com/?q=${site.latitude},${site.longitude}`)
+    lines.push(`*Map:* https://maps.google.com/?q=${site.latitude},${site.longitude}`)
   }
-  if (site?.client_name) lines.push(`🏢 Client: ${site.client_name}`)
+  if (site?.client_name) lines.push(`*Client:* ${site.client_name}`)
 
-  lines.push('', 'Please confirm your availability.')
-  if (sender) lines.push('', `— ${sender}`)
+  // Full team roster, so everyone knows who else is on the job
+  const mark = name => (name && memberName && name === memberName ? `${name} (you)` : name)
+  const crewNames = crew.map(c => mark(c?.full_name)).filter(Boolean)
+
+  if (pic?.full_name || crewNames.length > 0) {
+    lines.push('')
+    lines.push(`*PIC:* ${mark(pic?.full_name) || 'Not assigned'}`)
+    lines.push(`*Crew:* ${crewNames.length > 0 ? crewNames.join(', ') : 'None'}`)
+  }
 
   return lines.join('\n')
 }
