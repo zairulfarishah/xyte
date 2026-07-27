@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../supabase'
-import { User, Info, Lock, CalendarDays, Plus, Pencil, Trash2 } from 'lucide-react'
+import { User, Info, Lock, CalendarDays, Plus, Pencil, Trash2, UserPlus, X } from 'lucide-react'
 import { ROLE_MULTIPLIERS, WEEKLY_CAPACITY_DAYS } from '../utils/workload'
 import { useAuth } from '../context/AuthContext'
 import { useViewport } from '../utils/useViewport'
@@ -14,6 +14,24 @@ const SECTIONS = [
   { key: 'leave', label: 'Team Leave', icon: CalendarDays },
   { key: 'app', label: 'App Info', icon: Info },
 ]
+
+// Must match the member_role_enum labels in Postgres exactly
+const MEMBER_ROLES = ['GPR Engineer', 'Team Leader', 'Intern']
+
+const ROLE_TONES = {
+  'Team Leader': { bg: '#eff6ff', text: '#1d4ed8', border: '#93c5fd' },
+  Intern: { bg: '#fffbeb', text: '#b45309', border: '#fcd34d' },
+}
+
+const DEFAULT_ROLE_TONE = { bg: '#faf5ff', text: '#6d28d9', border: '#c4b5fd' }
+
+const EMPTY_MEMBER_FORM = {
+  full_name: '',
+  short_name: '',
+  role: 'GPR Engineer',
+  email: '',
+  phone: '',
+}
 
 const EMPTY_LEAVE_FORM = {
   id: null,
@@ -54,6 +72,11 @@ export default function SettingsPage() {
   const [phoneDraft, setPhoneDraft] = useState({})
   const [phoneSaving, setPhoneSaving] = useState(null)
   const [phoneError, setPhoneError] = useState('')
+  const [showMemberForm, setShowMemberForm] = useState(false)
+  const [memberForm, setMemberForm] = useState(EMPTY_MEMBER_FORM)
+  const [memberSaving, setMemberSaving] = useState(false)
+  const [memberError, setMemberError] = useState('')
+  const [memberRemoving, setMemberRemoving] = useState(null)
 
   useEffect(() => { fetchAll() }, [])
 
@@ -110,6 +133,94 @@ export default function SettingsPage() {
       delete next[member.id]
       return next
     })
+  }
+
+  function closeMemberForm() {
+    setShowMemberForm(false)
+    setMemberForm(EMPTY_MEMBER_FORM)
+    setMemberError('')
+  }
+
+  async function addMember() {
+    const fullName = memberForm.full_name.trim()
+    const shortName = memberForm.short_name.trim()
+    const email = memberForm.email.trim().toLowerCase()
+    const phone = memberForm.phone.trim()
+
+    if (!fullName) {
+      setMemberError('Full name is required.')
+      return
+    }
+
+    if (members.some(m => m.full_name?.trim().toLowerCase() === fullName.toLowerCase())) {
+      setMemberError(`${fullName} is already on the team.`)
+      return
+    }
+
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setMemberError('Enter a valid email address, or leave it blank.')
+      return
+    }
+
+    if (phone && !isValidPhone(phone)) {
+      setMemberError('Enter a valid phone number, e.g. 012-345 6789.')
+      return
+    }
+
+    setMemberError('')
+    setMemberSaving(true)
+    const { data, error } = await supabase
+      .from('team_members')
+      .insert({
+        full_name: fullName,
+        short_name: shortName || fullName.split(' ')[0],
+        role: memberForm.role,
+        email: email || null,
+        phone: phone ? normalizePhone(phone) : null,
+      })
+      .select()
+      .single()
+    setMemberSaving(false)
+
+    if (error) {
+      setMemberError(error.message)
+      return
+    }
+
+    setMembers(prev => [...prev, data])
+    closeMemberForm()
+  }
+
+  async function removeMember(member) {
+    setMemberError('')
+
+    const { count, error: countError } = await supabase
+      .from('site_assignments')
+      .select('id', { count: 'exact', head: true })
+      .eq('member_id', member.id)
+
+    if (countError) {
+      setMemberError(countError.message)
+      return
+    }
+
+    if (count > 0) {
+      setMemberError(`${member.full_name} is still assigned to ${count} site${count > 1 ? 's' : ''} — remove those assignments first.`)
+      return
+    }
+
+    if (!confirm(`Remove ${member.full_name} from the team?`)) return
+
+    setMemberRemoving(member.id)
+    const { error } = await supabase.from('team_members').delete().eq('id', member.id)
+    setMemberRemoving(null)
+
+    if (error) {
+      setMemberError(error.message)
+      return
+    }
+
+    setMembers(prev => prev.filter(m => m.id !== member.id))
   }
 
   const sortedLeaves = useMemo(
@@ -248,12 +359,86 @@ export default function SettingsPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
                 <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9' }}>
-                  <h2 style={{ fontSize: '15px', fontWeight: '600', color: '#0f172a' }}>Team Members</h2>
-                  <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>Your current Xradar team — a phone number enables the WhatsApp button on each site</p>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+                    <div>
+                      <h2 style={{ fontSize: '15px', fontWeight: '600', color: '#0f172a' }}>Team Members</h2>
+                      <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>Your current Xradar team — a phone number enables the WhatsApp button on each site</p>
+                    </div>
+                    <button
+                      onClick={() => (showMemberForm ? closeMemberForm() : setShowMemberForm(true))}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0,
+                        padding: '8px 12px', borderRadius: '9px',
+                        border: `1px solid ${showMemberForm ? '#e2e8f0' : '#bfdbfe'}`,
+                        background: showMemberForm ? '#f8fafc' : '#eff6ff',
+                        color: showMemberForm ? '#475569' : '#1d4ed8',
+                        fontSize: '12px', fontWeight: '700', cursor: 'pointer',
+                      }}
+                    >
+                      {showMemberForm ? <X size={13} /> : <UserPlus size={13} />}
+                      {showMemberForm ? 'Cancel' : 'Add Member'}
+                    </button>
+                  </div>
                   {phoneError && (
                     <p style={{ fontSize: '12px', color: '#b91c1c', fontWeight: '600', marginTop: '8px' }}>{phoneError}</p>
                   )}
+                  {memberError && (
+                    <p style={{ fontSize: '12px', color: '#b91c1c', fontWeight: '600', marginTop: '8px' }}>{memberError}</p>
+                  )}
                 </div>
+
+                {showMemberForm && (
+                  <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: '12px' }}>
+                      {[
+                        { key: 'full_name', label: 'Full Name', placeholder: 'e.g. Ahmad Zaki', required: true },
+                        { key: 'short_name', label: 'Short Name', placeholder: 'Shown on calendar — defaults to first name' },
+                        { key: 'email', label: 'Email', placeholder: 'name@xradar.asia — needed to log in' },
+                        { key: 'phone', label: 'Phone', placeholder: '012-345 6789' },
+                      ].map(({ key, label, placeholder, required }) => (
+                        <div key={key}>
+                          <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#64748b', marginBottom: '6px' }}>
+                            {label}{required ? ' *' : ''}
+                          </label>
+                          <input
+                            value={memberForm[key]}
+                            onChange={e => setMemberForm(form => ({ ...form, [key]: e.target.value }))}
+                            onKeyDown={e => { if (e.key === 'Enter') addMember() }}
+                            placeholder={placeholder}
+                            style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '13px', color: '#0f172a', background: 'white', boxSizing: 'border-box' }}
+                          />
+                        </div>
+                      ))}
+                      <div>
+                        <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#64748b', marginBottom: '6px' }}>Role</label>
+                        <select
+                          value={memberForm.role}
+                          onChange={e => setMemberForm(form => ({ ...form, role: e.target.value }))}
+                          style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '13px', color: '#0f172a', background: 'white', boxSizing: 'border-box' }}
+                        >
+                          {MEMBER_ROLES.map(role => <option key={role} value={role}>{role}</option>)}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '14px' }}>
+                      <button
+                        onClick={addMember}
+                        disabled={memberSaving}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '7px',
+                          padding: '10px 16px', borderRadius: '10px', border: 'none',
+                          background: '#2563eb', color: 'white', fontSize: '13px', fontWeight: '700',
+                          cursor: memberSaving ? 'not-allowed' : 'pointer', opacity: memberSaving ? 0.7 : 1,
+                        }}
+                      >
+                        <Plus size={14} />
+                        {memberSaving ? 'Adding…' : 'Add Member'}
+                      </button>
+                      <p style={{ fontSize: '11px', color: '#94a3b8' }}>Interns can be added the same way — pick <b>Intern</b> as the role.</p>
+                    </div>
+                  </div>
+                )}
                 <div style={{ padding: '8px' }}>
                   {members.map((m, i) => (
                     <div key={m.id} style={{
@@ -297,12 +482,25 @@ export default function SettingsPage() {
                           {phoneSaving === m.id ? 'Saving…' : 'Save'}
                         </button>
                         <span style={{
-                          background: m.role === 'Team Leader' ? '#eff6ff' : '#faf5ff',
-                          color: m.role === 'Team Leader' ? '#1d4ed8' : '#6d28d9',
-                          border: `1px solid ${m.role === 'Team Leader' ? '#93c5fd' : '#c4b5fd'}`,
-                          padding: '3px 10px', borderRadius: '99px', fontSize: '11px', fontWeight: '500',
+                          background: (ROLE_TONES[m.role] || DEFAULT_ROLE_TONE).bg,
+                          color: (ROLE_TONES[m.role] || DEFAULT_ROLE_TONE).text,
+                          border: `1px solid ${(ROLE_TONES[m.role] || DEFAULT_ROLE_TONE).border}`,
+                          padding: '3px 10px', borderRadius: '99px', fontSize: '11px', fontWeight: '500', whiteSpace: 'nowrap',
                         }}>{m.role}</span>
                         <span style={{ background: '#dcfce7', color: '#166534', border: '1px solid #4ade80', padding: '3px 10px', borderRadius: '99px', fontSize: '11px', fontWeight: '500' }}>Active</span>
+                        <button
+                          onClick={() => removeMember(m)}
+                          disabled={memberRemoving === m.id}
+                          title="Remove from team"
+                          style={{
+                            width: '30px', height: '30px', borderRadius: '9px', flexShrink: 0,
+                            border: '1px solid #fecaca', background: '#fff1f2', color: '#dc2626',
+                            cursor: memberRemoving === m.id ? 'not-allowed' : 'pointer',
+                            display: 'grid', placeItems: 'center',
+                          }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
                       </div>
                     </div>
                   ))}
