@@ -178,8 +178,7 @@ export async function buildMileageClaimPdf({ claim, rows, company }) {
 
   const infoRows = [
     ['Name', claim.member_name || '-', 'Vehicle Plate No.', claim.vehicle_plate || '-'],
-    ['Claim Period', claim.period || '-', 'Date Submitted', fmtDate(claim.submitted_at)],
-    ['Status', (claim.status || 'draft').toUpperCase(), 'Date Generated', fmtDate(new Date().toISOString())],
+    ['Claim Period', claim.period || '-', 'Date Generated', fmtDate(new Date().toISOString())],
   ]
   const infoH = 20
   const midX = ML + TABLE_W / 2
@@ -258,9 +257,10 @@ export async function buildMileageClaimPdf({ claim, rows, company }) {
 
   const boxW = (TABLE_W - 30) / 2
   const boxH = 92
+  // Signed by hand on the printout — the app itself tracks no approval state.
   const blocks = [
-    { title: 'Submitted by', name: claim.submitted_by_name || claim.member_name || '', date: claim.submitted_at },
-    { title: 'Approved by',  name: claim.approved_by_name || '',                       date: claim.approved_at  },
+    { title: 'Submitted by', name: claim.member_name || '', date: null },
+    { title: 'Approved by',  name: '',                      date: null },
   ]
 
   blocks.forEach((b, i) => {

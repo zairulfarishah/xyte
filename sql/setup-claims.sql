@@ -5,6 +5,8 @@
 -- ============================================================
 
 -- ── 1. Mileage claim header ─────────────────────────────────
+-- No approval workflow here: the module compiles journeys and prints a PDF,
+-- which is then signed by hand.
 create table if not exists mileage_claims (
   id uuid primary key default gen_random_uuid(),
   member_id uuid references team_members(id) on delete set null,
@@ -14,15 +16,7 @@ create table if not exists mileage_claims (
   rate_per_km numeric(6,2) not null default 0.50,
   total_km numeric(10,2) not null default 0,
   total_amount numeric(10,2) not null default 0,
-  status text not null default 'draft',
-  submitted_by uuid references team_members(id) on delete set null,
-  submitted_by_name text,
-  submitted_at timestamptz,
-  approved_by uuid references team_members(id) on delete set null,
-  approved_by_name text,
-  approved_at timestamptz,
-  created_at timestamptz not null default now(),
-  constraint mileage_claims_status_check check (status in ('draft','submitted','approved','rejected'))
+  created_at timestamptz not null default now()
 );
 
 -- ── 2. Mileage journey rows ─────────────────────────────────

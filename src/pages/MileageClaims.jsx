@@ -2,19 +2,11 @@ import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { useViewport } from '../utils/useViewport'
-import { notify } from '../utils/notify'
 import { buildMileageClaimPdf, downloadPdf, mileagePdfFilename } from '../utils/mileagePdf'
-import { Plus, X, Trash2, Copy, FileDown, Check, ArrowLeft, ArrowDown, Car, Route, Send, CircleCheck, CornerDownLeft, MapPin, ChevronDown, ChevronRight } from 'lucide-react'
+import { Plus, X, Trash2, Copy, FileDown, Check, ArrowLeft, ArrowDown, Car, Route, CornerDownLeft, MapPin, ChevronDown, ChevronRight } from 'lucide-react'
 
 const DEFAULT_RATE = 0.5
 const ARROW = ' → '
-
-const STATUS = {
-  draft:     { label: 'Draft',     bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' },
-  submitted: { label: 'Submitted', bg: '#fef9c3', text: '#854d0e', border: '#fde047' },
-  approved:  { label: 'Approved',  bg: '#f0fdf4', text: '#166534', border: '#86efac' },
-  rejected:  { label: 'Rejected',  bg: '#fee2e2', text: '#991b1b', border: '#f87171' },
-}
 
 const lLabel = { display: 'block', fontSize: '11px', fontWeight: '800', color: '#334155', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.04em' }
 const input  = { width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none', color: '#0f172a', boxSizing: 'border-box', fontFamily: 'inherit', background: 'white' }
@@ -37,12 +29,6 @@ const SETUP_HINT = 'Run sql/setup-claims.sql then sql/migrate-multistop.sql in t
 
 function fmtRM(n) {
   return `RM ${(Number(n) || 0).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
-
-function fmtDate(d) {
-  if (!d) return '—'
-  const parsed = new Date(String(d).slice(0, 10) + 'T00:00:00')
-  return Number.isNaN(parsed.getTime()) ? '—' : parsed.toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 function shortDate(d) {
@@ -132,11 +118,6 @@ export default function MileageClaims() {
       vehicle_plate: '',
       period: new Date().toLocaleDateString('en-MY', { month: 'long', year: 'numeric' }),
       rate_per_km: DEFAULT_RATE,
-      status: 'draft',
-      submitted_by_name: fullName,
-      submitted_at: null,
-      approved_by_name: null,
-      approved_at: null,
       rows: [blankRow()],
     })
   }
@@ -174,20 +155,6 @@ export default function MileageClaims() {
   async function exportPdf(claim) {
     const bytes = await buildMileageClaimPdf({ claim, rows: claim.rows || [] })
     downloadPdf(bytes, mileagePdfFilename(claim))
-  }
-
-  async function approve(claim) {
-    const { error } = await supabase.from('mileage_claims').update({
-      status: 'approved',
-      approved_by: memberId,
-      approved_by_name: fullName,
-      approved_at: new Date().toISOString(),
-    }).eq('id', claim.id)
-    if (error) { alert(error.message); return }
-    if (claim.member_id) {
-      await notify(`Your ${claim.period} mileage claim (${fmtRM(claim.total_amount)}) was approved`, fullName, claim.member_id)
-    }
-    fetchClaims()
   }
 
   if (editing) {
@@ -242,8 +209,8 @@ export default function MileageClaims() {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(330px, 1fr))', gap: '14px' }}>
           {claims.map(c => {
-            const sc = STATUS[c.status] || STATUS.draft
-            const canEdit = c.status !== 'approved' && (isZairul || c.member_id === memberId)
+            const journeys = c.rows?.length || 0
+            const canEdit = isZairul || c.member_id === memberId
             return (
               <div key={c.id} style={{ background: 'white', borderRadius: '18px', border: '1px solid #e8edf3', overflow: 'hidden', boxShadow: '0 4px 16px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ padding: '16px 18px 14px', display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
@@ -254,14 +221,11 @@ export default function MileageClaims() {
                       <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#64748b', background: '#f8fafc', border: '1px solid #e2e8f0', padding: '2px 8px', borderRadius: '99px' }}>
                         <Car size={10} /> {c.vehicle_plate || 'No plate'}
                       </span>
-                      <span style={{ fontSize: '11px', color: '#64748b', background: '#f8fafc', border: '1px solid #e2e8f0', padding: '2px 8px', borderRadius: '99px' }}>
-                        {c.rows?.length || 0} journey{(c.rows?.length || 0) !== 1 ? 's' : ''}
+                      <span style={{ fontSize: '11px', fontWeight: journeys === 0 ? '800' : '400', color: journeys === 0 ? '#991b1b' : '#64748b', background: journeys === 0 ? '#fee2e2' : '#f8fafc', border: `1px solid ${journeys === 0 ? '#fca5a5' : '#e2e8f0'}`, padding: '2px 8px', borderRadius: '99px' }}>
+                        {journeys === 0 ? 'No journeys yet' : `${journeys} journey${journeys !== 1 ? 's' : ''}`}
                       </span>
                     </div>
                   </div>
-                  <span style={{ background: sc.bg, color: sc.text, border: `1px solid ${sc.border}`, padding: '3px 10px', borderRadius: '99px', fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.03em', flexShrink: 0 }}>
-                    {sc.label}
-                  </span>
                 </div>
 
                 <div style={{ padding: '12px 18px', background: '#f8fafc', borderTop: '1px solid #f1f5f9', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'baseline', gap: '10px' }}>
@@ -269,18 +233,15 @@ export default function MileageClaims() {
                   <p style={{ fontSize: '11.5px', color: '#94a3b8' }}>{Number(c.total_km || 0).toLocaleString('en-MY')} km @ RM {Number(c.rate_per_km).toFixed(2)}/km</p>
                 </div>
 
-                {(c.submitted_at || c.approved_at) && (
-                  <div style={{ padding: '10px 18px', fontSize: '11px', color: '#94a3b8', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                    {c.submitted_at && <span>Submitted by {c.submitted_by_name || '—'} · {fmtDate(c.submitted_at)}</span>}
-                    {c.approved_at  && <span style={{ color: '#166534', fontWeight: '600' }}>Approved by {c.approved_by_name || '—'} · {fmtDate(c.approved_at)}</span>}
-                  </div>
-                )}
-
                 <div style={{ padding: '12px 14px', display: 'flex', gap: '7px', flexWrap: 'wrap', marginTop: 'auto' }}>
                   <button
                     onClick={() => exportPdf(c)}
-                    onMouseEnter={lift} onMouseLeave={drop}
-                    style={{ ...BTN.violet, padding: '9px 15px', fontSize: '12px' }}
+                    disabled={journeys === 0}
+                    title={journeys === 0 ? 'Add journeys before generating the PDF' : 'Generate the PDF'}
+                    onMouseEnter={journeys === 0 ? undefined : lift} onMouseLeave={drop}
+                    style={journeys === 0
+                      ? { ...btnBase, padding: '9px 15px', fontSize: '12px', background: '#e2e8f0', color: '#94a3b8', border: '1.5px solid #cbd5e1', cursor: 'not-allowed' }
+                      : { ...BTN.violet, padding: '9px 15px', fontSize: '12px' }}
                   >
                     <FileDown size={13} /> PDF
                   </button>
@@ -293,16 +254,7 @@ export default function MileageClaims() {
                       Open
                     </button>
                   )}
-                  {isZairul && c.status === 'submitted' && (
-                    <button
-                      onClick={() => approve(c)}
-                      onMouseEnter={lift} onMouseLeave={drop}
-                      style={{ ...BTN.green, padding: '9px 15px', fontSize: '12px' }}
-                    >
-                      <CircleCheck size={13} /> Approve
-                    </button>
-                  )}
-                  {(isZairul || (c.member_id === memberId && c.status !== 'approved')) && (
+                  {canEdit && (
                     <button
                       onClick={() => handleDelete(c)}
                       title="Delete claim"
@@ -465,7 +417,7 @@ function MileageEditor({ claim, isMobile, memberId, fullName, onClose, onSaved }
   }
 
   // Persists head + rows; returns the saved claim (rows shaped for the PDF) or null.
-  async function persist(status, extra = {}) {
+  async function persist() {
     if (!validate()) return null
     setSaving(true); setError(null)
 
@@ -477,8 +429,6 @@ function MileageEditor({ claim, isMobile, memberId, fullName, onClose, onSaved }
       rate_per_km:   rate,
       total_km:      totals.km,
       total_amount:  totals.amount,
-      status,
-      ...extra,
     }
 
     let claimId = savedId
@@ -532,24 +482,13 @@ function MileageEditor({ claim, isMobile, memberId, fullName, onClose, onSaved }
   }
 
   async function handleSave() {
-    const saved = await persist(claim.status === 'approved' ? 'approved' : claim.status || 'draft')
+    const saved = await persist()
     if (saved) onSaved()
-  }
-
-  async function handleSubmit() {
-    const saved = await persist('submitted', {
-      submitted_by: memberId,
-      submitted_by_name: fullName,
-      submitted_at: new Date().toISOString(),
-    })
-    if (!saved) return
-    await notify(`${fullName} submitted a mileage claim for ${saved.period} (${fmtRM(saved.total_amount)})`, fullName)
-    onSaved()
   }
 
   // Save first so the PDF always matches what is stored.
   async function handleSaveAndPdf() {
-    const saved = await persist(claim.status || 'draft')
+    const saved = await persist()
     if (!saved) return
     const bytes = await buildMileageClaimPdf({ claim: saved, rows: saved.rows })
     downloadPdf(bytes, mileagePdfFilename(saved))
@@ -921,16 +860,6 @@ function MileageEditor({ claim, isMobile, memberId, fullName, onClose, onSaved }
         >
           <FileDown size={15} /> Save & Download PDF
         </button>
-        {claim.status !== 'approved' && (
-          <button
-            onClick={handleSubmit}
-            disabled={saving}
-            onMouseEnter={lift} onMouseLeave={drop}
-            style={{ ...BTN.green, padding: '13px 24px', fontSize: '13.5px', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}
-          >
-            <Send size={14} /> Save & Submit for approval
-          </button>
-        )}
         <button
           onClick={onClose}
           onMouseEnter={lift} onMouseLeave={drop}
