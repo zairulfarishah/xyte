@@ -123,7 +123,7 @@ function GanttListView({ sitesSorted, year, month, navigate, leaves, members }) 
                 const isSun    = new Date(year, month, d).getDay() === 0
                 const holiday  = publicHolidayName(dateStrOf(d))
                 const isToday  = dateStrOf(d) === todayStr
-                const bg       = holiday ? '#2563eb' : (isSun ? '#0f172a' : '#1e3a5f')
+                const bg       = holiday ? '#2563eb' : (isSun ? '#0f172a' : (isToday ? '#2c4d7a' : '#1e3a5f'))
                 const fg       = holiday ? '#dbeafe' : (isSun ? '#64748b' : '#93c5fd')
                 return (
                   <th key={d} title={holiday || undefined} style={{
@@ -132,7 +132,6 @@ function GanttListView({ sitesSorted, year, month, navigate, leaves, members }) 
                     background: bg, color: fg,
                     textAlign: 'center', padding: '8px 4px', borderBottom: '2px solid #16314f',
                     borderRight: '1px solid rgba(148,197,253,0.18)',
-                    boxShadow: isToday ? 'inset 0 -3px 0 0 #38bdf8' : 'none',
                   }}>
                     <div style={{ fontSize: '9px', fontWeight: '800', textTransform: 'uppercase' }}>{new Date(year, month, d).toLocaleDateString('en-MY', { weekday: 'short' })}</div>
                     <div style={{ fontSize: '12px', fontWeight: '700', marginTop: '2px' }}>{d}</div>
@@ -195,13 +194,12 @@ function GanttListView({ sitesSorted, year, month, navigate, leaves, members }) 
                       const isSun   = new Date(year, month, d).getDay() === 0
                       const holiday = publicHolidayName(dateStr)
                       const isToday = dateStr === todayStr
-                      const bg      = active ? '#86d387' : (holiday ? '#93c5fd' : (isSun ? '#0f172a' : 'white'))
+                      const bg      = active ? '#86d387' : (holiday ? '#93c5fd' : (isSun ? '#0f172a' : (isToday ? '#e6f0ff' : 'white')))
                       return (
                         <td key={d} style={{
                           width: GANTT_DAY_WIDTH, minWidth: GANTT_DAY_WIDTH,
                           background: bg, verticalAlign: 'middle',
                           borderBottom: '1px solid #e5eaf1', borderRight: '1px solid #eef1f5',
-                          boxShadow: isToday ? 'inset 0 0 0 2px #38bdf8' : 'none',
                           padding: '8px 6px', textAlign: 'center',
                         }}>
                           {active && <span style={{ fontSize: '9px', fontWeight: '800', color: '#000000', lineHeight: 1.3 }}>{names}</span>}
@@ -266,9 +264,8 @@ function GanttListView({ sitesSorted, year, month, navigate, leaves, members }) 
                         return (
                           <td key={d} style={{
                             width: GANTT_DAY_WIDTH, minWidth: GANTT_DAY_WIDTH,
-                            background: active ? '#fecaca' : 'white', verticalAlign: 'middle',
+                            background: active ? '#fecaca' : (isToday ? '#e6f0ff' : 'white'), verticalAlign: 'middle',
                             borderBottom: '1px solid #e5eaf1', borderRight: '1px solid #eef1f5',
-                            boxShadow: isToday ? 'inset 0 0 0 2px #38bdf8' : 'none',
                             padding: '8px 6px', textAlign: 'center',
                           }}>
                             {active && <span style={{ fontSize: '9px', fontWeight: '800', color: '#7f1d1d' }}>{abbr}</span>}
@@ -294,7 +291,7 @@ function GanttListView({ sitesSorted, year, month, navigate, leaves, members }) 
             </div>
           ))}
           <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-            <div style={{ width: '13px', height: '13px', borderRadius: '4px', border: '2px solid #38bdf8' }} />
+            <div style={{ width: '13px', height: '13px', borderRadius: '4px', background: '#e6f0ff', border: '1px solid rgba(0,0,0,0.12)' }} />
             <span style={{ fontSize: '12px', color: '#475569', fontWeight: '600' }}>Today</span>
           </div>
         </div>
