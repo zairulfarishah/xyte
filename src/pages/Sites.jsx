@@ -74,6 +74,7 @@ const EMPTY = {
   client_company_name:'', client_name:'', client_number:'', scope_of_work:'',
   salesperson:'', scheduled_date:'', end_date:'', site_session:'', site_status:'upcoming', report_status:'pending',
   site_duration_days:'1', report_duration_days:'0.5', notes:'', pic_id:'', crew_ids:[],
+  assign_mode:'same', daily_assignments:{},
   delivery_order_number:'', completion_reason:'',
   site_photo:null, site_photo_preview:null, site_photo_url:'',
 }
@@ -186,7 +187,7 @@ export default function Sites() {
     const [{ data:s }, { data:m }, leaveData] = await Promise.all([
       supabase
         .from('sites')
-        .select(`*, site_assignments(assignment_role, team_members(id, full_name, avatar_url, phone))`)
+        .select(`*, site_assignments(assignment_role, work_date, team_members(id, full_name, avatar_url, phone))`)
         .order('scheduled_date', { ascending:false }),
       supabase.from('team_members').select('*').order('full_name'),
       fetchTeamLeaves().catch(() => []),
@@ -224,9 +225,10 @@ export default function Sites() {
       if (error) { setQuickSaving(null); return }
       setSites(prev => prev.map(s => s.id === site.id ? { ...s, ...updates } : s))
 
-      // Collect all member IDs involved in this site
-      const involvedIds = (site.site_assignments || [])
-        .map(a => a.team_members?.id).filter(Boolean)
+      // Collect all member IDs involved in this site (deduped — a per-day site
+      // can have the same person assigned across multiple day-specific rows)
+      const involvedIds = [...new Set((site.site_assignments || [])
+        .map(a => a.team_members?.id).filter(Boolean))]
 
       if (updates.site_status) {
         await notifyMany(
@@ -249,8 +251,19 @@ export default function Sites() {
 
   function openAdd() { setForm(EMPTY); setEditSite(null); setShowForm(true) }
   function openEdit(site) {
-    const pic  = site.site_assignments?.find(a => a.assignment_role === 'PIC')
-    const crew = site.site_assignments?.filter(a => a.assignment_role === 'crew')
+    const assignments = site.site_assignments || []
+    const isPerDay = assignments.some(a => a.work_date)
+    const pic  = assignments.find(a => a.assignment_role === 'PIC' && !a.work_date)
+    const crew = assignments.filter(a => a.assignment_role === 'crew' && !a.work_date)
+    const dailyAssignments = {}
+    if (isPerDay) {
+      assignments.filter(a => a.work_date).forEach(a => {
+        const d = dailyAssignments[a.work_date] || { pic_id:'', crew_ids:[] }
+        if (a.assignment_role === 'PIC') d.pic_id = a.team_members?.id || ''
+        else if (a.team_members?.id) d.crew_ids = [...d.crew_ids, a.team_members.id]
+        dailyAssignments[a.work_date] = d
+      })
+    }
     const completionMeta = parseCompletionMeta(site.notes || '')
     setForm({
       site_type: site.site_type || 'site_scanning',
@@ -264,8 +277,10 @@ export default function Sites() {
       site_duration_days:site.site_duration_days?.toString()||'1',
       report_duration_days:site.report_duration_days?.toString()||'0.5',
       report_status:site.report_status, notes:completionMeta.baseNotes,
-      pic_id:pic?.team_members?.id||'',
-      crew_ids:crew?.map(c => c.team_members?.id)||[],
+      pic_id:isPerDay ? '' : (pic?.team_members?.id||''),
+      crew_ids:isPerDay ? [] : (crew?.map(c => c.team_members?.id)||[]),
+      assign_mode: isPerDay ? 'per_day' : 'same',
+      daily_assignments: dailyAssignments,
       delivery_order_number: completionMeta.deliveryOrderNumber,
       completion_reason: completionMeta.completionReason,
       site_photo:null, site_photo_preview:site.site_photo_url||null, site_photo_url:site.site_photo_url||'',
@@ -274,6 +289,39 @@ export default function Sites() {
   }
   function toggleCrew(id) {
     setForm(f => ({ ...f, crew_ids: f.crew_ids.includes(id) ? f.crew_ids.filter(x => x!==id) : [...f.crew_ids, id] }))
+  }
+  function datesInRange(start, end) {
+    if (!start) return []
+    const arr = []
+    const cur = new Date(`${start}T00:00:00`)
+    const last = new Date(`${end || start}T00:00:00`)
+    while (cur <= last) {
+      arr.push(`${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`)
+      cur.setDate(cur.getDate() + 1)
+    }
+    return arr
+  }
+  function setDayPic(dateStr, picId) {
+    setForm(f => ({
+      ...f,
+      daily_assignments: {
+        ...f.daily_assignments,
+        [dateStr]: { pic_id: picId, crew_ids: (f.daily_assignments[dateStr]?.crew_ids || []).filter(id => id !== picId) },
+      },
+    }))
+  }
+  function toggleDayCrew(dateStr, memberId) {
+    setForm(f => {
+      const cur = f.daily_assignments[dateStr] || { pic_id:'', crew_ids:[] }
+      const has = cur.crew_ids.includes(memberId)
+      return {
+        ...f,
+        daily_assignments: {
+          ...f.daily_assignments,
+          [dateStr]: { ...cur, crew_ids: has ? cur.crew_ids.filter(id => id!==memberId) : [...cur.crew_ids, memberId] },
+        },
+      }
+    })
   }
 
   function getLeaveConflict(memberIds, date) {
@@ -291,10 +339,20 @@ export default function Sites() {
 
   async function handleSave() {
     if (!form.site_name || !form.location || !form.scheduled_date) return
-    const leaveError = getLeaveConflict([form.pic_id, ...form.crew_ids].filter(Boolean), form.scheduled_date)
-    if (leaveError) {
-      setUploadError(leaveError)
-      return
+    if (form.assign_mode === 'per_day') {
+      for (const [dateStr, day] of Object.entries(form.daily_assignments)) {
+        const leaveError = getLeaveConflict([day.pic_id, ...day.crew_ids].filter(Boolean), dateStr)
+        if (leaveError) {
+          setUploadError(leaveError)
+          return
+        }
+      }
+    } else {
+      const leaveError = getLeaveConflict([form.pic_id, ...form.crew_ids].filter(Boolean), form.scheduled_date)
+      if (leaveError) {
+        setUploadError(leaveError)
+        return
+      }
     }
     setSaving(true); setUploadError(null)
     try {
@@ -339,11 +397,13 @@ export default function Sites() {
         }),
       }
       let siteId = editSite?.id
-      const origA    = editSite?.site_assignments||[]
-      const origPic  = origA.find(a => a.assignment_role==='PIC')?.team_members?.id||''
-      const origCrew = origA.filter(a => a.assignment_role==='crew').map(a => a.team_members?.id).filter(Boolean).sort()
-      const nextCrew = [...form.crew_ids].sort()
-      const changed  = !editSite || origPic!==form.pic_id || origCrew.length!==nextCrew.length || origCrew.some((id,i) => id!==nextCrew[i])
+      const origA     = editSite?.site_assignments||[]
+      const wasPerDay = origA.some(a => a.work_date)
+      const origPic   = origA.find(a => a.assignment_role==='PIC' && !a.work_date)?.team_members?.id||''
+      const origCrew  = origA.filter(a => a.assignment_role==='crew' && !a.work_date).map(a => a.team_members?.id).filter(Boolean).sort()
+      const nextCrew  = [...form.crew_ids].sort()
+      const changed   = !editSite || form.assign_mode==='per_day' || wasPerDay ||
+        origPic!==form.pic_id || origCrew.length!==nextCrew.length || origCrew.some((id,i) => id!==nextCrew[i])
       if (editSite) {
         const { error } = await supabase.from('sites').update(payload).eq('id', siteId)
         if (error) throw new Error(error.message)
@@ -358,18 +418,32 @@ export default function Sites() {
       }
       if (changed) {
         const assignments = []
-        if (form.pic_id) assignments.push({ site_id:siteId, member_id:form.pic_id, assignment_role:'PIC' })
-        form.crew_ids.forEach(id => { if (id!==form.pic_id) assignments.push({ site_id:siteId, member_id:id, assignment_role:'crew' }) })
+        if (form.assign_mode === 'per_day') {
+          Object.entries(form.daily_assignments).forEach(([dateStr, day]) => {
+            if (day.pic_id) assignments.push({ site_id:siteId, member_id:day.pic_id, assignment_role:'PIC', work_date:dateStr })
+            day.crew_ids.forEach(id => { if (id!==day.pic_id) assignments.push({ site_id:siteId, member_id:id, assignment_role:'crew', work_date:dateStr }) })
+          })
+        } else {
+          if (form.pic_id) assignments.push({ site_id:siteId, member_id:form.pic_id, assignment_role:'PIC' })
+          form.crew_ids.forEach(id => { if (id!==form.pic_id) assignments.push({ site_id:siteId, member_id:id, assignment_role:'crew' }) })
+        }
         if (assignments.length > 0) await supabase.from('site_assignments').insert(assignments)
 
         // Notify PIC and crew
-        await notifyAssignments({
-          siteName: form.site_name,
-          scheduledDate: form.scheduled_date,
-          picId: form.pic_id,
-          crewIds: form.crew_ids,
-          actor: fullName,
-        })
+        if (form.assign_mode === 'per_day') {
+          const unionIds = [...new Set(Object.values(form.daily_assignments).flatMap(d => [d.pic_id, ...d.crew_ids]).filter(Boolean))]
+          if (unionIds.length > 0) {
+            await notifyMany(`You've been assigned to site "${form.site_name}" (per-day schedule)`, fullName, unionIds)
+          }
+        } else {
+          await notifyAssignments({
+            siteName: form.site_name,
+            scheduledDate: form.scheduled_date,
+            picId: form.pic_id,
+            crewIds: form.crew_ids,
+            actor: fullName,
+          })
+        }
       }
       await notify(`${editSite?'Updated':'Added'} site: ${form.site_name}`, fullName)
       window.dispatchEvent(new CustomEvent('xyte:site-saved'))
@@ -487,7 +561,10 @@ export default function Sites() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" style={{ gap:'16px', paddingBottom:'8px' }}>
             {paginated.map(site => {
               const pic       = site.site_assignments?.find(a => a.assignment_role === 'PIC')
-              const crew      = site.site_assignments?.filter(a => a.assignment_role === 'crew') || []
+              // Deduped — a per-day site can list the same crew member across multiple day-specific rows
+              const crew      = Array.from(
+                new Map((site.site_assignments?.filter(a => a.assignment_role === 'crew') || []).map(a => [a.team_members?.id, a])).values()
+              )
               const typeMeta  = TYPE_META[site.site_type] || TYPE_META.site_scanning
               const memberIdx = members.findIndex(m => m.id === pic?.team_members?.id)
               const isExpanded = expandedCard === site.id
@@ -997,32 +1074,103 @@ export default function Sites() {
                 )}
               </div>
 
-              <div><label style={lLabel}>{form.site_type==='meeting'?'Organizer':'PIC'}</label>
-                <select style={lightInput} value={form.pic_id} onChange={e => {
-                  const picId = e.target.value
-                  setForm(f => ({ ...f, pic_id: picId, crew_ids: f.crew_ids.filter(id => id !== picId) }))
-                }}>
-                  <option value="">— Select —</option>
-                  {members.map(m => (
-                    <option key={m.id} value={m.id} disabled={Boolean(unavailableMembers[m.id])}>
-                      {m.full_name}{unavailableMembers[m.id] ? ` - On leave (${unavailableMembers[m.id].leave_type})` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div><label style={{ ...lLabel, marginBottom:'12px' }}>{form.site_type==='meeting'?'Attendees':'Crew'}</label>
-                <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
-                  {members.filter(m => m.id !== form.pic_id).map(m => (
-                    <label key={m.id} style={{ display:'flex', alignItems:'center', gap:'12px', cursor: unavailableMembers[m.id] ? 'not-allowed' : 'pointer', opacity: unavailableMembers[m.id] ? 0.55 : 1 }}>
-                      <input type="checkbox" checked={form.crew_ids.includes(m.id)} disabled={Boolean(unavailableMembers[m.id])} onChange={() => toggleCrew(m.id)} style={{ width:'16px', height:'16px', accentColor:'#2563eb' }} />
-                      <span style={{ fontSize:'13px', color:'#0f172a' }}>
-                        {m.full_name}{unavailableMembers[m.id] ? ` - ${getLeaveSummary(unavailableMembers[m.id])}` : ''}
-                      </span>
-                    </label>
-                  ))}
+              {datesInRange(form.scheduled_date, form.end_date).length > 1 && (
+                <div>
+                  <label style={lLabel}>Crew Assignment</label>
+                  <div style={{ display:'flex', gap:'8px' }}>
+                    {[['same','Same crew every day'],['per_day','Different crew per day']].map(([val, label]) => (
+                      <button
+                        key={val} type="button"
+                        onClick={() => setForm(f => ({ ...f, assign_mode: val }))}
+                        style={{
+                          flex:1, padding:'8px 10px', borderRadius:'8px', fontSize:'12px', fontWeight:'600', cursor:'pointer',
+                          border: form.assign_mode===val ? '1.5px solid #2563eb' : '1px solid #e2e8f0',
+                          background: form.assign_mode===val ? '#eff6ff' : 'white',
+                          color: form.assign_mode===val ? '#1d4ed8' : '#64748b',
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {form.assign_mode === 'per_day' && datesInRange(form.scheduled_date, form.end_date).length > 1 ? (
+                <div style={{ display:'grid', gap:'12px' }}>
+                  {datesInRange(form.scheduled_date, form.end_date).map((dateStr, i) => {
+                    const day = form.daily_assignments[dateStr] || { pic_id:'', crew_ids:[] }
+                    return (
+                      <div key={dateStr} style={{ border:'1px solid #e2e8f0', borderRadius:'10px', padding:'12px' }}>
+                        <p style={{ fontSize:'12px', fontWeight:'800', color:'#2563eb', textTransform:'uppercase', letterSpacing:'.04em', marginBottom:'10px' }}>
+                          Day {i+1} · {new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-MY', { weekday:'short', day:'numeric', month:'short' })}
+                        </p>
+
+                        <div style={{ marginBottom:'10px' }}>
+                          <label style={lLabel}>{form.site_type==='meeting'?'Organizer':'PIC'}</label>
+                          <select style={lightInput} value={day.pic_id} onChange={e => setDayPic(dateStr, e.target.value)}>
+                            <option value="">— Select —</option>
+                            {members.map(m => {
+                              const leave = getMemberLeaveOnDate(leaves, m.id, dateStr)
+                              return (
+                                <option key={m.id} value={m.id} disabled={Boolean(leave)}>
+                                  {m.full_name}{leave ? ` - On leave (${leave.leave_type})` : ''}
+                                </option>
+                              )
+                            })}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label style={{ ...lLabel, marginBottom:'8px' }}>{form.site_type==='meeting'?'Attendees':'Crew'}</label>
+                          <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
+                            {members.filter(m => m.id !== day.pic_id).map(m => {
+                              const leave = getMemberLeaveOnDate(leaves, m.id, dateStr)
+                              return (
+                                <label key={m.id} style={{ display:'flex', alignItems:'center', gap:'10px', cursor: leave ? 'not-allowed' : 'pointer', opacity: leave ? 0.55 : 1 }}>
+                                  <input type="checkbox" checked={day.crew_ids.includes(m.id)} disabled={Boolean(leave)} onChange={() => toggleDayCrew(dateStr, m.id)} style={{ width:'15px', height:'15px', accentColor:'#2563eb' }} />
+                                  <span style={{ fontSize:'12px', color:'#0f172a' }}>
+                                    {m.full_name}{leave ? ` - ${getLeaveSummary(leave)}` : ''}
+                                  </span>
+                                </label>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <>
+                  <div><label style={lLabel}>{form.site_type==='meeting'?'Organizer':'PIC'}</label>
+                    <select style={lightInput} value={form.pic_id} onChange={e => {
+                      const picId = e.target.value
+                      setForm(f => ({ ...f, pic_id: picId, crew_ids: f.crew_ids.filter(id => id !== picId) }))
+                    }}>
+                      <option value="">— Select —</option>
+                      {members.map(m => (
+                        <option key={m.id} value={m.id} disabled={Boolean(unavailableMembers[m.id])}>
+                          {m.full_name}{unavailableMembers[m.id] ? ` - On leave (${unavailableMembers[m.id].leave_type})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div><label style={{ ...lLabel, marginBottom:'12px' }}>{form.site_type==='meeting'?'Attendees':'Crew'}</label>
+                    <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+                      {members.filter(m => m.id !== form.pic_id).map(m => (
+                        <label key={m.id} style={{ display:'flex', alignItems:'center', gap:'12px', cursor: unavailableMembers[m.id] ? 'not-allowed' : 'pointer', opacity: unavailableMembers[m.id] ? 0.55 : 1 }}>
+                          <input type="checkbox" checked={form.crew_ids.includes(m.id)} disabled={Boolean(unavailableMembers[m.id])} onChange={() => toggleCrew(m.id)} style={{ width:'16px', height:'16px', accentColor:'#2563eb' }} />
+                          <span style={{ fontSize:'13px', color:'#0f172a' }}>
+                            {m.full_name}{unavailableMembers[m.id] ? ` - ${getLeaveSummary(unavailableMembers[m.id])}` : ''}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
 
               <div><label style={lLabel}>Notes</label><textarea style={{...lightInput, resize:'none'}} rows={3} value={form.notes} placeholder="Optional notes…" onChange={e => setForm(f => ({...f, notes:e.target.value}))} /></div>
 

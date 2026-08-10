@@ -328,7 +328,7 @@ export default function Dashboard() {
     const [{ data: allSites }, leaveData] = await Promise.all([
       supabase
         .from('sites')
-        .select('*, site_assignments(assignment_role, member_id, team_members(id, full_name, avatar_url))')
+        .select('*, site_assignments(assignment_role, member_id, work_date, team_members(id, full_name, avatar_url))')
         .order('scheduled_date', { ascending: true }),
       fetchTeamLeaves().catch(() => []),
     ])
@@ -2063,6 +2063,12 @@ export default function Dashboard() {
               <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a' }}>Quick Assign</h3>
               <p style={{ fontSize: '13px', color: '#64748b', marginTop: '5px' }}>Assign PIC and crew for an active site directly from the dashboard.</p>
             </div>
+
+            {quickAssignSite?.site_assignments?.some(a => a.work_date) && (
+              <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: '10px', padding: '10px 14px', marginBottom: '16px', fontSize: '12px', color: '#92400e', fontWeight: '600' }}>
+                This site has different crew per day — saving here will replace that with one crew for every day. Use the Sites form to keep per-day assignments.
+              </div>
+            )}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>

@@ -61,6 +61,20 @@ function ganttColLeft(idx) {
   return GANTT_COLS.slice(0, idx).reduce((sum, c) => sum + c.width, 0)
 }
 
+// A site's assignments are either day-specific (work_date set) or apply to every
+// day of the site (work_date null). Day-specific rows win for that date when present.
+function assignmentsForDate(assignments, dateStr) {
+  const daySpecific = (assignments || []).filter(a => a.work_date === dateStr)
+  return daySpecific.length > 0 ? daySpecific : (assignments || []).filter(a => !a.work_date)
+}
+
+function namesForDate(assignments, dateStr) {
+  const dayAssignments = assignmentsForDate(assignments, dateStr)
+  const pic  = dayAssignments.find(a => a.assignment_role === 'PIC')
+  const crew = dayAssignments.filter(a => a.assignment_role === 'crew')
+  return [pic, ...crew].map(a => a?.team_members?.short_name || a?.team_members?.full_name).filter(Boolean).join(', ')
+}
+
 const LEAVE_ABBR = {
   'ANNUAL LEAVE': 'AL',
   MEDICAL: 'MC',
@@ -150,9 +164,6 @@ function GanttListView({ sitesSorted, year, month, navigate, leaves, members }) 
               </tr>
             ) : (
               sitesSorted.map((site, i) => {
-                const pic   = site.site_assignments?.find(a => a.assignment_role === 'PIC')
-                const crew  = site.site_assignments?.filter(a => a.assignment_role === 'crew') || []
-                const names = [pic, ...crew].map(a => a?.team_members?.short_name || a?.team_members?.full_name).filter(Boolean).join(', ')
                 const start = site.scheduled_date
                 const end   = site.end_date || site.scheduled_date
 
@@ -202,7 +213,7 @@ function GanttListView({ sitesSorted, year, month, navigate, leaves, members }) 
                           borderBottom: '1px solid #e5eaf1', borderRight: '1px solid #eef1f5',
                           padding: '8px 6px', textAlign: 'center',
                         }}>
-                          {active && <span style={{ fontSize: '9px', fontWeight: '800', color: '#000000', lineHeight: 1.3 }}>{names}</span>}
+                          {active && <span style={{ fontSize: '9px', fontWeight: '800', color: '#000000', lineHeight: 1.3 }}>{namesForDate(site.site_assignments, dateStr)}</span>}
                         </td>
                       )
                     })}
@@ -344,7 +355,7 @@ export default function CalendarPage() {
       .from('sites')
       .select(`id, site_name, site_type, site_status, scheduled_date, end_date, site_session, site_photo_url,
         client_company_name, scope_of_work, site_duration_days,
-        site_assignments(assignment_role, team_members(id, short_name, full_name, avatar_url))`)
+        site_assignments(assignment_role, work_date, team_members(id, short_name, full_name, avatar_url))`)
       .or(`and(scheduled_date.gte.${from},scheduled_date.lte.${to}),and(end_date.gte.${from},end_date.lte.${to}),and(scheduled_date.lte.${from},end_date.gte.${to})`)
       .order('scheduled_date')
     setSites(data || [])
@@ -447,8 +458,9 @@ export default function CalendarPage() {
                 <div style={{ padding: '10px', display: 'grid', gap: '10px' }}>
                   {daySites.map((site) => {
                     const tc = TYPE_COLORS[site.site_type] || { bg: '#f1f5f9', text: '#475569', border: '#e2e8f0', label: 'Site' }
-                    const pic = site.site_assignments?.find(a => a.assignment_role === 'PIC')
-                    const crew = site.site_assignments?.filter(a => a.assignment_role === 'crew') || []
+                    const dayAssignments = assignmentsForDate(site.site_assignments, dateStr)
+                    const pic = dayAssignments.find(a => a.assignment_role === 'PIC')
+                    const crew = dayAssignments.filter(a => a.assignment_role === 'crew') || []
 
                     return (
                       <button
@@ -618,8 +630,9 @@ export default function CalendarPage() {
                       {/* Site chips */}
                       {visible.map(site => {
                         const tc   = TYPE_COLORS[site.site_type] || { bg: '#f1f5f9', text: '#475569', border: '#e2e8f0' }
-                        const pic  = site.site_assignments?.find(a => a.assignment_role === 'PIC')
-                        const crew = site.site_assignments?.filter(a => a.assignment_role === 'crew') || []
+                        const dayAssignments = assignmentsForDate(site.site_assignments, dateStr)
+                        const pic  = dayAssignments.find(a => a.assignment_role === 'PIC')
+                        const crew = dayAssignments.filter(a => a.assignment_role === 'crew') || []
                         const picName = pic?.team_members?.short_name || pic?.team_members?.full_name?.split(' ')[0]
 
                         return (
@@ -737,8 +750,9 @@ export default function CalendarPage() {
             <div style={{ overflowY: 'auto', padding: '12px 0' }}>
               {dayModal.sites.map(site => {
                 const tc   = TYPE_COLORS[site.site_type] || { bg: '#f1f5f9', text: '#475569', border: '#e2e8f0', label: site.site_type }
-                const pic  = site.site_assignments?.find(a => a.assignment_role === 'PIC')
-                const crew = site.site_assignments?.filter(a => a.assignment_role === 'crew') || []
+                const dayAssignments = assignmentsForDate(site.site_assignments, dayModal.dateStr)
+                const pic  = dayAssignments.find(a => a.assignment_role === 'PIC')
+                const crew = dayAssignments.filter(a => a.assignment_role === 'crew') || []
 
                 return (
                   <div
