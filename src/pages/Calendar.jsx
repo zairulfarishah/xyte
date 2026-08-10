@@ -1,8 +1,12 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../supabase'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, LayoutGrid, GanttChartSquare } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useViewport } from '../utils/useViewport'
+import { fetchTeamLeaves } from '../utils/teamLeaves'
+import CalendarTimeline from '../components/CalendarTimeline'
+
+const VIEW_STORAGE_KEY = 'xyte:calendar-view'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -52,6 +56,17 @@ export default function CalendarPage() {
   const [expanded, setExpanded] = useState(null)
   const [dayModal, setDayModal] = useState(null) // { day, ds, sites }
   const [prayerInfo, setPrayerInfo] = useState({ place: 'Kuala Lumpur', times: null })
+  const [leaves, setLeaves]     = useState([])
+  const [members, setMembers]   = useState([])
+  const [view, setView] = useState(() => {
+    if (typeof window === 'undefined') return 'month'
+    return window.localStorage.getItem(VIEW_STORAGE_KEY) === 'timeline' ? 'timeline' : 'month'
+  })
+
+  function changeView(next) {
+    setView(next)
+    window.localStorage.setItem(VIEW_STORAGE_KEY, next)
+  }
 
   const year  = current.getFullYear()
   const month = current.getMonth()
@@ -64,6 +79,20 @@ export default function CalendarPage() {
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000)
     return () => window.clearInterval(timer)
+  }, [])
+
+  // Leave + roster data only feeds the timeline's (UNAVAILABLE) strip — fetch once.
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([
+      fetchTeamLeaves().catch(() => []),
+      supabase.from('team_members').select('id, short_name, full_name').then(r => r.data || []),
+    ]).then(([leaveData, memberData]) => {
+      if (cancelled) return
+      setLeaves(leaveData)
+      setMembers(memberData)
+    })
+    return () => { cancelled = true }
   }, [])
 
   useEffect(() => {
@@ -114,6 +143,7 @@ export default function CalendarPage() {
     const { data } = await supabase
       .from('sites')
       .select(`id, site_name, site_type, site_status, scheduled_date, end_date, site_session, site_photo_url,
+        location, client_company_name, scope_of_work, notes, site_duration_days, report_status,
         site_assignments(assignment_role, team_members(id, short_name, full_name, avatar_url))`)
       .or(`and(scheduled_date.gte.${from},scheduled_date.lte.${to}),and(end_date.gte.${from},end_date.lte.${to}),and(scheduled_date.lte.${from},end_date.gte.${to})`)
       .order('scheduled_date')
@@ -297,6 +327,29 @@ export default function CalendarPage() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {/* View switcher */}
+            <div style={{ display: 'flex', gap: '2px', padding: '3px', borderRadius: '10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', marginRight: '6px' }}>
+              {[
+                { key: 'month',    label: 'Month',    Icon: LayoutGrid },
+                { key: 'timeline', label: 'Timeline', Icon: GanttChartSquare },
+              ].map(({ key, label, Icon }) => (
+                <button
+                  key={key}
+                  onClick={() => changeView(key)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    padding: '6px 12px', borderRadius: '8px', border: 'none', cursor: 'pointer',
+                    fontSize: '12px', fontWeight: '700',
+                    background: view === key ? '#2563eb' : 'transparent',
+                    color: view === key ? 'white' : '#94a3b8',
+                  }}
+                >
+                  <Icon size={14} />
+                  {label}
+                </button>
+              ))}
+            </div>
+
             <button onClick={() => setCurrent(new Date(year, month - 1, 1))} style={{ padding: '8px', borderRadius: '8px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.12)', color: 'white', cursor: 'pointer', display: 'flex' }}>
               <ChevronLeft size={16} />
             </button>
@@ -319,6 +372,7 @@ export default function CalendarPage() {
       <div style={{ padding: '20px 40px 48px', display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
 
         {/* Waktu Solat sidebar — top-padded to align with calendar grid (day-header height ≈ 48px + 4px gap) */}
+        {view === 'month' && (
         <div style={{ width: '160px', flexShrink: 0, paddingTop: '52px' }}>
           <div style={{ background: '#0f2744', border: '1px solid #1e3a5f', borderRadius: '16px', padding: '14px 12px', display: 'flex', flexDirection: 'column', gap: '10px', boxShadow: '0 8px 24px rgba(2,8,23,.28)' }}>
             <div>
@@ -340,10 +394,44 @@ export default function CalendarPage() {
             </div>
           </div>
         </div>
+        )}
 
         {/* Calendar */}
         <div style={{ flex: 1, minWidth: 0 }}>
 
+        {view === 'timeline' ? (
+          loading ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '400px', gap: '10px', color: '#475569', fontSize: '14px' }}>
+              <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '2px solid #e2e8f0', borderTopColor: '#2563eb', animation: 'spin 0.7s linear infinite' }} />
+              Loading…
+            </div>
+          ) : (
+            <>
+              <CalendarTimeline
+                year={year}
+                month={month}
+                sites={sites}
+                leaves={leaves}
+                members={members}
+                today={today}
+              />
+              <div style={{ display: 'flex', gap: '18px', marginTop: '14px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                {[
+                  { label: 'Assigned crew', bg: '#a9d18e', border: '#7fae62' },
+                  { label: 'Sunday / rest day', bg: '#0b1220', border: '#0b1220' },
+                  { label: 'Public holiday', bg: '#4a90d9', border: '#3a7ec0' },
+                  { label: 'Unavailable (leave)', bg: '#fef2f2', border: '#fca5a5' },
+                ].map(item => (
+                  <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={{ width: '12px', height: '12px', borderRadius: '3px', background: item.bg, border: `1px solid ${item.border}` }} />
+                    <span style={{ fontSize: '11px', color: '#475569', fontWeight: '600' }}>{item.label}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )
+        ) : (
+        <>
         {/* Day headers */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '4px', background: '#1e3a5f', borderRadius: '10px', padding: '2px' }}>
           {DAYS.map(d => (
@@ -498,6 +586,8 @@ export default function CalendarPage() {
             </div>
           ))}
         </div>
+        </>
+        )}
         </div>{/* end calendar col */}
       </div>
 
