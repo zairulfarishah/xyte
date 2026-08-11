@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Idea — Crew Per Day (multi-day sites)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', sans-serif; background: #060b14; color: #f1f5f9; min-height: 100vh; }
+
+  .bg-glow { position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background:
+      radial-gradient(ellipse 55% 45% at 18% 18%, rgba(59,130,246,0.09) 0%, transparent 60%),
+      radial-gradient(ellipse 45% 35% at 82% 8%,  rgba(6,182,212,0.06) 0%, transparent 55%),
+      radial-gradient(ellipse 35% 28% at 65% 88%, rgba(99,102,241,0.05) 0%, transparent 50%); }
+  .bg-grid { position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background-image: linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+    background-size: 44px 44px; }
+
+  .nav { height: 54px; background: rgba(6,11,20,0.9); border-bottom: 1px solid rgba(255,255,255,0.07);
+    display: flex; align-items: center; padding: 0 24px; position: sticky; top: 0; z-index: 100; }
+  .nav-brand { font-size: 15px; font-weight: 800; letter-spacing: -0.02em; }
+  .nav-note { margin-left: 14px; font-size: 12px; color: #475569; }
+
+  .content { position: relative; z-index: 1; max-width: 1280px; margin: 0 auto; padding: 0 48px 80px; }
+
+  .header { padding-top: 30px; }
+  .header h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.03em; }
+  .header p { margin-top: 8px; font-size: 13px; color: #64748b; max-width: 720px; line-height: 1.6; }
+
+  .section { margin-top: 34px; }
+  .section-label { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .section-num { width: 22px; height: 22px; border-radius: 7px; flex-shrink: 0;
+    background: rgba(37,99,235,0.18); border: 1px solid rgba(59,130,246,0.35); color: #60a5fa;
+    font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+  .section-label h2 { font-size: 15px; font-weight: 700; letter-spacing: -0.02em; }
+  .section-label span { font-size: 12px; color: #475569; }
+
+  .panel { border-radius: 16px; border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(13,20,36,0.7); backdrop-filter: blur(16px); padding: 20px; }
+
+  .two-col { display: grid; grid-template-columns: 1.15fr 1fr; gap: 16px; align-items: start; }
+
+  label.fl { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; color: #475569; margin-bottom: 7px; }
+  .fake-input { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 10px; padding: 9px 12px; font-size: 13px; color: #cbd5e1; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  /* mode switch */
+  .mode-wrap { margin-top: 16px; padding: 14px; border-radius: 12px;
+    background: rgba(255,255,255,0.025); border: 1px solid rgba(255,255,255,0.07); }
+  .mode-opts { display: flex; gap: 8px; margin-top: 10px; }
+  .mode-opt { flex: 1; text-align: left; padding: 10px 12px; border-radius: 10px; cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02);
+    color: #64748b; font-family: inherit; transition: all .15s; }
+  .mode-opt strong { display: block; font-size: 12.5px; font-weight: 700; color: #94a3b8; }
+  .mode-opt em { font-style: normal; font-size: 11px; }
+  .mode-opt.active { background: rgba(37,99,235,0.16); border-color: rgba(59,130,246,0.42);
+    box-shadow: 0 0 14px rgba(59,130,246,0.13); }
+  .mode-opt.active strong { color: #93c5fd; }
+  .mode-opt.active em { color: #60a5fa; }
+
+  /* day tabs */
+  .day-tabs { display: flex; gap: 6px; margin: 16px 0 14px; flex-wrap: wrap; }
+  .day-tab { padding: 7px 14px; border-radius: 10px; cursor: pointer; font-family: inherit;
+    border: 1px solid rgba(255,255,255,0.08); background: transparent; color: #475569;
+    font-size: 12px; font-weight: 600; text-align: left; transition: all .15s; position: relative; }
+  .day-tab b { display: block; font-size: 12.5px; font-weight: 700; color: #94a3b8; }
+  .day-tab small { font-size: 10.5px; color: #475569; }
+  .day-tab.active { background: rgba(37,99,235,0.18); border-color: rgba(59,130,246,0.4);
+    box-shadow: 0 0 14px rgba(59,130,246,0.15); }
+  .day-tab.active b, .day-tab.active small { color: #93c5fd; }
+  .day-tab .warn-dot { position: absolute; top: -4px; right: -4px; width: 9px; height: 9px;
+    border-radius: 50%; background: #f59e0b; border: 2px solid #060b14; }
+
+  /* member pickers */
+  .picker-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; }
+  .link-btn { background: none; border: none; font-family: inherit; cursor: pointer;
+    font-size: 11px; font-weight: 700; color: #60a5fa; padding: 0; }
+  .link-btn:hover { text-decoration: underline; }
+  .member-list { display: flex; flex-direction: column; gap: 6px; }
+  .member-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.02); cursor: pointer;
+    transition: all .12s; }
+  .member-row:hover { border-color: rgba(59,130,246,0.25); }
+  .member-row.on { background: rgba(37,99,235,0.13); border-color: rgba(59,130,246,0.35); }
+  .member-row.pic { background: rgba(16,185,129,0.12); border-color: rgba(16,185,129,0.38); }
+  .member-row.off-limit { opacity: 0.42; cursor: not-allowed; }
+  .member-row .nm { flex: 1; font-size: 12.5px; font-weight: 600; color: #cbd5e1; }
+  .member-row .tag { font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 99px;
+    letter-spacing: 0.04em; }
+  .tag-pic { background: rgba(16,185,129,0.2); color: #6ee7b7; }
+  .tag-crew { background: rgba(59,130,246,0.2); color: #93c5fd; }
+  .tag-leave { background: rgba(244,63,94,0.16); color: #fda4af; }
+  .tag-busy { background: rgba(245,158,11,0.16); color: #fcd34d; }
+  .hint { font-size: 11px; color: #475569; margin-top: 8px; line-height: 1.5; }
+
+  .avatar { width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 800; color: #fff; letter-spacing: 0.02em; }
+
+  .warn-bar { margin-top: 12px; display: flex; align-items: center; gap: 8px;
+    padding: 9px 12px; border-radius: 10px; font-size: 12px; font-weight: 600;
+    background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.28); color: #fcd34d; }
+
+  /* result card */
+  .card { border-radius: 16px; border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(13,20,36,0.7); overflow: hidden; }
+  .card-banner { height: 64px; position: relative;
+    background: linear-gradient(135deg, rgba(37,99,235,0.35), rgba(8,145,178,0.25)); }
+  .card-banner .pill { position: absolute; top: 10px; left: 12px; font-size: 10.5px; font-weight: 700;
+    background: rgba(0,0,0,0.42); border: 1px solid rgba(255,255,255,0.12); color: #cbd5e1;
+    padding: 3px 9px; border-radius: 99px; }
+  .card-banner .pill.r { left: auto; right: 12px; background: rgba(37,99,235,0.35);
+    border-color: rgba(59,130,246,0.45); color: #bfdbfe; }
+  .card-body { padding: 14px 16px 16px; }
+  .card-title { font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
+  .card-sub { font-size: 11.5px; color: #475569; margin-top: 3px; }
+
+  .day-strip { margin-top: 14px; display: flex; flex-direction: column; gap: 7px; }
+  .day-line { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px;
+    background: rgba(255,255,255,0.025); border: 1px solid rgba(255,255,255,0.06); }
+  .day-line .dl { width: 62px; flex-shrink: 0; }
+  .day-line .dl b { display: block; font-size: 11.5px; font-weight: 800; color: #94a3b8; }
+  .day-line .dl small { font-size: 10px; color: #475569; }
+  .stack { display: flex; align-items: center; }
+  .stack .avatar { border: 2px solid #0d1424; }
+  .stack .avatar + .avatar { margin-left: -8px; }
+  .day-line .names { font-size: 11.5px; color: #64748b; flex: 1; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .day-line.today { border-color: rgba(59,130,246,0.35); background: rgba(37,99,235,0.1); }
+
+  /* calendar */
+  .cal { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+  .cal-day { border-radius: 12px; border: 1px solid rgba(255,255,255,0.07);
+    background: rgba(255,255,255,0.022); padding: 10px; min-height: 128px; }
+  .cal-day header { font-size: 10.5px; font-weight: 800; color: #475569; text-transform: uppercase;
+    letter-spacing: 0.06em; margin-bottom: 9px; }
+  .cal-day.in header { color: #93c5fd; }
+  .cal-chip { border-radius: 9px; padding: 7px 8px; font-size: 11px;
+    background: rgba(37,99,235,0.15); border: 1px solid rgba(59,130,246,0.32); }
+  .cal-chip b { display: block; font-size: 11px; font-weight: 700; color: #bfdbfe;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cal-chip .who { margin-top: 6px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+  .cal-chip .who span { font-size: 10px; font-weight: 700; color: #93c5fd; }
+  .cal-empty { font-size: 11px; color: #334155; }
+
+  /* workload */
+  .load-list { display: flex; flex-direction: column; gap: 8px; }
+  .load-row { display: flex; align-items: center; gap: 10px; }
+  .load-row .nm { width: 96px; font-size: 12px; font-weight: 600; color: #94a3b8; flex-shrink: 0; }
+  .bar { flex: 1; height: 8px; border-radius: 99px; background: rgba(255,255,255,0.05); overflow: hidden; }
+  .bar > i { display: block; height: 100%; border-radius: 99px;
+    background: linear-gradient(90deg, #2563eb, #0891b2); }
+  .load-row .val { font-size: 11px; font-weight: 700; color: #60a5fa; width: 52px; text-align: right; }
+
+  /* sql / notes */
+  pre { background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.07); border-radius: 12px;
+    padding: 14px 16px; font-size: 11.5px; line-height: 1.75; color: #a5b4fc; overflow-x: auto;
+    font-family: 'Consolas', 'Menlo', monospace; }
+  pre .c { color: #475569; }
+  pre .k { color: #f0abfc; }
+  ul.notes { list-style: none; display: flex; flex-direction: column; gap: 9px; }
+  ul.notes li { display: flex; gap: 10px; font-size: 12.5px; color: #94a3b8; line-height: 1.55; }
+  ul.notes li::before { content: ''; width: 6px; height: 6px; border-radius: 50%; margin-top: 6px;
+    background: rgba(59,130,246,0.6); flex-shrink: 0; }
+  ul.notes li b { color: #cbd5e1; font-weight: 700; }
+  code.f { background: rgba(255,255,255,0.06); border-radius: 5px; padding: 1px 6px;
+    font-size: 11px; color: #7dd3fc; font-family: 'Consolas', monospace; }
+
+  @media (max-width: 1000px) {
+    .content { padding: 0 20px 60px; }
+    .two-col { grid-template-columns: 1fr; }
+    .cal { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="bg-glow"></div><div class="bg-grid"></div>
+
+<div class="nav">
+  <div class="nav-brand">Xyte</div>
+  <div class="nav-note">concept preview — crew per day &nbsp;·&nbsp; nothing here touches the database</div>
+</div>
+
+<div class="content">
+
+  <div class="header">
+    <h1>Different crew for each day of a multi-day site</h1>
+    <p>Right now one site = one crew list, no dates. So a 3-day site shows the same people on all 3 days.
+       The idea: keep the site as one record, but let each <b style="color:#93c5fd">day</b> carry its own PIC + crew.
+       Click around below — the card, calendar and workload all update live.</p>
+  </div>
+
+  <!-- 1. THE FORM -->
+  <div class="section">
+    <div class="section-label">
+      <div class="section-num">1</div>
+      <h2>In the Add / Edit Site form</h2>
+      <span>— a new block appears only when End Date &gt; Start Date</span>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="row2">
+          <div><label class="fl">Start Date *</label><div class="fake-input">2026-09-01 &nbsp;(Tue)</div></div>
+          <div><label class="fl">End Date *</label><div class="fake-input">2026-09-03 &nbsp;(Thu)</div></div>
+        </div>
+
+        <div class="mode-wrap">
+          <label class="fl" style="margin-bottom:0">Crew assignment &nbsp;·&nbsp; 3 days detected</label>
+          <div class="mode-opts">
+            <button class="mode-opt" data-mode="same">
+              <strong>Same crew all days</strong><em>how it works today</em>
+            </button>
+            <button class="mode-opt active" data-mode="perday">
+              <strong>Different crew per day</strong><em>rotate people day by day</em>
+            </button>
+          </div>
+        </div>
+
+        <div id="perday-block">
+          <div class="day-tabs" id="dayTabs"></div>
+
+          <div class="row2" style="gap:16px">
+            <div>
+              <div class="picker-head">
+                <label class="fl" style="margin-bottom:0">PIC for this day</label>
+              </div>
+              <div class="member-list" id="picList"></div>
+            </div>
+            <div>
+              <div class="picker-head">
+                <label class="fl" style="margin-bottom:0">Crew for this day</label>
+                <button class="link-btn" id="copyPrev">Copy previous day</button>
+              </div>
+              <div class="member-list" id="crewList"></div>
+            </div>
+          </div>
+
+          <div id="warnSlot"></div>
+          <div class="hint">Each day needs its own PIC — that is the person WhatsApp / notification goes to for
+            that date, and the person the report chases. Leave and clashes are checked <b>per date</b>, not per site.</div>
+        </div>
+
+        <div id="same-block" style="display:none">
+          <div class="hint" style="margin-top:16px">Same-crew mode = exactly the current behaviour: one PIC, one crew list,
+            applied to all 3 days. Switch to <b>Different crew per day</b> to see the new part.</div>
+        </div>
+      </div>
+
+      <!-- 2. RESULT CARD -->
+      <div>
+        <div class="section-label" style="margin-top:0">
+          <div class="section-num">2</div><h2>Site card</h2><span>— Sites page</span>
+        </div>
+        <div class="card">
+          <div class="card-banner">
+            <div class="pill">Kuantan, Pahang</div>
+            <div class="pill r">ongoing</div>
+          </div>
+          <div class="card-body">
+            <div class="card-title">Bukit Gambang Underground Utility Scan</div>
+            <div class="card-sub">1 – 3 Sep 2026 &nbsp;·&nbsp; 3 days &nbsp;·&nbsp; site scanning</div>
+            <div class="day-strip" id="cardStrip"></div>
+          </div>
+        </div>
+
+        <div class="section-label" style="margin-top:22px">
+          <div class="section-num">4</div><h2>Workload</h2><span>— days counted per person</span>
+        </div>
+        <div class="panel">
+          <div class="load-list" id="loadList"></div>
+          <div class="hint" style="margin-top:12px">Today a 3-day site charges <b>3 days</b> to everyone on it.
+            Per-day rows mean each person only carries the days they actually stand on site.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. CALENDAR -->
+  <div class="section">
+    <div class="section-label">
+      <div class="section-num">3</div>
+      <h2>Calendar week</h2>
+      <span>— same site, different faces each day</span>
+    </div>
+    <div class="panel">
+      <div class="cal" id="cal"></div>
+    </div>
+  </div>
+
+  <!-- 5. HOW IT'S BUILT -->
+  <div class="section">
+    <div class="section-label">
+      <div class="section-num">5</div>
+      <h2>What it takes to build</h2>
+      <span>— one nullable column, everything else is UI</span>
+    </div>
+    <div class="two-col">
+      <div class="panel">
+        <label class="fl">sql/migrate-per-day-assignments.sql</label>
+<pre><span class="c">-- one row per person PER DAY. null date = "all days" (old rows keep working)</span>
+<span class="k">alter table</span> site_assignments
+  <span class="k">add column if not exists</span> work_date <span class="k">date</span>;
+
+<span class="c">-- stop the same person being added twice to the same day</span>
+<span class="k">create unique index if not exists</span> site_assignments_uniq
+  <span class="k">on</span> site_assignments (site_id, member_id, coalesce(work_date, '1900-01-01'));
+
+<span class="k">create index if not exists</span> site_assignments_date_idx
+  <span class="k">on</span> site_assignments (work_date);</pre>
+        <div class="hint">Backwards compatible: every existing row gets <code class="f">work_date = null</code>,
+          which the app reads as “this person is on all days”. Nothing breaks on day one.</div>
+      </div>
+
+      <div class="panel">
+        <label class="fl">Files that change</label>
+        <ul class="notes">
+          <li><b>Sites.jsx</b> — the day tabs above, and <code class="f">handleSave</code> writes one row per (member, day) instead of one row per member.</li>
+          <li><b>Calendar.jsx / CalendarTimeline.jsx</b> — when drawing a date, pick assignments where <code class="f">work_date = that date OR is null</code>.</li>
+          <li><b>Dashboard.jsx</b> — “who is out today” and the WhatsApp blast use today’s crew only.</li>
+          <li><b>Team.jsx / Statistics.jsx</b> — a person’s site count becomes a day count.</li>
+          <li><b>workload.js</b> — charge each member their own days instead of the full site span.</li>
+          <li><b>Leave check</b> — <code class="f">getLeaveConflict</code> runs per day, so Aina on leave Wed only blocks Wed.</li>
+        </ul>
+        <div class="hint">Reports and PDF export need no change — they list everyone who touched the site,
+          which is still just all the rows for that site.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const MEMBERS = [
+  { id:'m1', name:'Zairul Farishah', short:'Zairul', c:'#2563eb' },
+  { id:'m2', name:'Faiz Rahman',     short:'Faiz',   c:'#0891b2' },
+  { id:'m3', name:'Hafiz Zulkifli',  short:'Hafiz',  c:'#7c3aed' },
+  { id:'m4', name:'Aina Sofea',      short:'Aina',   c:'#db2777' },
+  { id:'m5', name:'Danish Iskandar', short:'Danish', c:'#059669' },
+  { id:'m6', name:'Syafiq Nordin',   short:'Syafiq', c:'#d97706' },
+];
+const DAYS = [
+  { date:'2026-09-01', label:'Day 1', dow:'Tue 1 Sep' },
+  { date:'2026-09-02', label:'Day 2', dow:'Wed 2 Sep' },
+  { date:'2026-09-03', label:'Day 3', dow:'Thu 3 Sep' },
+];
+// pretend conflicts pulled from team_leaves / other sites
+const LEAVE = { m4: ['2026-09-02'] };                 // Aina — annual leave Wed
+const BUSY  = { m6: ['2026-09-01'] };                 // Syafiq — another site Tue
+
+const state = {
+  mode: 'perday',
+  active: 0,
+  assign: {
+    '2026-09-01': { pic:'m1', crew:['m2'] },
+    '2026-09-02': { pic:'m3', crew:['m5'] },
+    '2026-09-03': { pic:'m5', crew:['m2','m6'] },
+  },
+};
+
+const M   = id => MEMBERS.find(m => m.id === id);
+const day = i  => state.assign[DAYS[i].date];
+const onLeave = (id, d) => (LEAVE[id] || []).includes(d);
+const isBusy  = (id, d) => (BUSY[id]  || []).includes(d);
+const initials = n => n.split(' ').map(w => w[0]).slice(0,2).join('').toUpperCase();
+
+function avatar(id, size = 26) {
+  const m = M(id);
+  return `<div class="avatar" style="width:${size}px;height:${size}px;background:${m.c};font-size:${size*0.38}px" title="${m.name}">${initials(m.name)}</div>`;
+}
+function dayMembers(i) {
+  const a = state.mode === 'same' ? state.assign[DAYS[0].date] : day(i);
+  return a.pic ? [a.pic, ...a.crew] : [...a.crew];
+}
+
+/* ── form ── */
+function renderTabs() {
+  document.getElementById('dayTabs').innerHTML = DAYS.map((d, i) => {
+    const a = day(i);
+    const bad = !a.pic || dayMembers(i).some(id => onLeave(id, d.date) || isBusy(id, d.date));
+    return `<button class="day-tab ${i === state.active ? 'active' : ''}" data-day="${i}">
+      <b>${d.label}</b><small>${d.dow}</small>${bad ? '<i class="warn-dot"></i>' : ''}
+    </button>`;
+  }).join('');
+  document.querySelectorAll('[data-day]').forEach(b =>
+    b.onclick = () => { state.active = +b.dataset.day; render(); });
+}
+
+function memberRow(m, kind, blocked, blockLabel) {
+  const cls = kind === 'pic' ? 'pic' : kind === 'crew' ? 'on' : '';
+  const tag = blocked ? `<span class="tag ${blockLabel === 'On leave' ? 'tag-leave' : 'tag-busy'}">${blockLabel}</span>`
+            : kind === 'pic'  ? '<span class="tag tag-pic">PIC</span>'
+            : kind === 'crew' ? '<span class="tag tag-crew">CREW</span>' : '';
+  return `<div class="member-row ${cls} ${blocked ? 'off-limit' : ''}" data-mid="${m.id}">
+    ${avatar(m.id)}<div class="nm">${m.short}</div>${tag}</div>`;
+}
+
+function renderPickers() {
+  const d = DAYS[state.active].date, a = day(state.active);
+  const block = id => onLeave(id, d) ? 'On leave' : isBusy(id, d) ? 'Other site' : null;
+
+  document.getElementById('picList').innerHTML = MEMBERS.map(m =>
+    memberRow(m, a.pic === m.id ? 'pic' : '', !!block(m.id), block(m.id))).join('');
+  document.getElementById('crewList').innerHTML = MEMBERS.filter(m => m.id !== a.pic).map(m =>
+    memberRow(m, a.crew.includes(m.id) ? 'crew' : '', !!block(m.id), block(m.id))).join('');
+
+  document.querySelectorAll('#picList [data-mid]').forEach(el => el.onclick = () => {
+    if (el.classList.contains('off-limit')) return;
+    const id = el.dataset.mid;
+    a.pic = a.pic === id ? '' : id;
+    a.crew = a.crew.filter(c => c !== a.pic);
+    render();
+  });
+  document.querySelectorAll('#crewList [data-mid]').forEach(el => el.onclick = () => {
+    if (el.classList.contains('off-limit')) return;
+    const id = el.dataset.mid;
+    a.crew = a.crew.includes(id) ? a.crew.filter(c => c !== id) : [...a.crew, id];
+    render();
+  });
+
+  const prev = document.getElementById('copyPrev');
+  prev.style.visibility = state.active === 0 ? 'hidden' : 'visible';
+  prev.onclick = () => {
+    const p = day(state.active - 1);
+    state.assign[d] = { pic: p.pic, crew: [...p.crew] };
+    render();
+  };
+
+  const warns = [];
+  if (!a.pic) warns.push(`${DAYS[state.active].label} has no PIC — nobody to notify for that date`);
+  dayMembers(state.active).forEach(id => {
+    if (onLeave(id, d)) warns.push(`${M(id).short} is on leave on ${DAYS[state.active].dow}`);
+    if (isBusy(id, d))  warns.push(`${M(id).short} is already on another site on ${DAYS[state.active].dow}`);
+  });
+  document.getElementById('warnSlot').innerHTML = warns.map(w =>
+    `<div class="warn-bar">⚠ ${w}</div>`).join('');
+}
+
+/* ── card ── */
+function renderCard() {
+  document.getElementById('cardStrip').innerHTML = DAYS.map((d, i) => {
+    const ids = dayMembers(i), a = state.mode === 'same' ? state.assign[DAYS[0].date] : day(i);
+    if (!ids.length) return `<div class="day-line"><div class="dl"><b>${d.label}</b><small>${d.dow.slice(0,3)}</small></div>
+      <div class="names">— nobody assigned —</div></div>`;
+    const names = ids.map(id => M(id).short + (id === a.pic ? ' (PIC)' : '')).join(', ');
+    return `<div class="day-line ${i === state.active && state.mode === 'perday' ? 'today' : ''}">
+      <div class="dl"><b>${d.label}</b><small>${d.dow.slice(0,3)}</small></div>
+      <div class="stack">${ids.map(id => avatar(id, 24)).join('')}</div>
+      <div class="names">${names}</div></div>`;
+  }).join('');
+}
+
+/* ── calendar ── */
+function renderCal() {
+  const week = [
+    { dow:'Mon', label:'31 Aug', idx:-1 },
+    { dow:'Tue', label:'1 Sep',  idx:0 },
+    { dow:'Wed', label:'2 Sep',  idx:1 },
+    { dow:'Thu', label:'3 Sep',  idx:2 },
+    { dow:'Fri', label:'4 Sep',  idx:-1 },
+  ];
+  document.getElementById('cal').innerHTML = week.map(w => {
+    if (w.idx < 0) return `<div class="cal-day"><header>${w.dow} · ${w.label}</header>
+      <div class="cal-empty">—</div></div>`;
+    const ids = dayMembers(w.idx), a = state.mode === 'same' ? state.assign[DAYS[0].date] : day(w.idx);
+    return `<div class="cal-day in"><header>${w.dow} · ${w.label}</header>
+      <div class="cal-chip">
+        <b>Bukit Gambang Scan</b>
+        <div class="who">${ids.map(id =>
+          `${avatar(id, 20)}<span>${M(id).short}${id === a.pic ? '*' : ''}</span>`).join('')}
+        </div>
+      </div></div>`;
+  }).join('');
+}
+
+/* ── workload ── */
+function renderLoad() {
+  const counts = {};
+  DAYS.forEach((d, i) => dayMembers(i).forEach(id => counts[id] = (counts[id] || 0) + 1));
+  const rows = MEMBERS.filter(m => counts[m.id]).sort((a, b) => counts[b.id] - counts[a.id]);
+  document.getElementById('loadList').innerHTML = rows.length ? rows.map(m => `
+    <div class="load-row">
+      <div class="nm">${m.short}</div>
+      <div class="bar"><i style="width:${(counts[m.id] / DAYS.length) * 100}%;background:${m.c}"></i></div>
+      <div class="val">${counts[m.id]} day${counts[m.id] > 1 ? 's' : ''}</div>
+    </div>`).join('') : '<div class="cal-empty">nobody assigned yet</div>';
+}
+
+function render() {
+  document.querySelectorAll('[data-mode]').forEach(b =>
+    b.classList.toggle('active', b.dataset.mode === state.mode));
+  document.getElementById('perday-block').style.display = state.mode === 'perday' ? '' : 'none';
+  document.getElementById('same-block').style.display  = state.mode === 'perday' ? 'none' : '';
+  if (state.mode === 'perday') { renderTabs(); renderPickers(); }
+  renderCard(); renderCal(); renderLoad();
+}
+
+document.querySelectorAll('[data-mode]').forEach(b =>
+  b.onclick = () => { state.mode = b.dataset.mode; render(); });
+
+render();
+</script>
+</body>
+</html>

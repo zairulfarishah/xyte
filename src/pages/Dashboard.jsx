@@ -11,6 +11,10 @@ import PlaceSearchBox from '../components/PlaceSearchBox'
 import { mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../utils/completionMeta'
 import { useViewport } from '../utils/useViewport'
 import { fetchTeamLeaves, getLeaveSessionLabel, getLeaveSummary, getMemberLeaveOnDate, getMembersOnLeave } from '../utils/teamLeaves'
+import {
+  assignmentDays, assignmentMemberId, crewForDate, isMissingPic, memberRoleOnSite,
+  picForDate, representativeDate, sitePic, uniqueAssignments,
+} from '../utils/siteDays'
 import 'leaflet/dist/leaflet.css'
 
 function xIcon(color, selected = false) {
@@ -183,8 +187,15 @@ function buildMemberRecord(member, sites) {
       .map(a => ({ ...a, site }))
   )
 
-  const picCount = assignments.filter(a => String(a.assignment_role || '').toLowerCase() === 'pic').length
-  const crewCount = assignments.filter(a => String(a.assignment_role || '').toLowerCase() === 'crew').length
+  // A rotating crew gives one row per day — count sites, not rows
+  const roleBySite = new Map()
+  assignments.forEach(a => {
+    const role = memberRoleOnSite(a.site, member.id)
+    if (role) roleBySite.set(a.site.id, role)
+  })
+  const roles = [...roleBySite.values()]
+  const picCount = roles.filter(role => role === 'PIC').length
+  const crewCount = roles.filter(role => role !== 'PIC').length
 
   return {
     ...member,
@@ -511,11 +522,12 @@ export default function Dashboard() {
       return
     }
 
+    // On a rotating crew, seed from the day the site is on now rather than
+    // collecting every day's rows into one list
     const assignments = targetSite.site_assignments || []
-    const currentPic = assignments.find(item => String(item.assignment_role).toLowerCase() === 'pic')?.member_id || ''
-    const currentCrew = assignments
-      .filter(item => String(item.assignment_role).toLowerCase() === 'crew')
-      .map(item => item.member_id)
+    const day = representativeDate(targetSite)
+    const currentPic = assignmentMemberId(picForDate(assignments, day)) || ''
+    const currentCrew = [...new Set(crewForDate(assignments, day).map(assignmentMemberId).filter(Boolean))]
 
     setQuickAssign({
       siteId: targetSite.id,
@@ -584,7 +596,8 @@ export default function Dashboard() {
     if (mapFilter === 'completed') return site.site_status === 'completed'
     return true
   })
-  const noPicSites = sites.filter(site => !site.site_assignments?.some(a => a.assignment_role === 'PIC') && !['completed', 'cancelled'].includes(site.site_status))
+  // Any day of a multi-day site without a PIC counts as unassigned
+  const noPicSites = sites.filter(site => isMissingPic(site) && !['completed', 'cancelled'].includes(site.site_status))
   const soonSites = sites.filter(site => {
     const diff = (new Date(site.scheduled_date) - new Date()) / (1000 * 60 * 60 * 24)
     return diff >= 0 && diff <= 2 && site.site_status === 'upcoming'
@@ -608,12 +621,20 @@ export default function Dashboard() {
     .slice(0, 4)
   const leaveConflicts = upcoming
     .map(site => {
-      const conflicts = (site.site_assignments || [])
-        .map(assignment => ({
+      // Each row is checked against the day it actually covers, and a person
+      // clashing on several days is still one conflict to flag
+      const flagged = new Set()
+      const conflicts = assignmentDays(site)
+        .map(({ assignment, date }) => ({
           assignment,
-          leave: getMemberLeaveOnDate(leaves, assignment.member_id, site.scheduled_date),
+          date,
+          leave: getMemberLeaveOnDate(leaves, assignment.member_id, date),
         }))
-        .filter(item => item.leave)
+        .filter(item => {
+          if (!item.leave || flagged.has(item.assignment.member_id)) return false
+          flagged.add(item.assignment.member_id)
+          return true
+        })
       return conflicts.length > 0 ? { site, conflicts } : null
     })
     .filter(Boolean)
@@ -673,7 +694,7 @@ export default function Dashboard() {
     }
 
     if (nearestSite) {
-      const picName = shortestName(nearestSite.site_assignments?.find(a => a.assignment_role === 'PIC')?.team_members)
+      const picName = shortestName(sitePic(nearestSite)?.team_members)
       return {
         tone: {
           bg: '#eff6ff',
@@ -1229,7 +1250,7 @@ export default function Dashboard() {
                             <div style={{ marginTop: '6px', fontSize: '11px', color: '#64748b' }}>
                               Status: {site.site_status}
                               <br />
-                              PIC: {site.site_assignments?.find(a => a.assignment_role === 'PIC')?.team_members?.full_name || 'No PIC'}
+                              PIC: {sitePic(site)?.team_members?.full_name || 'No PIC'}
                               <br />
                               Visit: {formatLongDate(site.scheduled_date)}
                             </div>
@@ -1392,7 +1413,8 @@ export default function Dashboard() {
                       No upcoming sites in the next 14 days
                     </div>
                   ) : upcoming.map(site => {
-                    const pic = site.site_assignments?.find(a => a.assignment_role === 'PIC')
+                    const pic = sitePic(site)
+                    const roster = uniqueAssignments(site.site_assignments || [])
                     const urgent = soonSites.some(item => item.id === site.id)
                     const accentColor = urgent ? '#dc2626' : site.site_status === 'ongoing' ? '#ea580c' : '#d97706'
 
@@ -1429,7 +1451,7 @@ export default function Dashboard() {
                         {/* bottom row: avatars + button */}
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                           <div style={{ display: 'flex', gap: '4px' }}>
-                            {(site.site_assignments || []).slice(0, 4).map((assignment, idx) => (
+                            {roster.slice(0, 4).map((assignment, idx) => (
                               <div key={`${site.id}-${idx}`} title={assignment.team_members?.full_name} style={{ marginLeft: idx > 0 ? '-5px' : 0, borderRadius: '50%', border: '2px solid white', overflow: 'hidden', flexShrink: 0 }}>
                                 <Avatar name={assignment.team_members?.full_name || '?'} size={22} index={idx} avatarUrl={assignment.team_members?.avatar_url} />
                               </div>

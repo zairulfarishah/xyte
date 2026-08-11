@@ -5,6 +5,7 @@ import { supabase } from '../supabase'
 import { Search } from 'lucide-react'
 import PlaceSearchBox from '../components/PlaceSearchBox'
 import { useViewport } from '../utils/useViewport'
+import { siteCrew, sitePic } from '../utils/siteDays'
 import 'leaflet/dist/leaflet.css'
 
 function xIcon(color, selected = false) {
@@ -55,7 +56,7 @@ export default function MapView() {
     setLoading(true)
     const { data } = await supabase
       .from('sites')
-      .select(`*, site_assignments(assignment_role, team_members(full_name))`)
+      .select(`*, site_assignments(assignment_role, work_date, member_id, team_members(full_name))`)
       .order('scheduled_date', { ascending: true })
     setSites(data || [])
     setLoading(false)
@@ -207,8 +208,8 @@ export default function MapView() {
             />
             {withCoords.map(site => {
               const c   = STATUS_COLORS[site.site_status]
-              const pic = site.site_assignments?.find(a => a.assignment_role === 'PIC')
-              const crew = site.site_assignments?.filter(a => a.assignment_role === 'crew') || []
+              const pic = sitePic(site)
+              const crew = siteCrew(site)
               const isSelected = selected?.id === site.id
               return (
                 <Marker

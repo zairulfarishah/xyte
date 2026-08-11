@@ -6,6 +6,7 @@ import {
   BASE, areaOf, countBy, daysBetween, distanceFromBase, formatNumber,
   monthKey, monthLabel, siteEndDate, sumBy, toDate, topEntries, weekKey,
 } from '../utils/statistics'
+import { getSiteDayCount, hasDailyCrew, memberDaysOnSite, siteMemberIds } from '../utils/siteDays'
 
 /* ── Viz tokens (validated: light surface, sequential blue + fixed status) ── */
 const SURFACE = '#ffffff'
@@ -213,7 +214,7 @@ export default function Statistics() {
 
     async function fetchAll() {
       const [{ data: siteData }, { data: memberData }, { data: docs }] = await Promise.all([
-        supabase.from('sites').select('*, site_assignments(assignment_role, member_id, team_members(id, full_name))'),
+        supabase.from('sites').select('*, site_assignments(assignment_role, work_date, member_id, team_members(id, full_name))'),
         supabase.from('team_members').select('id, full_name, short_name').order('full_name'),
         supabase.from('library_documents').select('id'),
       ])
@@ -315,7 +316,13 @@ export default function Statistics() {
       const assignments = sites.filter(s => (s.site_assignments || []).some(a => a.member_id === m.id))
       const picCount = sites.filter(s => (s.site_assignments || [])
         .some(a => a.member_id === m.id && String(a.assignment_role || '').toLowerCase() === 'pic')).length
-      const days = assignments.reduce((sum, s) => sum + (Number(s.site_duration_days) || 0), 0)
+      // On a rotating crew a person only carries the days they were actually on
+      const days = assignments.reduce((sum, s) => {
+        if (!hasDailyCrew(s.site_assignments || [])) return sum + (Number(s.site_duration_days) || 0)
+        const siteDays = getSiteDayCount(s) || 1
+        const perDay = (Number(s.site_duration_days) || 0) / siteDays
+        return sum + perDay * memberDaysOnSite(s, m.id)
+      }, 0)
       const lastSite = assignments
         .map(s => toDate(s.scheduled_date))
         .filter(Boolean)
@@ -340,9 +347,11 @@ export default function Statistics() {
     const nameOf = id => members.find(m => m.id === id)?.full_name || 'Unknown'
     const topPair = topEntries(pairCounts, 1)[0] || null
 
-    const soloSites = sites.filter(s => (s.site_assignments || []).length === 1).length
+    // Head count, not row count — a rotating crew writes one row per person per day
+    const crewSize = s => siteMemberIds(s).length
+    const soloSites = sites.filter(s => crewSize(s) === 1).length
     const biggestCrew = sites
-      .map(s => ({ site: s, size: (s.site_assignments || []).length }))
+      .map(s => ({ site: s, size: crewSize(s) }))
       .sort((a, b) => b.size - a.size)[0] || null
 
     /* Reports */

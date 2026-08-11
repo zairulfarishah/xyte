@@ -6,7 +6,7 @@ import {
   Pencil, Trash2, Search, ArrowUpRight, MapPin, MessageCircle, X, Camera,
   Calendar, Clock, CheckCircle,
 } from 'lucide-react'
-import { notify, notifyAssignments, notifyMany } from '../utils/notify'
+import { notify, notifyAssignments, notifyDailyAssignments, notifyMany } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
 import { getSiteHeaderImage } from '../utils/siteHeader'
@@ -15,6 +15,10 @@ import { fetchTeamLeaves, getLeaveSummary, getMemberLeaveOnDate } from '../utils
 import { useViewport } from '../utils/useViewport'
 import { buildAssignmentMessage, openWhatsApp } from '../utils/whatsapp'
 import { getSiteTitle } from '../utils/siteTitle'
+import {
+  assignmentMemberId, assignmentsForDate, crewForDate, getSiteDates, hasDailyCrew,
+  isPic, picForDate, siteCrew, sitePic, uniqueAssignments,
+} from '../utils/siteDays'
 import 'leaflet/dist/leaflet.css'
 
 /* ── Design tokens (Dashboard light-mode parity) ── */
@@ -431,10 +435,16 @@ export default function Sites() {
 
         // Notify PIC and crew
         if (form.assign_mode === 'per_day') {
-          const unionIds = [...new Set(Object.values(form.daily_assignments).flatMap(d => [d.pic_id, ...d.crew_ids]).filter(Boolean))]
-          if (unionIds.length > 0) {
-            await notifyMany(`You've been assigned to site "${form.site_name}" (per-day schedule)`, fullName, unionIds)
-          }
+          // Each person hears their own days rather than "there is a schedule somewhere"
+          await notifyDailyAssignments({
+            siteName: form.site_name,
+            days: Object.entries(form.daily_assignments).map(([date, day]) => ({
+              date,
+              picId: day.pic_id,
+              crewIds: day.crew_ids,
+            })),
+            actor: fullName,
+          })
         } else {
           await notifyAssignments({
             siteName: form.site_name,
@@ -560,20 +570,35 @@ export default function Sites() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" style={{ gap:'16px', paddingBottom:'8px' }}>
             {paginated.map(site => {
-              const pic       = site.site_assignments?.find(a => a.assignment_role === 'PIC')
+              // On a per-day site the card speaks for today (or day one)
+              const perDay    = hasDailyCrew(site.site_assignments || [])
+              const siteDates = getSiteDates(site)
+              const pic       = sitePic(site)
               // Deduped — a per-day site can list the same crew member across multiple day-specific rows
               const crew      = Array.from(
-                new Map((site.site_assignments?.filter(a => a.assignment_role === 'crew') || []).map(a => [a.team_members?.id, a])).values()
+                new Map(siteCrew(site).map(a => [a.team_members?.id, a])).values()
               )
               const typeMeta  = TYPE_META[site.site_type] || TYPE_META.site_scanning
               const memberIdx = members.findIndex(m => m.id === pic?.team_members?.id)
               const isExpanded = expandedCard === site.id
               const glow = CARD_GLOW[site.site_type] || CARD_GLOW.site_scanning
-              // Assigned members reachable on WhatsApp — PIC first
-              const waTargets = [
-                ...(pic ? [{ role: 'PIC', member: pic.team_members }] : []),
-                ...crew.map(c => ({ role: 'crew', member: c.team_members })),
-              ].filter(t => t.member?.phone)
+              // Per-day rosters travel with the WhatsApp brief so everyone sees the rotation
+              const dayRoster = perDay ? siteDates.map(date => ({
+                date,
+                picName: picForDate(site.site_assignments || [], date)?.team_members?.full_name || '',
+                crewNames: crewForDate(site.site_assignments || [], date).map(c => c.team_members?.full_name).filter(Boolean),
+              })) : []
+              const memberDatesOn = memberId => perDay
+                ? siteDates.filter(date => assignmentsForDate(site.site_assignments || [], date).some(a => assignmentMemberId(a) === memberId))
+                : siteDates
+              // Assigned members reachable on WhatsApp — PIC first, each person once
+              const waTargets = (perDay
+                ? uniqueAssignments(site.site_assignments || []).map(a => ({ role: isPic(a) ? 'PIC' : 'crew', member: a.team_members }))
+                : [
+                    ...(pic ? [{ role: 'PIC', member: pic.team_members }] : []),
+                    ...crew.map(c => ({ role: 'crew', member: c.team_members })),
+                  ]
+              ).filter(t => t.member?.phone)
               const waOpen = waMenu === site.id
               const completionMeta = parseCompletionMeta(site.notes || '')
 
@@ -728,6 +753,7 @@ export default function Sites() {
                                 openWhatsApp(member.phone, buildAssignmentMessage({
                                   role, memberName: member.full_name, site,
                                   pic: pic?.team_members, crew: crew.map(c => c.team_members),
+                                  memberDates: memberDatesOn(member.id), dayRoster,
                                 }))
                                 return
                               }
@@ -748,6 +774,7 @@ export default function Sites() {
                                     openWhatsApp(member.phone, buildAssignmentMessage({
                                   role, memberName: member.full_name, site,
                                   pic: pic?.team_members, crew: crew.map(c => c.team_members),
+                                  memberDates: memberDatesOn(member.id), dayRoster,
                                 }))
                                     setWaMenu(null)
                                   }}

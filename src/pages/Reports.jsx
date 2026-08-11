@@ -4,6 +4,7 @@ import { FileText, CheckCircle, Clock, AlertCircle, Search, MinusCircle } from '
 import { notify } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
 import { useViewport } from '../utils/useViewport'
+import { isPic, siteMemberIds, uniqueAssignments } from '../utils/siteDays'
 
 const REPORT_META = {
   pending:        { bg:'#fef3c7', text:'#92400e', border:'#fcd34d', dot:'#f59e0b',  label:'Pending'        },
@@ -71,7 +72,7 @@ export default function Reports() {
     setLoading(true)
     const [{ data: s }, { data: m }] = await Promise.all([
       supabase.from('sites')
-        .select(`*, site_assignments(assignment_role, team_members(id, full_name, avatar_url))`)
+        .select(`*, site_assignments(assignment_role, work_date, member_id, team_members(id, full_name, avatar_url))`)
         .order('scheduled_date', { ascending: false }),
       supabase.from('team_members').select('*').order('full_name'),
     ])
@@ -94,7 +95,7 @@ export default function Reports() {
       return
     }
     setUpdateError(null)
-    const involvedIds = (site?.site_assignments || []).map(a => a.team_members?.id).filter(Boolean)
+    const involvedIds = siteMemberIds(site)
     if (prev !== newStatus) {
       if (newStatus === 'submitted') await notify(`Report for "${site?.site_name}" has been submitted — ready for review`, fullName)
       if (newStatus === 'approved')  await notify(`Report for "${site?.site_name}" has been approved`, fullName)
@@ -196,8 +197,10 @@ export default function Reports() {
             </div>
           ) : (
             paginated.map((site) => {
-              const pic  = site.site_assignments?.find(a => a.assignment_role === 'PIC')
-              const crew = site.site_assignments?.filter(a => a.assignment_role === 'crew') || []
+              // The report belongs to the whole site — list everyone who was on it, once
+              const roster = uniqueAssignments(site.site_assignments || [])
+              const pic  = roster.find(isPic)
+              const crew = roster.filter(a => !isPic(a))
               const mi   = members.findIndex(m => m.id === pic?.team_members?.id)
               const rm   = REPORT_META[site.report_status] || REPORT_META.pending
 
@@ -342,8 +345,9 @@ export default function Reports() {
               {paginated.length === 0 ? (
                 <tr><td colSpan={8} style={{ padding:'60px', textAlign:'center', color:'#94a3b8', fontSize:'14px' }}>No reports found.</td></tr>
               ) : paginated.map((site, i) => {
-                const pic  = site.site_assignments?.find(a => a.assignment_role === 'PIC')
-                const crew = site.site_assignments?.filter(a => a.assignment_role === 'crew') || []
+                const roster = uniqueAssignments(site.site_assignments || [])
+                const pic  = roster.find(isPic)
+                const crew = roster.filter(a => !isPic(a))
                 const mi   = members.findIndex(m => m.id === pic?.team_members?.id)
                 const rm   = REPORT_META[site.report_status] || REPORT_META.pending
                 return (

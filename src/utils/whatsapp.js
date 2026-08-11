@@ -40,7 +40,11 @@ export function buildWhatsAppUrl(phone, message = '') {
 
 // Assignment brief sent to a PIC or crew member
 // Plain-text labels only — emoji render as tofu on some devices
-export function buildAssignmentMessage({ role, memberName, site, pic = null, crew = [] }) {
+// memberDates — the days this person is on site (only some days, on a rotating crew)
+// dayRoster  — [{ date, picName, crewNames }] when the site runs a different crew per day
+export function buildAssignmentMessage({
+  role, memberName, site, pic = null, crew = [], memberDates = [], dayRoster = [],
+}) {
   const label = String(role || '').toLowerCase() === 'pic' ? 'PIC' : 'crew'
   const duration = Number(site?.site_duration_days) || 0
   const dateLine = duration > 1
@@ -56,6 +60,10 @@ export function buildAssignmentMessage({ role, memberName, site, pic = null, cre
     `*Date:* ${dateLine}`,
   ]
 
+  if (memberDates.length > 0 && dayRoster.length > 1) {
+    lines.push(`*Your days:* ${memberDates.map(shortDayLabel).join(', ')}`)
+  }
+
   if (site?.location) lines.push(`*Location:* ${site.location}`)
   if (site?.latitude && site?.longitude) {
     lines.push(`*Map:* https://maps.google.com/?q=${site.latitude},${site.longitude}`)
@@ -64,8 +72,21 @@ export function buildAssignmentMessage({ role, memberName, site, pic = null, cre
 
   // Full team roster, so everyone knows who else is on the job
   const mark = name => (name && memberName && name === memberName ? `${name} (you)` : name)
-  const crewNames = crew.map(c => mark(c?.full_name)).filter(Boolean)
 
+  if (dayRoster.length > 1) {
+    lines.push('')
+    lines.push('*Crew by day:*')
+    dayRoster.forEach(day => {
+      const names = [
+        day.picName ? `${mark(day.picName)} (PIC)` : null,
+        ...(day.crewNames || []).map(mark),
+      ].filter(Boolean)
+      lines.push(`${shortDayLabel(day.date)} - ${names.length > 0 ? names.join(', ') : 'Not assigned'}`)
+    })
+    return lines.join('\n')
+  }
+
+  const crewNames = crew.map(c => mark(c?.full_name)).filter(Boolean)
   if (pic?.full_name || crewNames.length > 0) {
     lines.push('')
     lines.push(`*PIC:* ${mark(pic?.full_name) || 'Not assigned'}`)
@@ -73,6 +94,12 @@ export function buildAssignmentMessage({ role, memberName, site, pic = null, cre
   }
 
   return lines.join('\n')
+}
+
+function shortDayLabel(date) {
+  const parsed = new Date(`${String(date || '').slice(0, 10)}T00:00:00`)
+  if (Number.isNaN(parsed.getTime())) return String(date || '')
+  return parsed.toLocaleDateString('en-MY', { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
 export function openWhatsApp(phone, message) {
