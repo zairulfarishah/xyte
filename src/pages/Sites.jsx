@@ -6,7 +6,7 @@ import {
   Pencil, Trash2, Search, ArrowUpRight, MapPin, MessageCircle, X, Camera,
   Calendar, Clock, CheckCircle,
 } from 'lucide-react'
-import { notify, notifyAssignments, notifyMany } from '../utils/notify'
+import { notify, notifyAssignments, notifyDailyAssignments, notifyMany } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
 import { getSiteHeaderImage } from '../utils/siteHeader'
@@ -15,6 +15,10 @@ import { fetchTeamLeaves, getLeaveSummary, getMemberLeaveOnDate } from '../utils
 import { useViewport } from '../utils/useViewport'
 import { buildAssignmentMessage, openWhatsApp } from '../utils/whatsapp'
 import { getSiteTitle } from '../utils/siteTitle'
+import {
+  assignmentMemberId, assignmentsForDate, crewForDate, formatDayLabel, getSiteDates,
+  hasDailyCrew, isPic, picForDate, siteCrew, sitePic, uniqueAssignments,
+} from '../utils/siteDays'
 import 'leaflet/dist/leaflet.css'
 
 /* ── Design tokens (Dashboard light-mode parity) ── */
@@ -74,9 +78,11 @@ const EMPTY = {
   client_company_name:'', client_name:'', client_number:'', scope_of_work:'',
   salesperson:'', scheduled_date:'', end_date:'', site_session:'', site_status:'upcoming', report_status:'pending',
   site_duration_days:'1', report_duration_days:'0.5', notes:'', pic_id:'', crew_ids:[],
+  crew_mode:'same', day_crew:{},
   delivery_order_number:'', completion_reason:'',
   site_photo:null, site_photo_preview:null, site_photo_url:'',
 }
+const EMPTY_DAY = { pic_id:'', crew_ids:[] }
 
 function Avatar({ name, size = 28, index = 0, avatarUrl = null }) {
   const initials = name?.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase() || '?'
@@ -107,6 +113,15 @@ function Pill({ status, colors }) {
       {done && <CheckCircle size={9} />}
     </span>
   )
+}
+
+// Order-independent fingerprint of an assignment set, so a save only rewrites rows
+// when the crew (or the day someone is on) actually changed.
+function assignmentSignature(rows) {
+  return rows
+    .map(r => `${r.assignment_date || ''}|${String(r.assignment_role || '').toLowerCase()}|${r.member_id || ''}`)
+    .sort()
+    .join(';')
 }
 
 async function uploadSitePhoto(file) {
@@ -156,6 +171,7 @@ export default function Sites() {
   const [panelAnchor, setPanelAnchor]   = useState(null)
   const [leaves, setLeaves]             = useState([])
   const [waMenu, setWaMenu]             = useState(null)
+  const [activeDay, setActiveDay]       = useState(0)
   const photoInputRef = useRef(null)
   const PER_PAGE = 8
 
@@ -186,7 +202,7 @@ export default function Sites() {
     const [{ data:s }, { data:m }, leaveData] = await Promise.all([
       supabase
         .from('sites')
-        .select(`*, site_assignments(assignment_role, team_members(id, full_name, avatar_url, phone))`)
+        .select(`*, site_assignments(assignment_role, assignment_date, member_id, team_members(id, full_name, avatar_url, phone))`)
         .order('scheduled_date', { ascending:false }),
       supabase.from('team_members').select('*').order('full_name'),
       fetchTeamLeaves().catch(() => []),
@@ -225,8 +241,9 @@ export default function Sites() {
       setSites(prev => prev.map(s => s.id === site.id ? { ...s, ...updates } : s))
 
       // Collect all member IDs involved in this site
-      const involvedIds = (site.site_assignments || [])
-        .map(a => a.team_members?.id).filter(Boolean)
+      const involvedIds = [...new Set(
+        (site.site_assignments || []).map(assignmentMemberId).filter(Boolean)
+      )]
 
       if (updates.site_status) {
         await notifyMany(
@@ -247,10 +264,25 @@ export default function Sites() {
     setExpandedCard(null); setDraftStatus(null); setPanelAnchor(null)
   }
 
-  function openAdd() { setForm(EMPTY); setEditSite(null); setShowForm(true) }
+  function openAdd() { setForm(EMPTY); setEditSite(null); setActiveDay(0); setShowForm(true) }
   function openEdit(site) {
-    const pic  = site.site_assignments?.find(a => a.assignment_role === 'PIC')
-    const crew = site.site_assignments?.filter(a => a.assignment_role === 'crew')
+    const assignments = site.site_assignments || []
+    const perDay = hasDailyCrew(assignments)
+    const dayCrew = {}
+    if (perDay) {
+      getSiteDates(site).forEach(date => {
+        const rows = assignmentsForDate(assignments, date)
+        dayCrew[date] = {
+          pic_id: assignmentMemberId(rows.find(isPic)) || '',
+          crew_ids: rows.filter(a => !isPic(a)).map(assignmentMemberId).filter(Boolean),
+        }
+      })
+    }
+    // The single-crew fields mirror day one, so shrinking a rotating site back to
+    // one day (or switching the mode off) still starts from a real crew
+    const firstDay = dayCrew[getSiteDates(site)[0]] || EMPTY_DAY
+    const pic  = perDay ? null : assignments.find(isPic)
+    const crew = perDay ? [] : assignments.filter(a => !isPic(a))
     const completionMeta = parseCompletionMeta(site.notes || '')
     setForm({
       site_type: site.site_type || 'site_scanning',
@@ -264,16 +296,64 @@ export default function Sites() {
       site_duration_days:site.site_duration_days?.toString()||'1',
       report_duration_days:site.report_duration_days?.toString()||'0.5',
       report_status:site.report_status, notes:completionMeta.baseNotes,
-      pic_id:pic?.team_members?.id||'',
-      crew_ids:crew?.map(c => c.team_members?.id)||[],
+      pic_id: perDay ? firstDay.pic_id : (assignmentMemberId(pic) || ''),
+      crew_ids: perDay ? [...firstDay.crew_ids] : crew.map(assignmentMemberId).filter(Boolean),
+      crew_mode: perDay ? 'perday' : 'same',
+      day_crew: dayCrew,
       delivery_order_number: completionMeta.deliveryOrderNumber,
       completion_reason: completionMeta.completionReason,
       site_photo:null, site_photo_preview:site.site_photo_url||null, site_photo_url:site.site_photo_url||'',
     })
-    setEditSite(site); setShowForm(true)
+    setEditSite(site); setActiveDay(0); setShowForm(true)
   }
   function toggleCrew(id) {
     setForm(f => ({ ...f, crew_ids: f.crew_ids.includes(id) ? f.crew_ids.filter(x => x!==id) : [...f.crew_ids, id] }))
+  }
+
+  // ── per-day crew helpers (multi-day sites only) ──
+  const formDays  = getSiteDates({ scheduled_date:form.scheduled_date, end_date:form.end_date })
+  const isPerDay  = form.crew_mode === 'perday' && formDays.length > 1
+  const dayIndex  = Math.min(activeDay, Math.max(formDays.length - 1, 0))
+  const activeDate = formDays[dayIndex] || form.scheduled_date
+  function dayCrewFor(date) { return form.day_crew?.[date] || EMPTY_DAY }
+  function setDayCrew(date, next) {
+    setForm(f => ({ ...f, day_crew: { ...f.day_crew, [date]: next } }))
+  }
+  function setDayPic(date, memberId) {
+    const day = dayCrewFor(date)
+    const pic = day.pic_id === memberId ? '' : memberId
+    setDayCrew(date, { pic_id: pic, crew_ids: day.crew_ids.filter(id => id !== pic) })
+  }
+  function toggleDayCrew(date, memberId) {
+    const day = dayCrewFor(date)
+    setDayCrew(date, {
+      ...day,
+      crew_ids: day.crew_ids.includes(memberId)
+        ? day.crew_ids.filter(id => id !== memberId)
+        : [...day.crew_ids, memberId],
+    })
+  }
+  function dayNeedsAttention(date) {
+    const day = dayCrewFor(date)
+    if (!day.pic_id) return true
+    return [day.pic_id, ...day.crew_ids].some(id => getMemberLeaveOnDate(leaves, id, date))
+  }
+  function copyPreviousDay(index) {
+    if (index < 1) return
+    const previous = dayCrewFor(formDays[index - 1])
+    setDayCrew(formDays[index], { pic_id: previous.pic_id, crew_ids: [...previous.crew_ids] })
+  }
+  // Seed each day from the single-crew picks the first time per-day mode is switched on
+  function switchCrewMode(mode) {
+    setForm(f => {
+      if (mode !== 'perday' || Object.keys(f.day_crew || {}).length > 0) return { ...f, crew_mode: mode }
+      const seeded = {}
+      getSiteDates({ scheduled_date:f.scheduled_date, end_date:f.end_date }).forEach(date => {
+        seeded[date] = { pic_id: f.pic_id, crew_ids: [...f.crew_ids] }
+      })
+      return { ...f, crew_mode: mode, day_crew: seeded }
+    })
+    setActiveDay(0)
   }
 
   function getLeaveConflict(memberIds, date) {
@@ -291,7 +371,13 @@ export default function Sites() {
 
   async function handleSave() {
     if (!form.site_name || !form.location || !form.scheduled_date) return
-    const leaveError = getLeaveConflict([form.pic_id, ...form.crew_ids].filter(Boolean), form.scheduled_date)
+    // Per-day crews are checked against leave day by day — being off on Wednesday
+    // only blocks Wednesday.
+    const leaveError = isPerDay
+      ? formDays
+          .map(date => getLeaveConflict([dayCrewFor(date).pic_id, ...dayCrewFor(date).crew_ids].filter(Boolean), date))
+          .find(Boolean)
+      : getLeaveConflict([form.pic_id, ...form.crew_ids].filter(Boolean), form.scheduled_date)
     if (leaveError) {
       setUploadError(leaveError)
       return
@@ -339,11 +425,29 @@ export default function Sites() {
         }),
       }
       let siteId = editSite?.id
-      const origA    = editSite?.site_assignments||[]
-      const origPic  = origA.find(a => a.assignment_role==='PIC')?.team_members?.id||''
-      const origCrew = origA.filter(a => a.assignment_role==='crew').map(a => a.team_members?.id).filter(Boolean).sort()
-      const nextCrew = [...form.crew_ids].sort()
-      const changed  = !editSite || origPic!==form.pic_id || origCrew.length!==nextCrew.length || origCrew.some((id,i) => id!==nextCrew[i])
+
+      // One row per member for a shared crew, one row per member per day otherwise
+      const nextAssignments = []
+      if (isPerDay) {
+        formDays.forEach(date => {
+          const day = dayCrewFor(date)
+          if (day.pic_id) nextAssignments.push({ member_id:day.pic_id, assignment_role:'PIC', assignment_date:date })
+          day.crew_ids.forEach(id => {
+            if (id !== day.pic_id) nextAssignments.push({ member_id:id, assignment_role:'crew', assignment_date:date })
+          })
+        })
+      } else {
+        if (form.pic_id) nextAssignments.push({ member_id:form.pic_id, assignment_role:'PIC', assignment_date:null })
+        form.crew_ids.forEach(id => {
+          if (id !== form.pic_id) nextAssignments.push({ member_id:id, assignment_role:'crew', assignment_date:null })
+        })
+      }
+      const origAssignments = (editSite?.site_assignments || []).map(a => ({
+        member_id: assignmentMemberId(a),
+        assignment_role: a.assignment_role,
+        assignment_date: a.assignment_date ? String(a.assignment_date).slice(0,10) : null,
+      }))
+      const changed = !editSite || assignmentSignature(origAssignments) !== assignmentSignature(nextAssignments)
       if (editSite) {
         const { error } = await supabase.from('sites').update(payload).eq('id', siteId)
         if (error) throw new Error(error.message)
@@ -357,19 +461,32 @@ export default function Sites() {
         siteId = data.id
       }
       if (changed) {
-        const assignments = []
-        if (form.pic_id) assignments.push({ site_id:siteId, member_id:form.pic_id, assignment_role:'PIC' })
-        form.crew_ids.forEach(id => { if (id!==form.pic_id) assignments.push({ site_id:siteId, member_id:id, assignment_role:'crew' }) })
-        if (assignments.length > 0) await supabase.from('site_assignments').insert(assignments)
+        const rows = nextAssignments.map(a => ({ ...a, site_id:siteId }))
+        if (rows.length > 0) {
+          const { error } = await supabase.from('site_assignments').insert(rows)
+          if (error) throw new Error(error.message)
+        }
 
-        // Notify PIC and crew
-        await notifyAssignments({
-          siteName: form.site_name,
-          scheduledDate: form.scheduled_date,
-          picId: form.pic_id,
-          crewIds: form.crew_ids,
-          actor: fullName,
-        })
+        // Notify PIC and crew — per-day sites tell each person their own days
+        if (isPerDay) {
+          await notifyDailyAssignments({
+            siteName: form.site_name,
+            days: formDays.map(date => ({
+              date,
+              picId: dayCrewFor(date).pic_id,
+              crewIds: dayCrewFor(date).crew_ids,
+            })),
+            actor: fullName,
+          })
+        } else {
+          await notifyAssignments({
+            siteName: form.site_name,
+            scheduledDate: form.scheduled_date,
+            picId: form.pic_id,
+            crewIds: form.crew_ids,
+            actor: fullName,
+          })
+        }
       }
       await notify(`${editSite?'Updated':'Added'} site: ${form.site_name}`, fullName)
       window.dispatchEvent(new CustomEvent('xyte:site-saved'))
@@ -411,8 +528,9 @@ export default function Sites() {
     background:'white', color:'#0f172a', fontFamily:'inherit', boxSizing:'border-box',
   }
   const lLabel = { display:'block', fontSize:'12px', fontWeight:'500', color:'#64748b', marginBottom:'6px' }
+  // Availability follows the day being edited, not just the site's first day
   const unavailableMembers = members.reduce((acc, member) => {
-    const leave = getMemberLeaveOnDate(leaves, member.id, form.scheduled_date)
+    const leave = getMemberLeaveOnDate(leaves, member.id, isPerDay ? activeDate : form.scheduled_date)
     if (leave) acc[member.id] = leave
     return acc
   }, {})
@@ -486,17 +604,32 @@ export default function Sites() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" style={{ gap:'16px', paddingBottom:'8px' }}>
             {paginated.map(site => {
-              const pic       = site.site_assignments?.find(a => a.assignment_role === 'PIC')
-              const crew      = site.site_assignments?.filter(a => a.assignment_role === 'crew') || []
+              // A multi-day site can rotate its crew — the card speaks for today (or day one)
+              const perDay    = hasDailyCrew(site.site_assignments || [])
+              const siteDates = getSiteDates(site)
+              const pic       = sitePic(site)
+              const crew      = siteCrew(site)
               const typeMeta  = TYPE_META[site.site_type] || TYPE_META.site_scanning
-              const memberIdx = members.findIndex(m => m.id === pic?.team_members?.id)
+              const memberIdx = members.findIndex(m => m.id === assignmentMemberId(pic))
               const isExpanded = expandedCard === site.id
               const glow = CARD_GLOW[site.site_type] || CARD_GLOW.site_scanning
-              // Assigned members reachable on WhatsApp — PIC first
-              const waTargets = [
-                ...(pic ? [{ role: 'PIC', member: pic.team_members }] : []),
-                ...crew.map(c => ({ role: 'crew', member: c.team_members })),
-              ].filter(t => t.member?.phone)
+              // Per-day rosters travel with the WhatsApp brief so everyone sees the rotation
+              const dayRoster = perDay ? siteDates.map(date => ({
+                date,
+                picName: picForDate(site.site_assignments || [], date)?.team_members?.full_name || '',
+                crewNames: crewForDate(site.site_assignments || [], date).map(c => c.team_members?.full_name).filter(Boolean),
+              })) : []
+              const memberDatesOn = memberId => perDay
+                ? siteDates.filter(date => assignmentsForDate(site.site_assignments || [], date).some(a => assignmentMemberId(a) === memberId))
+                : siteDates
+              // Assigned members reachable on WhatsApp — PIC first, each person once
+              const waTargets = (perDay
+                ? uniqueAssignments(site.site_assignments || []).map(a => ({ role: isPic(a) ? 'PIC' : 'crew', member: a.team_members }))
+                : [
+                    ...(pic ? [{ role: 'PIC', member: pic.team_members }] : []),
+                    ...crew.map(c => ({ role: 'crew', member: c.team_members })),
+                  ]
+              ).filter(t => t.member?.phone)
               const waOpen = waMenu === site.id
               const completionMeta = parseCompletionMeta(site.notes || '')
 
@@ -606,6 +739,32 @@ export default function Sites() {
                       )}
                     </div>
 
+                    {/* Crew rotates day by day — show who is on which day */}
+                    {perDay && (
+                      <div style={{ marginBottom:'12px', border:'1px solid #e2e8f0', borderRadius:'10px', overflow:'hidden' }}>
+                        <div style={{ padding:'5px 10px', background:'#f8fafc', borderBottom:'1px solid #e2e8f0', fontSize:'9px', fontWeight:'800', color:'#64748b', letterSpacing:'.06em' }}>
+                          CREW BY DAY
+                        </div>
+                        {siteDates.map((date, di) => {
+                          const dayPic  = picForDate(site.site_assignments || [], date)
+                          const dayCrew = crewForDate(site.site_assignments || [], date)
+                          const names = [
+                            ...(dayPic ? [`${dayPic.team_members?.full_name} (PIC)`] : []),
+                            ...dayCrew.map(c => c.team_members?.full_name).filter(Boolean),
+                          ]
+                          return (
+                            <div key={date} style={{ display:'flex', alignItems:'center', gap:'8px', padding:'5px 10px', borderTop: di ? '1px solid #f8fafc' : 'none' }}>
+                              <span style={{ fontSize:'10px', fontWeight:'800', color:'#94a3b8', width:'58px', flexShrink:0 }}>Day {di + 1}</span>
+                              <span style={{ fontSize:'11px', color: names.length ? '#334155' : '#cbd5e1', fontWeight:'600', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}
+                                title={names.join(', ')}>
+                                {names.length ? names.join(', ') : 'No crew'}
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+
                     {/* Actions — pinned to bottom */}
                     <div style={{ display:'flex', alignItems:'center', gap:'6px', marginTop:'auto', paddingTop:'12px', borderTop:'1px solid #f1f5f9' }}>
                       <Link to={`/sites/${site.id}`}
@@ -651,6 +810,7 @@ export default function Sites() {
                                 openWhatsApp(member.phone, buildAssignmentMessage({
                                   role, memberName: member.full_name, site,
                                   pic: pic?.team_members, crew: crew.map(c => c.team_members),
+                                  memberDates: memberDatesOn(member.id), dayRoster,
                                 }))
                                 return
                               }
@@ -671,6 +831,7 @@ export default function Sites() {
                                     openWhatsApp(member.phone, buildAssignmentMessage({
                                   role, memberName: member.full_name, site,
                                   pic: pic?.team_members, crew: crew.map(c => c.team_members),
+                                  memberDates: memberDatesOn(member.id), dayRoster,
                                 }))
                                     setWaMenu(null)
                                   }}
@@ -997,32 +1158,149 @@ export default function Sites() {
                 )}
               </div>
 
-              <div><label style={lLabel}>{form.site_type==='meeting'?'Organizer':'PIC'}</label>
-                <select style={lightInput} value={form.pic_id} onChange={e => {
-                  const picId = e.target.value
-                  setForm(f => ({ ...f, pic_id: picId, crew_ids: f.crew_ids.filter(id => id !== picId) }))
-                }}>
-                  <option value="">— Select —</option>
-                  {members.map(m => (
-                    <option key={m.id} value={m.id} disabled={Boolean(unavailableMembers[m.id])}>
-                      {m.full_name}{unavailableMembers[m.id] ? ` - On leave (${unavailableMembers[m.id].leave_type})` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div><label style={{ ...lLabel, marginBottom:'12px' }}>{form.site_type==='meeting'?'Attendees':'Crew'}</label>
-                <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
-                  {members.filter(m => m.id !== form.pic_id).map(m => (
-                    <label key={m.id} style={{ display:'flex', alignItems:'center', gap:'12px', cursor: unavailableMembers[m.id] ? 'not-allowed' : 'pointer', opacity: unavailableMembers[m.id] ? 0.55 : 1 }}>
-                      <input type="checkbox" checked={form.crew_ids.includes(m.id)} disabled={Boolean(unavailableMembers[m.id])} onChange={() => toggleCrew(m.id)} style={{ width:'16px', height:'16px', accentColor:'#2563eb' }} />
-                      <span style={{ fontSize:'13px', color:'#0f172a' }}>
-                        {m.full_name}{unavailableMembers[m.id] ? ` - ${getLeaveSummary(unavailableMembers[m.id])}` : ''}
-                      </span>
-                    </label>
-                  ))}
+              {/* ── Crew mode — only a multi-day site can split its crew ── */}
+              {formDays.length > 1 && (
+                <div style={{ background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:'12px', padding:'12px' }}>
+                  <label style={{ ...lLabel, marginBottom:'8px' }}>
+                    Crew Assignment <span style={{ color:'#94a3b8', fontWeight:'400' }}>· {formDays.length} days</span>
+                  </label>
+                  <div style={{ display:'flex', flexDirection:isMobile ? 'column' : 'row', gap:'8px' }}>
+                    {[
+                      { value:'same',   title:'Same crew all days',     hint:'One PIC and crew for the whole site' },
+                      { value:'perday', title:'Different crew per day', hint:'Rotate people day by day' },
+                    ].map(opt => {
+                      const active = isPerDay === (opt.value === 'perday')
+                      return (
+                        <button key={opt.value} type="button" onClick={() => switchCrewMode(opt.value)}
+                          style={{
+                            flex:1, textAlign:'left', padding:'10px 12px', borderRadius:'10px', cursor:'pointer', fontFamily:'inherit',
+                            background: active ? '#eff6ff' : 'white',
+                            border: `1px solid ${active ? '#93c5fd' : '#e2e8f0'}`,
+                            boxShadow: active ? '0 0 0 3px rgba(59,130,246,.10)' : 'none',
+                          }}>
+                          <span style={{ display:'block', fontSize:'13px', fontWeight:'750', color: active ? '#1d4ed8' : '#0f172a' }}>{opt.title}</span>
+                          <span style={{ display:'block', fontSize:'11px', color: active ? '#2563eb' : '#94a3b8', marginTop:'2px' }}>{opt.hint}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {isPerDay ? (
+                <div>
+                  {/* Day picker */}
+                  <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', marginBottom:'14px' }}>
+                    {formDays.map((date, index) => {
+                      const active = index === dayIndex
+                      const attention = dayNeedsAttention(date)
+                      return (
+                        <button key={date} type="button" onClick={() => setActiveDay(index)}
+                          style={{
+                            position:'relative', padding:'7px 13px', borderRadius:'10px', cursor:'pointer', fontFamily:'inherit', textAlign:'left',
+                            background: active ? '#0f172a' : 'white',
+                            border: `1px solid ${active ? '#0f172a' : '#e2e8f0'}`,
+                          }}>
+                          <span style={{ display:'block', fontSize:'12px', fontWeight:'800', color: active ? 'white' : '#0f172a' }}>Day {index + 1}</span>
+                          <span style={{ display:'block', fontSize:'10px', color: active ? '#94a3b8' : '#94a3b8' }}>{formatDayLabel(date)}</span>
+                          {attention && (
+                            <span style={{ position:'absolute', top:'-4px', right:'-4px', width:'9px', height:'9px', borderRadius:'50%', background:'#f59e0b', border:'2px solid white' }} />
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'10px', marginBottom:'6px' }}>
+                    <label style={{ ...lLabel, marginBottom:0 }}>
+                      {form.site_type==='meeting'?'Organizer':'PIC'} for Day {dayIndex + 1}
+                    </label>
+                    {dayIndex > 0 && (
+                      <button type="button" onClick={() => copyPreviousDay(dayIndex)}
+                        style={{ background:'none', border:'none', padding:0, cursor:'pointer', fontFamily:'inherit', fontSize:'11px', fontWeight:'800', color:'#2563eb' }}>
+                        Copy Day {dayIndex}
+                      </button>
+                    )}
+                  </div>
+                  <select style={lightInput} value={dayCrewFor(activeDate).pic_id}
+                    onChange={e => setDayPic(activeDate, e.target.value)}>
+                    <option value="">— Select —</option>
+                    {members.map(m => (
+                      <option key={m.id} value={m.id} disabled={Boolean(unavailableMembers[m.id])}>
+                        {m.full_name}{unavailableMembers[m.id] ? ` - On leave (${unavailableMembers[m.id].leave_type})` : ''}
+                      </option>
+                    ))}
+                  </select>
+
+                  <label style={{ ...lLabel, margin:'14px 0 12px' }}>
+                    {form.site_type==='meeting'?'Attendees':'Crew'} for Day {dayIndex + 1}
+                  </label>
+                  <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+                    {members.filter(m => m.id !== dayCrewFor(activeDate).pic_id).map(m => (
+                      <label key={m.id} style={{ display:'flex', alignItems:'center', gap:'12px', cursor: unavailableMembers[m.id] ? 'not-allowed' : 'pointer', opacity: unavailableMembers[m.id] ? 0.55 : 1 }}>
+                        <input type="checkbox" checked={dayCrewFor(activeDate).crew_ids.includes(m.id)} disabled={Boolean(unavailableMembers[m.id])} onChange={() => toggleDayCrew(activeDate, m.id)} style={{ width:'16px', height:'16px', accentColor:'#2563eb' }} />
+                        <span style={{ fontSize:'13px', color:'#0f172a' }}>
+                          {m.full_name}{unavailableMembers[m.id] ? ` - ${getLeaveSummary(unavailableMembers[m.id])}` : ''}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+
+                  {!dayCrewFor(activeDate).pic_id && (
+                    <div style={{ marginTop:'12px', padding:'9px 12px', borderRadius:'10px', background:'#fffbeb', border:'1px solid #fde68a', color:'#92400e', fontSize:'12px', fontWeight:'600' }}>
+                      Day {dayIndex + 1} has no PIC — nobody gets notified for {formatDayLabel(activeDate)}.
+                    </div>
+                  )}
+
+                  {/* Everything at a glance */}
+                  <div style={{ marginTop:'14px', border:'1px solid #e2e8f0', borderRadius:'12px', overflow:'hidden' }}>
+                    {formDays.map((date, index) => {
+                      const day = dayCrewFor(date)
+                      const names = [
+                        ...(day.pic_id ? [`${members.find(m => m.id === day.pic_id)?.full_name || '—'} (PIC)`] : []),
+                        ...day.crew_ids.map(id => members.find(m => m.id === id)?.full_name).filter(Boolean),
+                      ]
+                      return (
+                        <div key={date} style={{ display:'flex', alignItems:'center', gap:'10px', padding:'8px 12px', borderTop: index ? '1px solid #f1f5f9' : 'none', background: index === dayIndex ? '#f8fafc' : 'white' }}>
+                          <span style={{ fontSize:'11px', fontWeight:'800', color:'#64748b', width:'92px', flexShrink:0 }}>{formatDayLabel(date)}</span>
+                          <span style={{ fontSize:'12px', color: names.length ? '#0f172a' : '#94a3b8', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                            {names.length ? names.join(', ') : 'Nobody assigned'}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div><label style={lLabel}>{form.site_type==='meeting'?'Organizer':'PIC'}</label>
+                    <select style={lightInput} value={form.pic_id} onChange={e => {
+                      const picId = e.target.value
+                      setForm(f => ({ ...f, pic_id: picId, crew_ids: f.crew_ids.filter(id => id !== picId) }))
+                    }}>
+                      <option value="">— Select —</option>
+                      {members.map(m => (
+                        <option key={m.id} value={m.id} disabled={Boolean(unavailableMembers[m.id])}>
+                          {m.full_name}{unavailableMembers[m.id] ? ` - On leave (${unavailableMembers[m.id].leave_type})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div><label style={{ ...lLabel, marginBottom:'12px' }}>{form.site_type==='meeting'?'Attendees':'Crew'}</label>
+                    <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+                      {members.filter(m => m.id !== form.pic_id).map(m => (
+                        <label key={m.id} style={{ display:'flex', alignItems:'center', gap:'12px', cursor: unavailableMembers[m.id] ? 'not-allowed' : 'pointer', opacity: unavailableMembers[m.id] ? 0.55 : 1 }}>
+                          <input type="checkbox" checked={form.crew_ids.includes(m.id)} disabled={Boolean(unavailableMembers[m.id])} onChange={() => toggleCrew(m.id)} style={{ width:'16px', height:'16px', accentColor:'#2563eb' }} />
+                          <span style={{ fontSize:'13px', color:'#0f172a' }}>
+                            {m.full_name}{unavailableMembers[m.id] ? ` - ${getLeaveSummary(unavailableMembers[m.id])}` : ''}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
 
               <div><label style={lLabel}>Notes</label><textarea style={{...lightInput, resize:'none'}} rows={3} value={form.notes} placeholder="Optional notes…" onChange={e => setForm(f => ({...f, notes:e.target.value}))} /></div>
 

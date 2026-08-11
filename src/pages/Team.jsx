@@ -5,6 +5,7 @@ import { Search, MapPin, Calendar, TrendingUp, Users, Briefcase, Activity, Clock
 import { calculateWorkload, getWeekBounds } from '../utils/workload'
 import { useViewport } from '../utils/useViewport'
 import { fetchTeamLeaves, getMemberLeaveOnDate } from '../utils/teamLeaves'
+import { formatDayLabel, hasDailyCrew, memberDatesOnSite, memberDaysOnSite, memberRoleOnSite } from '../utils/siteDays'
 
 const AVATAR_COLORS = ['#2563eb', '#7c3aed', '#db2777', '#059669', '#d97706', '#dc2626']
 
@@ -129,22 +130,33 @@ function buildMemberRecord(member, sites, leaves = []) {
       .map(assignment => ({ ...assignment, site }))
   )
 
-  const picCount = assignments.filter(assignment => normalizeRole(assignment.assignment_role) === 'pic').length
-  const crewCount = assignments.filter(assignment => normalizeRole(assignment.assignment_role) === 'crew').length
-  const reportInvolvedCount = assignments.filter(assignment => siteHasReport(assignment.site)).length
+  // A rotating crew gives one row per day — count each site once
+  const sitesById = new Map()
+  assignments.forEach(assignment => sitesById.set(assignment.site.id, assignment.site))
+  const memberSites = [...sitesById.values()]
+  const picCount = memberSites.filter(site => memberRoleOnSite(site, member.id) === 'PIC').length
+  const crewCount = memberSites.length - picCount
+  const reportInvolvedCount = memberSites.filter(siteHasReport).length
+  const siteDays = memberSites.reduce((sum, site) => sum + memberDaysOnSite(site, member.id), 0)
 
   return {
     ...member,
     assignments,
     pic_count: picCount,
     crew_count: crewCount,
+    site_days: siteDays,
     report_involved_count: reportInvolvedCount,
     workload: calculateWorkload(assignments, { leaveDays: getLeaveDaysThisWeek(leaves, member.id) }),
   }
 }
 
+// PIC on any day of the site outranks a crew day
 function getMemberRole(memberId, assignments) {
-  return assignments?.find(assignment => assignment.member_id === memberId)?.assignment_role || '-'
+  const mine = (assignments || []).filter(assignment => assignment.member_id === memberId)
+  if (mine.length === 0) return '-'
+  return mine.some(assignment => normalizeRole(assignment.assignment_role) === 'pic')
+    ? 'PIC'
+    : mine[0].assignment_role || '-'
 }
 
 function getRanking(members, key) {
@@ -285,7 +297,7 @@ export default function Team() {
 
     const { data: siteData } = await supabase
       .from('sites')
-      .select('*, site_assignments(assignment_role, member_id, team_members(full_name))')
+      .select('*, site_assignments(assignment_role, assignment_date, member_id, team_members(full_name))')
       .order('scheduled_date', { ascending: true })
 
     const leaveData = await fetchTeamLeaves().catch(() => [])
@@ -960,6 +972,18 @@ export default function Team() {
                             </div>
                             <span style={{ fontSize: '11px', color: '#475569', flexShrink: 0 }}>{formatDate(site.scheduled_date)}</span>
                           </div>
+
+                          {/* Rotating crew — only the days this person is actually on */}
+                          {hasDailyCrew(site.site_assignments || []) && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                              <span style={{ fontSize: '10px', fontWeight: '800', color: '#64748b', letterSpacing: '.05em' }}>YOUR DAYS</span>
+                              {memberDatesOnSite(site, selected.id).map(date => (
+                                <span key={date} style={{ background: 'rgba(37,99,235,0.16)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.28)', padding: '2px 8px', borderRadius: '999px', fontSize: '10px', fontWeight: '700' }}>
+                                  {formatDayLabel(date)}
+                                </span>
+                              ))}
+                            </div>
+                          )}
 
                           {/* Status chips */}
                           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>

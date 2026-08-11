@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { getHoliday } from '../utils/holidays'
 import { parseCompletionMeta } from '../utils/completionMeta'
 import { isDateWithinLeave } from '../utils/teamLeaves'
+import { crewForDate, getSiteDates, picForDate } from '../utils/siteDays'
 
 const WEEKDAY_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
@@ -103,16 +104,21 @@ export default function CalendarTimeline({ year, month, sites, leaves = [], memb
       .sort((a, b) => String(a.scheduled_date).localeCompare(String(b.scheduled_date)))
       .map(site => {
         const meta = parseCompletionMeta(site.notes)
-        const pic  = site.site_assignments?.find(a => a.assignment_role === 'PIC')
-        const crew = site.site_assignments?.filter(a => a.assignment_role === 'crew') || []
-        const names = [pic, ...crew].filter(Boolean).map(a => shortName(a.team_members))
+        // A site can carry a different crew each day, so names are resolved per column
+        const assignments = site.site_assignments || []
+        const namesByDate = {}
+        getSiteDates(site).forEach(date => {
+          namesByDate[date] = [picForDate(assignments, date), ...crewForDate(assignments, date)]
+            .filter(Boolean)
+            .map(a => shortName(a.team_members))
+        })
 
         const target = site.site_duration_days != null ? Number(site.site_duration_days) : null
         const actual = actualDays(site)
 
         return {
           site,
-          names,
+          namesByDate,
           start: site.scheduled_date,
           end: site.end_date || site.scheduled_date,
           doLabel: meta.deliveryOrderNumber
@@ -273,11 +279,13 @@ export default function CalendarTimeline({ year, month, sites, leaves = [], memb
                 const active = row.start && col.ds >= row.start && col.ds <= row.end
                 if (!active) return <td key={col.ds} style={{ ...td, background: col.isToday ? '#eff6ff' : 'white' }} />
 
+                const dayNames = row.namesByDate[col.ds] || []
+
                 return (
                   <td
                     key={col.ds}
                     onClick={() => navigate(`/sites/${row.site.id}`)}
-                    title={row.names.join(', ')}
+                    title={dayNames.join(', ')}
                     style={{
                       ...td,
                       background: BAR_BG,
@@ -289,7 +297,7 @@ export default function CalendarTimeline({ year, month, sites, leaves = [], memb
                       cursor: 'pointer',
                     }}
                   >
-                    {row.names.length > 0 ? row.names.join(', ') : '—'}
+                    {dayNames.length > 0 ? dayNames.join(', ') : '—'}
                   </td>
                 )
               })}

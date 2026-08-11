@@ -1,3 +1,5 @@
+import { getSiteDates, normalizeDate } from './siteDays'
+
 const WEEKLY_CAPACITY_DAYS = 6.5
 
 // Site-day multipliers per role per site type (PIC carries admin/client overhead)
@@ -53,50 +55,64 @@ function getWeekBounds(reference = new Date()) {
   return { start, end: addDays(start, 7) }
 }
 
-// Site days pro-rated across the Mon-Sat days that fall inside the window
-function getDaysInWindow(site, win) {
-  const start = toDate(site?.scheduled_date)
-  const duration = Number(site?.site_duration_days) || 0
-  if (!start || duration <= 0) return 0
+// The working days (Sundays excluded) a site runs over. end_date is the source of
+// truth; older sites without one fall back to their duration.
+function getWorkingSpan(site) {
+  const dates = getSiteDates(site)
+  if (dates.length === 0) return []
 
-  const end = toDate(site?.scheduled_end_date)
-    || addDays(start, Math.max(1, Math.ceil(duration)) - 1)
-  if (end < start) return 0
-
-  let spanDays = 0
-  let insideDays = 0
-  for (let day = new Date(start); day <= end; day = addDays(day, 1)) {
-    if (day.getDay() === 0) continue
-    spanDays += 1
-    if (day >= win.start && day < win.end) insideDays += 1
+  let span = dates
+  if (dates.length === 1 && !site?.end_date) {
+    const needed = Math.max(1, Math.ceil(Number(site?.site_duration_days) || 1))
+    if (needed > 1) {
+      const start = toDate(dates[0])
+      span = Array.from({ length: needed }, (_, i) => normalizeDate(addDays(start, i)))
+    }
   }
-  if (spanDays === 0) return 0
+  return span.filter(date => toDate(date)?.getDay() !== 0)
+}
 
-  return duration * (insideDays / spanDays)
+// Days this member is on site — their own days when the crew rotates, the whole
+// span otherwise (an undated row covers every day).
+function getMemberDates(group, span) {
+  if (group.some(a => !a?.assignment_date)) return span
+  const mine = new Set(group.map(a => normalizeDate(a.assignment_date)))
+  return span.filter(date => mine.has(date))
 }
 
 function normalizeRole(role) {
   return String(role || '').toLowerCase() === 'pic' ? 'pic' : 'crew'
 }
 
-function getAssignmentDays(assignment, win) {
-  const site         = assignment?.site
+// One site, one member: all of that member's rows for the site.
+function getSiteLoad(group, win) {
+  const site         = group[0]?.site
   const siteStatus   = String(site?.site_status   || '').toLowerCase()
   const reportStatus = String(site?.report_status || '').toLowerCase()
   const siteType     = String(site?.site_type     || 'site_scanning').toLowerCase()
-  const role         = normalizeRole(assignment?.assignment_role)
+  const role         = group.some(a => normalizeRole(a?.assignment_role) === 'pic') ? 'pic' : 'crew'
 
   if (siteStatus === 'postponed' || siteStatus === 'cancelled') return 0
 
   let days = 0
 
-  // Field work — only the part scheduled inside this week
+  // Field work — only the member's own days that fall inside this week
   if (ACTIVE_SITE_STATUSES.includes(siteStatus)) {
-    const multipliers = ROLE_MULTIPLIERS[siteType] || ROLE_MULTIPLIERS.site_scanning
-    days += getDaysInWindow(site, win) * (multipliers[role] ?? 1.0)
+    const span = getWorkingSpan(site)
+    const duration = Number(site?.site_duration_days) || 0
+    if (span.length > 0 && duration > 0) {
+      const perDay = duration / span.length
+      const winStart = normalizeDate(win.start)
+      const winEnd   = normalizeDate(win.end)   // exclusive
+      const insideDays = getMemberDates(group, span)
+        .filter(date => date >= winStart && date < winEnd).length
+      const multipliers = ROLE_MULTIPLIERS[siteType] || ROLE_MULTIPLIERS.site_scanning
+      days += perDay * insideDays * (multipliers[role] ?? 1.0)
+    }
   }
 
-  // Report work — outstanding reports load the current week, PIC-weighted
+  // Report work — outstanding reports load the current week, PIC-weighted.
+  // Counted once per site, however many days the member was on it.
   if (OPEN_REPORT_STATUSES.includes(reportStatus)) {
     days += (Number(site?.report_duration_days) || 0) * (REPORT_ROLE_SHARE[role] ?? 0)
   }
@@ -108,7 +124,16 @@ export function calculateWorkload(assignments = [], options = {}) {
   const { referenceDate = new Date(), leaveDays = 0 } = options
   const win = getWeekBounds(referenceDate)
 
-  const busyDays = assignments.reduce((sum, a) => sum + getAssignmentDays(a, win), 0)
+  // A rotating crew means several rows per site for the same person — group them
+  // so the site is only charged once.
+  const bySite = new Map()
+  assignments.forEach(assignment => {
+    const key = assignment?.site?.id ?? assignment?.site_id ?? assignment
+    if (!bySite.has(key)) bySite.set(key, [])
+    bySite.get(key).push(assignment)
+  })
+
+  const busyDays = [...bySite.values()].reduce((sum, group) => sum + getSiteLoad(group, win), 0)
   const capacity = Math.max(0.5, WEEKLY_CAPACITY_DAYS - (Number(leaveDays) || 0))
 
   const workloadPercentage = Number(((busyDays / capacity) * 100).toFixed(1))

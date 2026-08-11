@@ -5,6 +5,10 @@ import { ChevronLeft, ChevronRight, Pencil, MapPin, Upload, X, Users, FileText, 
 import { getSiteHeaderImage } from '../utils/siteHeader'
 import { parseCompletionMeta } from '../utils/completionMeta'
 import { useViewport } from '../utils/useViewport'
+import {
+  crewForDate, formatDayLabel, getSiteDates, hasDailyCrew, isPic,
+  memberDatesOnSite, picForDate, uniqueAssignments,
+} from '../utils/siteDays'
 
 const STATUS_COLORS = {
   upcoming:  { bg: '#fef9c3', text: '#854d0e', border: '#fde047' },
@@ -78,7 +82,7 @@ export default function SiteDetail() {
     const [{ data: siteData }, { data: allSites }] = await Promise.all([
       supabase
         .from('sites')
-        .select('*, site_assignments(assignment_role, member_id, team_members(id, full_name, role, avatar_url))')
+        .select('*, site_assignments(assignment_role, assignment_date, member_id, team_members(id, full_name, role, avatar_url))')
         .eq('id', id)
         .single(),
       supabase
@@ -150,8 +154,13 @@ export default function SiteDetail() {
     </div>
   )
 
-  const pic  = site.site_assignments?.find(a => a.assignment_role === 'PIC')
-  const crew = site.site_assignments?.filter(a => a.assignment_role === 'crew') || []
+  // Everyone who works the site, listed once — the crew may rotate day by day
+  const assignments = site.site_assignments || []
+  const roster = uniqueAssignments(assignments)
+  const pic  = roster.find(isPic)
+  const crew = roster.filter(a => !isPic(a))
+  const perDayCrew = hasDailyCrew(assignments)
+  const siteDates = getSiteDates(site)
   const completionMeta = parseCompletionMeta(site.notes || '')
 
   return (
@@ -297,12 +306,41 @@ export default function SiteDetail() {
                   {!pic && crew.length === 0 && (
                     <p style={{ textAlign: 'center', color: '#94a3b8', padding: '24px', fontSize: '13px' }}>No team assigned to this site.</p>
                   )}
+
+                  {/* Day-by-day rota */}
+                  {perDayCrew && (
+                    <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden', marginBottom: '4px' }}>
+                      <div style={{ padding: '9px 14px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: '11px', fontWeight: '800', color: '#475569', letterSpacing: '0.05em' }}>
+                        CREW SCHEDULE · {siteDates.length} DAYS
+                      </div>
+                      {siteDates.map((date, index) => {
+                        const dayPic = picForDate(assignments, date)
+                        const names = [
+                          ...(dayPic ? [`${dayPic.team_members?.full_name} (PIC)`] : []),
+                          ...crewForDate(assignments, date).map(c => c.team_members?.full_name).filter(Boolean),
+                        ]
+                        return (
+                          <div key={date} style={{ display: 'flex', gap: '12px', padding: '10px 14px', borderTop: index ? '1px solid #f1f5f9' : 'none' }}>
+                            <span style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', width: '52px', flexShrink: 0 }}>Day {index + 1}</span>
+                            <span style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', width: '92px', flexShrink: 0 }}>{formatDayLabel(date)}</span>
+                            <span style={{ fontSize: '12px', color: names.length ? '#0f172a' : '#cbd5e1', fontWeight: '600' }}>
+                              {names.length ? names.join(', ') : 'Nobody assigned'}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+
                   {pic && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px', background: '#eff6ff', borderRadius: '12px', border: '1px solid #bfdbfe' }}>
                       <Avatar name={pic.team_members?.full_name} size={48} index={0} avatarUrl={pic.team_members?.avatar_url} />
                       <div style={{ flex: 1 }}>
                         <p style={{ fontWeight: '600', fontSize: '14px', color: '#0f172a' }}>{pic.team_members?.full_name}</p>
-                        <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>{pic.team_members?.role}</p>
+                        <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                          {pic.team_members?.role}
+                          {perDayCrew && ` · ${memberDatesOnSite(site, pic.member_id).length} day(s)`}
+                        </p>
                       </div>
                       <span style={{ background: '#2563eb', color: 'white', padding: '4px 12px', borderRadius: '99px', fontSize: '11px', fontWeight: '700' }}>PIC</span>
                     </div>
@@ -312,7 +350,10 @@ export default function SiteDetail() {
                       <Avatar name={c.team_members?.full_name} size={48} index={i + 1} avatarUrl={c.team_members?.avatar_url} />
                       <div style={{ flex: 1 }}>
                         <p style={{ fontWeight: '600', fontSize: '14px', color: '#0f172a' }}>{c.team_members?.full_name}</p>
-                        <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>{c.team_members?.role}</p>
+                        <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                          {c.team_members?.role}
+                          {perDayCrew && ` · ${memberDatesOnSite(site, c.member_id).length} day(s)`}
+                        </p>
                       </div>
                       <span style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0', padding: '4px 12px', borderRadius: '99px', fontSize: '11px', fontWeight: '600' }}>Crew</span>
                     </div>

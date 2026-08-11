@@ -28,6 +28,48 @@ export function getAssignmentMessage(role, siteName, scheduledDate) {
   return `You have been assigned as ${label} for "${siteName}" on ${formatAssignmentDate(scheduledDate)}`
 }
 
+// "1 Sep 2026" for a single day, "3 days: 1 Sep, 2 Sep, 4 Sep" for several
+export function formatAssignmentDays(dates = []) {
+  const clean = [...new Set(dates.filter(Boolean).map(d => String(d).slice(0, 10)))].sort()
+  if (clean.length === 0) return 'a date to be confirmed'
+  if (clean.length === 1) return formatAssignmentDate(clean[0])
+
+  const short = clean.map(date => {
+    const parsed = new Date(`${date}T00:00:00`)
+    return Number.isNaN(parsed.getTime())
+      ? date
+      : parsed.toLocaleDateString('en-MY', { day: 'numeric', month: 'short' })
+  })
+  return `${clean.length} days: ${short.join(', ')}`
+}
+
+// Multi-day site where each day has its own crew — everyone hears about their own days.
+// days: [{ date, picId, crewIds }]
+export async function notifyDailyAssignments({ siteName, days = [], actor = 'System' }) {
+  const byMember = new Map()
+  const remember = (memberId, role, date) => {
+    if (!memberId) return
+    const entry = byMember.get(memberId) || { role: 'crew', dates: [] }
+    if (role === 'PIC') entry.role = 'PIC'
+    if (!entry.dates.includes(date)) entry.dates.push(date)
+    byMember.set(memberId, entry)
+  }
+
+  days.forEach(({ date, picId, crewIds = [] }) => {
+    remember(picId, 'PIC', date)
+    crewIds.forEach(id => { if (id !== picId) remember(id, 'crew', date) })
+  })
+
+  for (const [memberId, { role, dates }] of byMember) {
+    const label = role === 'PIC' ? 'PIC' : 'crew'
+    await notify(
+      `You have been assigned as ${label} for "${siteName}" — ${formatAssignmentDays(dates)}`,
+      actor,
+      memberId
+    )
+  }
+}
+
 // Personal notification to the PIC and each crew member of a site
 export async function notifyAssignments({ siteName, scheduledDate, picId, crewIds = [], actor = 'System' }) {
   if (picId) {

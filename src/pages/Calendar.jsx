@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, LayoutGrid, GanttChartSquare } from 'lucide-
 import { useNavigate } from 'react-router-dom'
 import { useViewport } from '../utils/useViewport'
 import { fetchTeamLeaves } from '../utils/teamLeaves'
+import { crewForDate, picForDate } from '../utils/siteDays'
 import CalendarTimeline from '../components/CalendarTimeline'
 
 const VIEW_STORAGE_KEY = 'xyte:calendar-view'
@@ -144,7 +145,7 @@ export default function CalendarPage() {
       .from('sites')
       .select(`id, site_name, site_type, site_status, scheduled_date, end_date, site_session, site_photo_url,
         location, client_company_name, scope_of_work, notes, site_duration_days, report_status,
-        site_assignments(assignment_role, team_members(id, short_name, full_name, avatar_url))`)
+        site_assignments(assignment_role, assignment_date, member_id, team_members(id, short_name, full_name, avatar_url))`)
       .or(`and(scheduled_date.gte.${from},scheduled_date.lte.${to}),and(end_date.gte.${from},end_date.lte.${to}),and(scheduled_date.lte.${from},end_date.gte.${to})`)
       .order('scheduled_date')
     setSites(data || [])
@@ -273,8 +274,8 @@ export default function CalendarPage() {
                 <div style={{ padding: '10px', display: 'grid', gap: '10px' }}>
                   {daySites.map((site) => {
                     const tc = TYPE_COLORS[site.site_type] || { bg: '#f1f5f9', text: '#475569', border: '#e2e8f0', label: 'Site' }
-                    const pic = site.site_assignments?.find(a => a.assignment_role === 'PIC')
-                    const crew = site.site_assignments?.filter(a => a.assignment_role === 'crew') || []
+                    const pic = picForDate(site.site_assignments, dateStr)
+                    const crew = crewForDate(site.site_assignments, dateStr)
 
                     return (
                       <button
@@ -496,8 +497,8 @@ export default function CalendarPage() {
                       {/* Site chips */}
                       {visible.map(site => {
                         const tc   = TYPE_COLORS[site.site_type] || { bg: '#f1f5f9', text: '#475569', border: '#e2e8f0' }
-                        const pic  = site.site_assignments?.find(a => a.assignment_role === 'PIC')
-                        const crew = site.site_assignments?.filter(a => a.assignment_role === 'crew') || []
+                        const pic  = picForDate(site.site_assignments, dateStr)
+                        const crew = crewForDate(site.site_assignments, dateStr)
                         const picName = pic?.team_members?.short_name || pic?.team_members?.full_name?.split(' ')[0]
 
                         return (
@@ -615,8 +616,8 @@ export default function CalendarPage() {
             <div style={{ overflowY: 'auto', padding: '12px 0' }}>
               {dayModal.sites.map(site => {
                 const tc   = TYPE_COLORS[site.site_type] || { bg: '#f1f5f9', text: '#475569', border: '#e2e8f0', label: site.site_type }
-                const pic  = site.site_assignments?.find(a => a.assignment_role === 'PIC')
-                const crew = site.site_assignments?.filter(a => a.assignment_role === 'crew') || []
+                const pic  = picForDate(site.site_assignments, dayModal.dateStr)
+                const crew = crewForDate(site.site_assignments, dayModal.dateStr)
 
                 return (
                   <div
