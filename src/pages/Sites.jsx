@@ -431,7 +431,10 @@ export default function Sites() {
           if (form.pic_id) assignments.push({ site_id:siteId, member_id:form.pic_id, assignment_role:'PIC' })
           form.crew_ids.forEach(id => { if (id!==form.pic_id) assignments.push({ site_id:siteId, member_id:id, assignment_role:'crew' }) })
         }
-        if (assignments.length > 0) await supabase.from('site_assignments').insert(assignments)
+        if (assignments.length > 0) {
+          const { error: assignError } = await supabase.from('site_assignments').insert(assignments)
+          if (assignError) throw new Error(assignError.message)
+        }
 
         // Notify PIC and crew
         if (form.assign_mode === 'per_day') {
