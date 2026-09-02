@@ -389,7 +389,8 @@ function GanttListView({ sitesSorted, year, month, navigate, leaves, members }) 
               {dayNums.map(d => {
                 const dateStr = dateStrOf(d)
                 const isSun   = new Date(year, month, d).getDay() === 0
-                const names   = isSun ? '' : atStoreNamesForDate(dateStr)
+                const holiday = publicHolidayName(dateStr)
+                const names   = (isSun || holiday) ? '' : atStoreNamesForDate(dateStr)
                 const isToday = dateStr === todayStr
                 return (
                   <td key={d} style={{

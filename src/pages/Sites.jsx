@@ -114,6 +114,27 @@ function Pill({ status, colors }) {
   )
 }
 
+// Compact page list: first, last, current ± siblingCount, '…' for the rest.
+function getPageNumbers(current, total, siblingCount = 1) {
+  const totalSlots = siblingCount * 2 + 5
+  if (totalSlots >= total) return Array.from({ length: total }, (_, i) => i + 1)
+
+  const left  = Math.max(current - siblingCount, 1)
+  const right = Math.min(current + siblingCount, total)
+  const showLeftGap  = left > 2
+  const showRightGap = right < total - 1
+
+  if (!showLeftGap && showRightGap) {
+    const end = 3 + siblingCount * 2
+    return [...Array.from({ length: end }, (_, i) => i + 1), '…', total]
+  }
+  if (showLeftGap && !showRightGap) {
+    const start = total - (3 + siblingCount * 2) + 1
+    return [1, '…', ...Array.from({ length: total - start + 1 }, (_, i) => start + i)]
+  }
+  return [1, '…', ...Array.from({ length: right - left + 1 }, (_, i) => left + i), '…', total]
+}
+
 async function uploadSitePhoto(file) {
   const ext = file.name.split('.').pop()
   const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
@@ -823,11 +844,13 @@ export default function Sites() {
             <div style={{ display:'flex', gap:'6px' }}>
               <button onClick={() => setPage(p => Math.max(1,p-1))} disabled={page===1}
                 style={{ padding:'6px 14px', borderRadius:'8px', fontSize:'12px', fontWeight:'600', background:'white', border:'1px solid #e2e8f0', color:page===1?'#cbd5e1':'#64748b', cursor:page===1?'default':'pointer', fontFamily:'inherit' }}>‹</button>
-              {Array.from({ length:totalPages }, (_,i) => i+1).map(p => (
-                <button key={p} onClick={() => setPage(p)}
-                  style={{ padding:'6px 12px', borderRadius:'8px', fontSize:'12px', fontWeight:'700', background:page===p?'#0f172a':'white', border:`1px solid ${page===p?'#0f172a':'#e2e8f0'}`, color:page===p?'white':'#64748b', cursor:'pointer', fontFamily:'inherit' }}>
-                  {p}
-                </button>
+              {getPageNumbers(page, totalPages).map((p, i) => (
+                p === '…'
+                  ? <span key={`gap-${i}`} style={{ padding:'6px 4px', fontSize:'12px', fontWeight:'700', color:'#cbd5e1' }}>…</span>
+                  : <button key={p} onClick={() => setPage(p)}
+                      style={{ padding:'6px 12px', borderRadius:'8px', fontSize:'12px', fontWeight:'700', background:page===p?'#0f172a':'white', border:`1px solid ${page===p?'#0f172a':'#e2e8f0'}`, color:page===p?'white':'#64748b', cursor:'pointer', fontFamily:'inherit' }}>
+                      {p}
+                    </button>
               ))}
               <button onClick={() => setPage(p => Math.min(totalPages,p+1))} disabled={page===totalPages}
                 style={{ padding:'6px 14px', borderRadius:'8px', fontSize:'12px', fontWeight:'600', background:'white', border:'1px solid #e2e8f0', color:page===totalPages?'#cbd5e1':'#64748b', cursor:page===totalPages?'default':'pointer', fontFamily:'inherit' }}>›</button>
