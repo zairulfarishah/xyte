@@ -204,14 +204,26 @@ export default function SettingsPage() {
       return
     }
 
-    if (count > 0) {
-      setMemberError(`${member.full_name} is still assigned to ${count} site${count > 1 ? 's' : ''} — remove those assignments first.`)
-      return
-    }
-
-    if (!confirm(`Remove ${member.full_name} from the team?`)) return
+    const warning = count > 0
+      ? ` They are currently assigned to ${count} site${count > 1 ? 's' : ''} — those assignments will be removed too.`
+      : ''
+    if (!confirm(`Remove ${member.full_name} from the team?${warning}`)) return
 
     setMemberRemoving(member.id)
+
+    if (count > 0) {
+      const { error: unassignError } = await supabase
+        .from('site_assignments')
+        .delete()
+        .eq('member_id', member.id)
+
+      if (unassignError) {
+        setMemberError(unassignError.message)
+        setMemberRemoving(null)
+        return
+      }
+    }
+
     const { error } = await supabase.from('team_members').delete().eq('id', member.id)
     setMemberRemoving(null)
 
