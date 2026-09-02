@@ -51,7 +51,23 @@ const FIXED_HOLIDAY_LABELS = {
 }
 // Movable holidays (Chinese New Year, Hari Raya, Wesak, Deepavali, Awal Muharram, etc.) shift every
 // year and aren't safe to guess — add the exact gazetted "YYYY-MM-DD" here once known.
-const MOVABLE_HOLIDAYS = {}
+const MOVABLE_HOLIDAYS = {
+  // 2026 — company-observed dates (Selangor/Penang)
+  '2026-02-02': 'Thaipusam',
+  '2026-02-17': 'Chinese New Year Day 1',
+  '2026-02-18': 'Chinese New Year Day 2',
+  '2026-03-07': 'Nuzul Al-Quran',
+  '2026-03-21': 'Hari Raya Aidilfitri Day 1',
+  '2026-03-23': 'Hari Raya Aidilfitri Day 2',
+  '2026-05-27': 'Hari Raya Haji',
+  '2026-06-01': 'Hari Gawai',
+  '2026-06-02': "Agong's Birthday",
+  '2026-06-17': 'Awal Muharram',
+  '2026-07-11': "Penang Governor's Birthday",
+  '2026-08-25': "Prophet Muhammad's Birthday",
+  '2026-11-09': 'Deepavali',
+  '2026-12-11': "Sultan of Selangor's Birthday",
+}
 
 function publicHolidayName(dateStr) {
   return FIXED_HOLIDAY_LABELS[dateStr.slice(5)] || MOVABLE_HOLIDAYS[dateStr] || null
@@ -87,6 +103,17 @@ const LEAVE_ABBR = {
 function leaveAbbr(type) {
   return LEAVE_ABBR[type] || (type || '').slice(0, 2).toUpperCase()
 }
+function leaveTypeLabel(type) {
+  return (type || 'Other').toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+}
+
+// Rough char-capacity per column at its fixed pixel width — used only to decide
+// whether to surface a "More" toggle, not for exact layout.
+const COL_CHAR_CAP = { site: 22, company: 20, details: 34 }
+const DAY_CHAR_CAP = 11
+function overflows(text, cap) {
+  return typeof text === 'string' && text.length > cap
+}
 
 const LEGEND_ITEMS = [
   { label: 'Working day', swatch: '#86d387' },
@@ -109,6 +136,25 @@ function GanttListView({ sitesSorted, year, month, navigate, leaves, members }) 
     const to   = dateStrOf(lastDay)
     return leaves.filter(l => (l.start_date || '') <= to && (l.end_date || l.start_date || '') >= from)
   }, [leaves, year, month])
+
+  const leavesByType = useMemo(() => {
+    const map = {}
+    for (const l of leavesThisMonth) {
+      const key = l.leave_type || 'OTHER'
+      if (!map[key]) map[key] = []
+      map[key].push(l)
+    }
+    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b))
+  }, [leavesThisMonth])
+
+  const [expandedRows, setExpandedRows] = useState(new Set())
+  function toggleRow(key) {
+    setExpandedRows(prev => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
+  }
 
   const todayObj = new Date()
   const todayStr = `${todayObj.getFullYear()}-${String(todayObj.getMonth() + 1).padStart(2, '0')}-${String(todayObj.getDate()).padStart(2, '0')}`
@@ -175,6 +221,13 @@ function GanttListView({ sitesSorted, year, month, navigate, leaves, members }) 
                   { key: 'days',    content: site.site_duration_days ?? '—' },
                 ]
 
+                const namesByDay = dayNums.map(d => namesForDate(site.site_assignments, dateStrOf(d)))
+                const needsExpand = overflows(site.site_name, COL_CHAR_CAP.site)
+                  || overflows(site.client_company_name, COL_CHAR_CAP.company)
+                  || overflows(site.scope_of_work, COL_CHAR_CAP.details)
+                  || namesByDay.some(n => overflows(n, DAY_CHAR_CAP))
+                const isExpanded = expandedRows.has(site.id)
+
                 return (
                   <tr key={site.id} className="gantt-row">
                     {GANTT_COLS.map((c, ci) => (
@@ -192,20 +245,41 @@ function GanttListView({ sitesSorted, year, month, navigate, leaves, members }) 
                           fontSize: c.key === 'site' ? '13px' : '12px',
                           fontWeight: c.key === 'site' || c.key === 'days' ? '700' : '400',
                           color: c.key === 'site' ? '#0f172a' : '#475569',
-                          whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.4,
+                          lineHeight: 1.4,
+                          whiteSpace: isExpanded ? 'normal' : 'nowrap',
+                          wordBreak: isExpanded ? 'break-word' : 'normal',
+                          overflow: isExpanded ? 'visible' : 'hidden',
+                          textOverflow: isExpanded ? 'clip' : 'ellipsis',
                         }}
                       >
-                        {c.key === 'site' && <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: STATUS_DOT[site.site_status] || '#94a3b8', marginRight: '6px' }} />}
-                        {cells.find(x => x.key === c.key)?.content}
+                        {c.key === 'site' ? (
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                            <span style={{ display: 'flex', alignItems: 'center', minWidth: 0, overflow: 'hidden' }}>
+                              <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: STATUS_DOT[site.site_status] || '#94a3b8', marginRight: '6px', flexShrink: 0 }} />
+                              <span style={{ overflow: isExpanded ? 'visible' : 'hidden', textOverflow: isExpanded ? 'clip' : 'ellipsis', whiteSpace: isExpanded ? 'normal' : 'nowrap' }}>{site.site_name}</span>
+                            </span>
+                            {needsExpand && (
+                              <button
+                                onClick={e => { e.stopPropagation(); toggleRow(site.id) }}
+                                style={{ flexShrink: 0, border: 'none', background: 'none', color: '#2563eb', fontSize: '10px', fontWeight: '800', cursor: 'pointer', padding: 0 }}
+                              >
+                                {isExpanded ? 'Less' : 'More'}
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          cells.find(x => x.key === c.key)?.content
+                        )}
                       </td>
                     ))}
-                    {dayNums.map(d => {
+                    {dayNums.map((d, di) => {
                       const dateStr = dateStrOf(d)
                       const active  = start && end && dateStr >= start && dateStr <= end
                       const isSun   = new Date(year, month, d).getDay() === 0
                       const holiday = publicHolidayName(dateStr)
                       const isToday = dateStr === todayStr
                       const bg      = active ? '#86d387' : (holiday ? '#93c5fd' : (isSun ? '#0f172a' : (isToday ? '#e6f0ff' : 'white')))
+                      const names   = namesByDay[di]
                       return (
                         <td key={d} style={{
                           width: GANTT_DAY_WIDTH, minWidth: GANTT_DAY_WIDTH,
@@ -213,7 +287,21 @@ function GanttListView({ sitesSorted, year, month, navigate, leaves, members }) 
                           borderBottom: '1px solid #e5eaf1', borderRight: '1px solid #eef1f5',
                           padding: '8px 6px', textAlign: 'center',
                         }}>
-                          {active && <span style={{ fontSize: '9px', fontWeight: '800', color: '#000000', lineHeight: 1.3 }}>{namesForDate(site.site_assignments, dateStr)}</span>}
+                          {active && (
+                            <span
+                              title={names}
+                              style={{
+                                fontSize: '9px', fontWeight: '800', color: '#000000',
+                                display: 'block',
+                                whiteSpace: isExpanded ? 'normal' : 'nowrap',
+                                wordBreak: isExpanded ? 'break-word' : 'normal',
+                                overflow: isExpanded ? 'visible' : 'hidden',
+                                textOverflow: isExpanded ? 'clip' : 'ellipsis',
+                              }}
+                            >
+                              {names}
+                            </span>
+                          )}
                         </td>
                       )
                     })}
@@ -233,23 +321,31 @@ function GanttListView({ sitesSorted, year, month, navigate, leaves, members }) 
                     Team Leave
                   </td>
                 </tr>
-                {leavesThisMonth.map(leave => {
-                  const member = memberById[leave.member_id]
-                  const abbr   = leaveAbbr(leave.leave_type)
-                  const lStart = leave.start_date
-                  const lEnd   = leave.end_date || leave.start_date
-                  const days   = Math.round((new Date(`${lEnd}T00:00:00`) - new Date(`${lStart}T00:00:00`)) / 86400000) + 1
+                {leavesByType.map(([type, leavesOfType]) => {
+                  const abbr    = leaveAbbr(type)
+                  const rowKey  = `leave:${type}`
+                  const label   = leaveTypeLabel(type)
 
                   const cells = [
                     { key: 'no',      content: '—' },
-                    { key: 'site',    content: member?.short_name || member?.full_name || 'Unknown' },
                     { key: 'company', content: '—' },
-                    { key: 'details', content: leave.note || leave.leave_type },
-                    { key: 'days',    content: days },
+                    { key: 'details', content: `${leavesOfType.length} record${leavesOfType.length > 1 ? 's' : ''}` },
+                    { key: 'days',    content: '—' },
                   ]
 
+                  const namesByDay = dayNums.map(d => {
+                    const dateStr = dateStrOf(d)
+                    return leavesOfType
+                      .filter(l => dateStr >= l.start_date && dateStr <= (l.end_date || l.start_date))
+                      .map(l => memberById[l.member_id]?.short_name || memberById[l.member_id]?.full_name)
+                      .filter(Boolean)
+                      .join(', ')
+                  })
+                  const needsExpand = overflows(label, COL_CHAR_CAP.site) || namesByDay.some(n => overflows(n, DAY_CHAR_CAP))
+                  const isExpanded  = expandedRows.has(rowKey)
+
                   return (
-                    <tr key={`leave-${leave.id}`} className="gantt-row">
+                    <tr key={rowKey} className="gantt-row">
                       {GANTT_COLS.map((c, ci) => (
                         <td key={c.key} className="gantt-pin" style={{
                           position: 'sticky', left: ganttColLeft(ci), zIndex: 1,
@@ -261,16 +357,38 @@ function GanttListView({ sitesSorted, year, month, navigate, leaves, members }) 
                           fontSize: c.key === 'site' ? '13px' : '12px',
                           fontWeight: c.key === 'site' || c.key === 'days' ? '700' : '400',
                           color: c.key === 'site' ? '#7f1d1d' : '#a16767',
-                          whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.4,
+                          lineHeight: 1.4,
+                          whiteSpace: isExpanded ? 'normal' : 'nowrap',
+                          wordBreak: isExpanded ? 'break-word' : 'normal',
+                          overflow: isExpanded ? 'visible' : 'hidden',
+                          textOverflow: isExpanded ? 'clip' : 'ellipsis',
                         }}>
-                          {c.key === 'site' && <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444', marginRight: '6px' }} />}
-                          {cells.find(x => x.key === c.key)?.content}
-                          {c.key === 'site' && <span style={{ marginLeft: '6px', fontSize: '10px', fontWeight: '800', color: '#dc2626' }}>({abbr})</span>}
+                          {c.key === 'site' ? (
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                              <span style={{ display: 'flex', alignItems: 'center', minWidth: 0, overflow: 'hidden' }}>
+                                <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444', marginRight: '6px', flexShrink: 0 }} />
+                                <span style={{ overflow: isExpanded ? 'visible' : 'hidden', textOverflow: isExpanded ? 'clip' : 'ellipsis', whiteSpace: isExpanded ? 'normal' : 'nowrap' }}>
+                                  {label} <span style={{ fontSize: '10px', fontWeight: '800', color: '#dc2626' }}>({abbr})</span>
+                                </span>
+                              </span>
+                              {needsExpand && (
+                                <button
+                                  onClick={() => toggleRow(rowKey)}
+                                  style={{ flexShrink: 0, border: 'none', background: 'none', color: '#2563eb', fontSize: '10px', fontWeight: '800', cursor: 'pointer', padding: 0 }}
+                                >
+                                  {isExpanded ? 'Less' : 'More'}
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            cells.find(x => x.key === c.key)?.content
+                          )}
                         </td>
                       ))}
-                      {dayNums.map(d => {
+                      {dayNums.map((d, di) => {
                         const dateStr = dateStrOf(d)
-                        const active  = dateStr >= lStart && dateStr <= lEnd
+                        const names   = namesByDay[di]
+                        const active  = names.length > 0
                         const isToday = dateStr === todayStr
                         return (
                           <td key={d} style={{
@@ -279,7 +397,21 @@ function GanttListView({ sitesSorted, year, month, navigate, leaves, members }) 
                             borderBottom: '1px solid #e5eaf1', borderRight: '1px solid #eef1f5',
                             padding: '8px 6px', textAlign: 'center',
                           }}>
-                            {active && <span style={{ fontSize: '9px', fontWeight: '800', color: '#7f1d1d' }}>{abbr}</span>}
+                            {active && (
+                              <span
+                                title={names}
+                                style={{
+                                  fontSize: '9px', fontWeight: '800', color: '#7f1d1d',
+                                  display: 'block',
+                                  whiteSpace: isExpanded ? 'normal' : 'nowrap',
+                                  wordBreak: isExpanded ? 'break-word' : 'normal',
+                                  overflow: isExpanded ? 'visible' : 'hidden',
+                                  textOverflow: isExpanded ? 'clip' : 'ellipsis',
+                                }}
+                              >
+                                {names}
+                              </span>
+                            )}
                           </td>
                         )
                       })}
@@ -327,7 +459,7 @@ export default function CalendarPage() {
   const [current, setCurrent]   = useState(() => new Date(today.getFullYear(), today.getMonth(), 1))
   const [sites, setSites]       = useState([])
   const [loading, setLoading]   = useState(true)
-  const [view, setView]         = useState('month') // 'month' | 'list'
+  const [view, setView]         = useState('list') // 'month' | 'list'
   const [expanded, setExpanded] = useState(null)
   const [dayModal, setDayModal] = useState(null) // { day, ds, sites }
   const [leaves, setLeaves]     = useState([])
