@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { Search, MapPin, Calendar, TrendingUp, Users, Briefcase, Activity, Clock, FileText, Radar, Camera } from 'lucide-react'
 import { calculateWorkload, getWeekBounds } from '../utils/workload'
 import { useViewport } from '../utils/useViewport'
-import { fetchTeamLeaves, getMemberLeaveOnDate } from '../utils/teamLeaves'
+import { fetchTeamLeaves, getLeaveSummary, getMemberLeaveOnDate, getMembersOnLeave } from '../utils/teamLeaves'
 import { formatDayLabel, hasDailyCrew, memberDatesOnSite, memberDaysOnSite, memberRoleOnSite } from '../utils/siteDays'
 
 const AVATAR_COLORS = ['#2563eb', '#7c3aed', '#db2777', '#059669', '#d97706', '#dc2626']
@@ -178,6 +178,7 @@ export default function Team() {
   const { isMobile, isTablet } = useViewport()
   const [members, setMembers] = useState([])
   const [allSites, setAllSites] = useState([])
+  const [leaves, setLeaves] = useState([])
   const [selectedId, setSelectedId] = useState(null)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
@@ -287,26 +288,38 @@ export default function Team() {
     fetchAll()
   }, [])
 
+  useEffect(() => {
+    const refreshLeaves = () => fetchAll()
+    window.addEventListener('xyte:leaves-updated', refreshLeaves)
+    return () => window.removeEventListener('xyte:leaves-updated', refreshLeaves)
+  }, [])
+
   async function fetchAll() {
     setLoading(true)
 
-    const { data: memberData } = await supabase
-      .from('team_members')
-      .select('*')
-      .order('full_name')
-
-    const { data: siteData } = await supabase
-      .from('sites')
-      .select('*, site_assignments(assignment_role, work_date, member_id, team_members(full_name))')
-      .order('scheduled_date', { ascending: true })
-
-    const leaveData = await fetchTeamLeaves().catch(() => [])
+    const [
+      { data: memberData },
+      { data: siteData },
+      leaveData,
+    ] = await Promise.all([
+      supabase
+        .from('team_members')
+        .select('*')
+        .order('full_name'),
+      supabase
+        .from('sites')
+        .select('*, site_assignments(assignment_role, work_date, member_id, team_members(full_name))')
+        .order('scheduled_date', { ascending: true }),
+      fetchTeamLeaves().catch(() => []),
+    ])
 
     const sites = siteData || []
-    const memberRecords = (memberData || []).map(member => buildMemberRecord(member, sites, leaveData))
+    const teamLeaves = leaveData || []
+    const memberRecords = (memberData || []).map(member => buildMemberRecord(member, sites, teamLeaves))
 
     setMembers(memberRecords)
     setAllSites(sites)
+    setLeaves(teamLeaves)
     setSelectedId(currentId => {
       if (memberRecords.some(member => member.id === currentId)) return currentId
       return memberRecords[0]?.id || null
@@ -363,6 +376,37 @@ export default function Team() {
 
   const workloadStatus = selected?.workload?.status_colors
   const progressBarWidth = selected ? Math.min(selected.workload.workload_percentage, 100) : 0
+  const now = new Date()
+  const todayStr = now.toISOString().split('T')[0]
+  const leaveLimitDate = new Date(now)
+  leaveLimitDate.setDate(leaveLimitDate.getDate() + 14)
+  const upcomingLeaveLimit = leaveLimitDate.toISOString().split('T')[0]
+  const membersOnLeaveToday = useMemo(
+    () => getMembersOnLeave(leaves, members, todayStr),
+    [leaves, members, todayStr]
+  )
+  const upcomingLeaves = useMemo(
+    () => leaves
+      .map(leave => ({
+        leave,
+        member: members.find(member => member.id === leave.member_id),
+      }))
+      .filter(item => item.member && String(item.leave.start_date || '') >= todayStr && String(item.leave.start_date || '') <= upcomingLeaveLimit)
+      .sort((a, b) => String(a.leave.start_date || '').localeCompare(String(b.leave.start_date || '')))
+      .slice(0, 6),
+    [leaves, members, todayStr, upcomingLeaveLimit]
+  )
+  const selectedLeaveToday = selected ? getMemberLeaveOnDate(leaves, selected.id, todayStr) : null
+  const selectedUpcomingLeave = useMemo(
+    () => {
+      if (!selected) return null
+      return leaves.find(leave =>
+        leave.member_id === selected.id &&
+        String(leave.end_date || leave.start_date || '') >= todayStr
+      ) || null
+    },
+    [leaves, selected, todayStr]
+  )
 
   const avgWorkload = members.length > 0
     ? Math.round(members.reduce((sum, member) => sum + member.workload.workload_percentage, 0) / members.length)
@@ -491,6 +535,36 @@ export default function Team() {
 
   const insight = getInsight()
 
+  function getMemberLeaveMeta(member) {
+    const leaveToday = getMemberLeaveOnDate(leaves, member?.id, todayStr)
+    if (leaveToday) {
+      return {
+        label: 'On Leave',
+        summary: getLeaveSummary(leaveToday),
+        bg: 'rgba(239, 68, 68, 0.14)',
+        text: '#fca5a5',
+        border: 'rgba(248, 113, 113, 0.28)',
+      }
+    }
+
+    const upcomingLeave = leaves.find(leave =>
+      leave.member_id === member?.id &&
+      String(leave.start_date || '') > todayStr
+    )
+
+    if (upcomingLeave) {
+      return {
+        label: 'Leave Soon',
+        summary: getLeaveSummary(upcomingLeave),
+        bg: 'rgba(59, 130, 246, 0.14)',
+        text: '#93c5fd',
+        border: 'rgba(96, 165, 250, 0.28)',
+      }
+    }
+
+    return null
+  }
+
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#08111f' }}>
@@ -524,6 +598,38 @@ export default function Team() {
                 </div>
               ))}
             </div>
+
+            {(membersOnLeaveToday.length > 0 || upcomingLeaves.length > 0) && (
+              <div style={{ display: 'grid', gap: '10px', marginTop: '16px' }}>
+                {membersOnLeaveToday.length > 0 && (
+                  <div style={{ padding: '12px', borderRadius: '16px', background: 'rgba(15,23,42,0.62)', border: '1px solid rgba(96,165,250,0.18)' }}>
+                    <p style={{ color: '#93c5fd', fontSize: '10px', fontWeight: '800', letterSpacing: '.08em', textTransform: 'uppercase' }}>On Leave Today</p>
+                    <div style={{ display: 'grid', gap: '6px', marginTop: '8px' }}>
+                      {membersOnLeaveToday.slice(0, 3).map(({ member, leave }) => (
+                        <div key={member.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                          <span style={{ color: '#f8fafc', fontSize: '12px', fontWeight: '700' }}>{member.full_name}</span>
+                          <span style={{ color: '#93c5fd', fontSize: '10px', fontWeight: '700' }}>{getLeaveSummary(leave)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {upcomingLeaves.length > 0 && (
+                  <div style={{ padding: '12px', borderRadius: '16px', background: 'rgba(15,23,42,0.62)', border: '1px solid rgba(148,163,184,0.14)' }}>
+                    <p style={{ color: '#cbd5e1', fontSize: '10px', fontWeight: '800', letterSpacing: '.08em', textTransform: 'uppercase' }}>Taking Leave Soon</p>
+                    <div style={{ display: 'grid', gap: '6px', marginTop: '8px' }}>
+                      {upcomingLeaves.slice(0, 3).map(({ member, leave }) => (
+                        <div key={leave.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                          <span style={{ color: '#f8fafc', fontSize: '12px', fontWeight: '700' }}>{member.full_name}</span>
+                          <span style={{ color: '#cbd5e1', fontSize: '10px', fontWeight: '700' }}>{getLeaveSummary(leave)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div style={{ background: 'rgba(8, 15, 28, 0.92)', borderRadius: '20px', border: '1px solid rgba(148,163,184,0.12)', padding: '14px' }}>
@@ -546,6 +652,11 @@ export default function Team() {
                   <p style={{ color: 'white', fontSize: '16px', fontWeight: '800' }}>{selected.full_name}</p>
                   <p style={{ color: '#94a3b8', fontSize: '12px', marginTop: '2px' }}>{selected.role}</p>
                   <p style={{ color: workloadStatus.text, fontSize: '12px', marginTop: '6px', fontWeight: '700' }}>{selected.workload.workload_percentage}% load</p>
+                  {selectedUpcomingLeave && (
+                    <div style={{ marginTop: '8px', display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 9px', borderRadius: '999px', background: selectedLeaveToday ? 'rgba(239,68,68,0.16)' : 'rgba(59,130,246,0.16)', border: `1px solid ${selectedLeaveToday ? 'rgba(248,113,113,0.28)' : 'rgba(96,165,250,0.28)'}`, color: selectedLeaveToday ? '#fca5a5' : '#93c5fd', fontSize: '10px', fontWeight: '800' }}>
+                      {selectedLeaveToday ? 'On leave now' : 'Taking leave soon'}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -572,6 +683,7 @@ export default function Team() {
             {filteredMembers.map((member, index) => {
               const isSelected = selected?.id === member.id
               const colors = member.workload.status_colors
+              const leaveMeta = getMemberLeaveMeta(member)
 
               return (
                 <button
@@ -583,6 +695,11 @@ export default function Team() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ fontWeight: '700', fontSize: '13px', color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{member.full_name}</p>
                     <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{member.role}</p>
+                    {leaveMeta && (
+                      <p style={{ fontSize: '10px', color: leaveMeta.text, marginTop: '6px', fontWeight: '800', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {leaveMeta.label}: {leaveMeta.summary}
+                      </p>
+                    )}
                     <div style={{ height: '6px', background: 'rgba(148,163,184,0.14)', borderRadius: '999px', overflow: 'hidden', marginTop: '10px' }}>
                       <div style={{ height: '100%', width: `${Math.min(member.workload.workload_percentage, 100)}%`, background: colors.bar, borderRadius: '999px' }} />
                     </div>
@@ -712,6 +829,7 @@ export default function Team() {
               {filteredMembers.map((member, index) => {
                 const isSelected = selected?.id === member.id
                 const colors = member.workload.status_colors
+                const leaveMeta = getMemberLeaveMeta(member)
 
                 return (
                   <div
@@ -734,6 +852,11 @@ export default function Team() {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontWeight: '600', fontSize: '13px', color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{member.full_name}</p>
                       <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{member.role}</p>
+                      {leaveMeta && (
+                        <p style={{ fontSize: '10px', color: leaveMeta.text, marginTop: '6px', fontWeight: '800', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {leaveMeta.label}: {leaveMeta.summary}
+                        </p>
+                      )}
                       <div style={{ height: '6px', background: 'rgba(148,163,184,0.14)', borderRadius: '999px', overflow: 'hidden', marginTop: '10px' }}>
                         <div style={{ height: '100%', width: `${Math.min(member.workload.workload_percentage, 100)}%`, background: colors.bar, borderRadius: '999px' }} />
                       </div>
@@ -779,6 +902,11 @@ export default function Team() {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px', flexWrap: 'wrap' }}>
                             <h2 style={{ fontSize: '23px', fontWeight: '800', color: 'white' }}>{selected.full_name}</h2>
                             <span style={{ background: workloadStatus.bg, color: workloadStatus.text, border: `1px solid ${workloadStatus.border}`, padding: '4px 10px', borderRadius: '999px', fontSize: '11px', fontWeight: '700' }}>{selected.workload.status}</span>
+                            {selectedUpcomingLeave && (
+                              <span style={{ background: selectedLeaveToday ? 'rgba(239,68,68,0.16)' : 'rgba(59,130,246,0.16)', color: selectedLeaveToday ? '#fca5a5' : '#93c5fd', border: `1px solid ${selectedLeaveToday ? 'rgba(248,113,113,0.28)' : 'rgba(96,165,250,0.28)'}`, padding: '4px 10px', borderRadius: '999px', fontSize: '11px', fontWeight: '800' }}>
+                                {selectedLeaveToday ? 'On Leave' : 'Taking Leave Soon'}
+                              </span>
+                            )}
                           </div>
                           <p style={{ color: '#cbd5e1', fontSize: '14px' }}>{selected.role}</p>
                           <p style={{ color: '#94a3b8', fontSize: '12px', marginTop: '4px' }}>
@@ -840,6 +968,11 @@ export default function Team() {
                               </>
                             )}
                           </div>
+                          {selectedUpcomingLeave && (
+                            <p style={{ color: selectedLeaveToday ? '#fca5a5' : '#93c5fd', fontSize: '12px', marginTop: '8px', fontWeight: '700' }}>
+                              {getLeaveSummary(selectedUpcomingLeave)}
+                            </p>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1084,12 +1217,18 @@ export default function Team() {
                   <div style={{ padding: '14px' }}>
                     {topLoadMembers.map((member, index) => {
                       const colors = member.workload.status_colors
+                      const leaveMeta = getMemberLeaveMeta(member)
 
                       return (
                         <div key={member.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '11px 12px', marginBottom: '8px', borderRadius: '18px', background: 'rgba(15,23,42,0.72)', border: '1px solid rgba(148,163,184,0.08)' }}>
                           <Avatar name={member.full_name} size={38} index={index} avatarUrl={member.avatar_url} onUpload={isZairul ? () => triggerAvatarUpload(member.id) : null} />
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <p style={{ color: '#e2e8f0', fontSize: '12px', fontWeight: '700', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.full_name}</p>
+                            {leaveMeta && (
+                              <p style={{ color: leaveMeta.text, fontSize: '10px', marginTop: '4px', fontWeight: '800', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {leaveMeta.summary}
+                              </p>
+                            )}
                             <div style={{ height: '6px', background: 'rgba(148,163,184,0.12)', borderRadius: '999px', overflow: 'hidden', marginTop: '8px' }}>
                               <div style={{ width: `${Math.min(member.workload.workload_percentage, 100)}%`, height: '100%', background: colors.bar, borderRadius: '999px' }} />
                             </div>
@@ -1162,19 +1301,36 @@ export default function Team() {
                   }}
                 >
                   <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(148,163,184,0.08)' }}>
-                    <p style={{ color: 'white', fontSize: '14px', fontWeight: '700' }}>Ops Notes</p>
+                    <p style={{ color: 'white', fontSize: '14px', fontWeight: '700' }}>Leave Watch</p>
                   </div>
                   <div style={{ padding: '16px 18px', display: 'grid', gap: '12px' }}>
-                    {[
-                      `${availableCount} members are currently available for new assignments.`,
-                      `${busyCount} members are close to or above their weekly limit.`,
-                      `${picLeads} people are acting as PIC across current site coverage.`,
-                    ].map(note => (
-                      <div key={note} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#38bdf8', marginTop: '6px', flexShrink: 0 }} />
-                        <p style={{ color: '#94a3b8', fontSize: '12px', lineHeight: 1.6 }}>{note}</p>
-                      </div>
-                    ))}
+                    {membersOnLeaveToday.length === 0 && upcomingLeaves.length === 0 ? (
+                      [
+                        `${availableCount} members are currently available for new assignments.`,
+                        `${busyCount} members are close to or above their weekly limit.`,
+                        `${picLeads} people are acting as PIC across current site coverage.`,
+                      ].map(note => (
+                        <div key={note} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                          <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#38bdf8', marginTop: '6px', flexShrink: 0 }} />
+                          <p style={{ color: '#94a3b8', fontSize: '12px', lineHeight: 1.6 }}>{note}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <>
+                        {membersOnLeaveToday.slice(0, 3).map(({ member, leave }) => (
+                          <div key={member.id} style={{ padding: '12px', borderRadius: '16px', background: 'rgba(15,23,42,0.72)', border: '1px solid rgba(96,165,250,0.16)' }}>
+                            <p style={{ color: '#f8fafc', fontSize: '12px', fontWeight: '700' }}>{member.full_name}</p>
+                            <p style={{ color: '#93c5fd', fontSize: '11px', marginTop: '4px', fontWeight: '700', lineHeight: 1.5 }}>{getLeaveSummary(leave)}</p>
+                          </div>
+                        ))}
+                        {upcomingLeaves.slice(0, 3).map(({ member, leave }) => (
+                          <div key={leave.id} style={{ padding: '12px', borderRadius: '16px', background: 'rgba(15,23,42,0.72)', border: '1px solid rgba(148,163,184,0.12)' }}>
+                            <p style={{ color: '#f8fafc', fontSize: '12px', fontWeight: '700' }}>{member.full_name}</p>
+                            <p style={{ color: '#cbd5e1', fontSize: '11px', marginTop: '4px', fontWeight: '700', lineHeight: 1.5 }}>{getLeaveSummary(leave)}</p>
+                          </div>
+                        ))}
+                      </>
+                    )}
                   </div>
                 </div>
               </div>

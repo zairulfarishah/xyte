@@ -4,7 +4,7 @@ import { User, Info, Lock, CalendarDays, Plus, Pencil, Trash2, UserPlus, X } fro
 import { ROLE_MULTIPLIERS, WEEKLY_CAPACITY_DAYS } from '../utils/workload'
 import { useAuth } from '../context/AuthContext'
 import { useViewport } from '../utils/useViewport'
-import { LEAVE_TYPES, fetchTeamLeaves, saveTeamLeaves } from '../utils/teamLeaves'
+import { LEAVE_SESSIONS, LEAVE_TYPES, fetchTeamLeaves, getLeaveSessionLabel, saveTeamLeaves } from '../utils/teamLeaves'
 import { formatPhoneDisplay, isValidPhone, normalizePhone } from '../utils/whatsapp'
 
 const AVATAR_COLORS = ['#2563eb', '#7c3aed', '#db2777', '#059669', '#d97706', '#dc2626']
@@ -37,6 +37,7 @@ const EMPTY_LEAVE_FORM = {
   id: null,
   member_id: '',
   leave_type: LEAVE_TYPES[0],
+  leave_session: LEAVE_SESSIONS[0],
   start_date: '',
   end_date: '',
   note: '',
@@ -249,6 +250,7 @@ export default function SettingsPage() {
       id: leave.id,
       member_id: leave.member_id,
       leave_type: leave.leave_type,
+      leave_session: leave.leave_session || 'FULL_DAY',
       start_date: leave.start_date,
       end_date: leave.end_date || leave.start_date,
       note: leave.note || '',
@@ -272,6 +274,7 @@ export default function SettingsPage() {
       id: leaveForm.id || `${leaveForm.member_id}-${start}-${Date.now()}`,
       member_id: leaveForm.member_id,
       leave_type: leaveForm.leave_type,
+      leave_session: leaveForm.leave_session,
       start_date: start,
       end_date: end,
       note: leaveForm.note.trim(),
@@ -622,6 +625,17 @@ export default function SettingsPage() {
                     </select>
                   </div>
 
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#64748b', marginBottom: '6px' }}>Leave Session</label>
+                    <select
+                      value={leaveForm.leave_session}
+                      onChange={event => setLeaveForm(form => ({ ...form, leave_session: event.target.value }))}
+                      style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '13px', background: 'white', color: '#0f172a' }}
+                    >
+                      {LEAVE_SESSIONS.map(session => <option key={session} value={session}>{getLeaveSessionLabel(session)}</option>)}
+                    </select>
+                  </div>
+
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                     <div>
                       <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#64748b', marginBottom: '6px' }}>Start Date</label>
@@ -686,6 +700,9 @@ export default function SettingsPage() {
                             <div style={{ fontSize: '14px', fontWeight: '700', color: '#0f172a' }}>{member?.full_name || 'Unknown member'}</div>
                             <div style={{ marginTop: '4px', display: 'inline-flex', padding: '4px 8px', borderRadius: '999px', background: '#fff7ed', color: '#9a3412', border: '1px solid #fdba74', fontSize: '11px', fontWeight: '700' }}>
                               {leave.leave_type}
+                            </div>
+                            <div style={{ marginTop: '6px', fontSize: '11px', color: '#2563eb', fontWeight: '700' }}>
+                              {getLeaveSessionLabel(leave.leave_session)}
                             </div>
                             <div style={{ marginTop: '6px', fontSize: '12px', color: '#475569' }}>
                               {singleDay ? formatLeaveDate(leave.start_date) : `${formatLeaveDate(leave.start_date)} - ${formatLeaveDate(leave.end_date)}`}

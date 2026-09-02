@@ -13,6 +13,12 @@ export const LEAVE_TYPES = [
   'UNPAID',
 ]
 
+export const LEAVE_SESSIONS = [
+  'FULL_DAY',
+  'AM_ONLY',
+  'PM_ONLY',
+]
+
 function normalizeDate(value) {
   if (!value) return ''
   return String(value).slice(0, 10)
@@ -40,6 +46,7 @@ function sanitizeLeave(leave) {
     id: leave.id,
     member_id: leave.member_id,
     leave_type: leave.leave_type,
+    leave_session: LEAVE_SESSIONS.includes(leave.leave_session) ? leave.leave_session : 'FULL_DAY',
     start_date: normalizeDate(leave.start_date),
     end_date: normalizeDate(leave.end_date || leave.start_date),
     note: leave.note || '',
@@ -115,7 +122,8 @@ export function getLeaveSummary(leave) {
   if (!leave) return ''
   const start = normalizeDate(leave.start_date)
   const end = normalizeDate(leave.end_date || leave.start_date)
+  const sessionLabel = getLeaveSessionLabel(leave.leave_session)
   return start === end
-    ? `${leave.leave_type} · ${formatDateLabel(start)}`
-    : `${leave.leave_type} · ${formatDateLabel(start)} - ${formatDateLabel(end)}`
+    ? `${leave.leave_type} · ${sessionLabel} · ${formatDateLabel(start)}`
+    : `${leave.leave_type} · ${sessionLabel} · ${formatDateLabel(start)} - ${formatDateLabel(end)}`
 }

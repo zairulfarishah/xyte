@@ -11,7 +11,7 @@ import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
 import { getSiteHeaderImage } from '../utils/siteHeader'
 import { mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../utils/completionMeta'
-import { fetchTeamLeaves, getLeaveSummary, getMemberLeaveOnDate } from '../utils/teamLeaves'
+import { fetchTeamLeaves, getLeaveSessionLabel, getLeaveSummary, getMemberLeaveOnDate } from '../utils/teamLeaves'
 import { useViewport } from '../utils/useViewport'
 import { buildAssignmentMessage, openWhatsApp } from '../utils/whatsapp'
 import { getSiteTitle } from '../utils/siteTitle'
@@ -338,7 +338,7 @@ export default function Sites() {
       .filter(Boolean)
 
     if (conflicts.length === 0) return null
-    return `These team members are on leave for ${date}: ${conflicts.map(({ member, leave }) => `${member.full_name} (${leave.leave_type})`).join(', ')}`
+    return `These team members are on leave for ${date}: ${conflicts.map(({ member, leave }) => `${member.full_name} (${leave.leave_type}, ${getLeaveSessionLabel(leave.leave_session)})`).join(', ')}`
   }
 
   async function handleSave() {
@@ -1181,7 +1181,7 @@ export default function Sites() {
                       <option value="">— Select —</option>
                       {members.map(m => (
                         <option key={m.id} value={m.id} disabled={Boolean(unavailableMembers[m.id])}>
-                          {m.full_name}{unavailableMembers[m.id] ? ` - On leave (${unavailableMembers[m.id].leave_type})` : ''}
+                          {m.full_name}{unavailableMembers[m.id] ? ` - On leave (${unavailableMembers[m.id].leave_type}, ${getLeaveSessionLabel(unavailableMembers[m.id].leave_session)})` : ''}
                         </option>
                       ))}
                     </select>
