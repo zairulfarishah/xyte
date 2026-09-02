@@ -1079,6 +1079,7 @@ export default function Sites() {
                     <option value="">— Select Session —</option>
                     <option value="AM">AM (Morning)</option>
                     <option value="PM">PM (Afternoon)</option>
+                    <option value="Night Work">Night Work</option>
                     <option value="Full Day">Full Day</option>
                   </select>
                 </div>

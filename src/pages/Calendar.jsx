@@ -21,6 +21,16 @@ const STATUS_DOT = {
   postponed: '#94a3b8',
 }
 
+// Single-day site session — multi-day sites and same-day sites with no
+// session picked fall back to the default working-day green.
+const DEFAULT_SESSION_COLOR = '#86d387'
+const SESSION_COLORS = {
+  'Full Day':    '#86d387',
+  AM:            '#fbbf24',
+  PM:            '#fb923c',
+  'Night Work':  '#818cf8',
+}
+
 function Avatar({ name, size = 18 }) {
   const initials = (name || '?').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
   const colors   = ['#2563eb', '#7c3aed', '#db2777', '#059669', '#0891b2', '#d97706']
@@ -116,7 +126,10 @@ function overflows(text, cap) {
 }
 
 const LEGEND_ITEMS = [
-  { label: 'Working day', swatch: '#86d387' },
+  { label: 'Full Day', swatch: SESSION_COLORS['Full Day'] },
+  { label: 'AM', swatch: SESSION_COLORS.AM },
+  { label: 'PM', swatch: SESSION_COLORS.PM },
+  { label: 'Night Work', swatch: SESSION_COLORS['Night Work'] },
   { label: 'Weekend', swatch: '#0f172a' },
   { label: 'Public holiday', swatch: '#2563eb' },
   { label: 'On leave (AL/MC/etc.)', swatch: '#fecaca' },
@@ -324,7 +337,7 @@ function GanttListView({ sitesSorted, year, month, navigate, leaves, members }) 
                       const isSun   = new Date(year, month, d).getDay() === 0
                       const holiday = publicHolidayName(dateStr)
                       const isToday = dateStr === todayStr
-                      const bg      = active ? '#86d387' : (holiday ? '#93c5fd' : (isSun ? '#0f172a' : (isToday ? '#e6f0ff' : 'white')))
+                      const bg      = active ? (SESSION_COLORS[site.site_session] || DEFAULT_SESSION_COLOR) : (holiday ? '#93c5fd' : (isSun ? '#0f172a' : (isToday ? '#e6f0ff' : 'white')))
                       const names   = namesByDay[di]
                       return (
                         <td key={d} style={{
