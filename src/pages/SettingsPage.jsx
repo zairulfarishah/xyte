@@ -237,7 +237,7 @@ export default function SettingsPage() {
   }
 
   const sortedLeaves = useMemo(
-    () => [...leaves].sort((a, b) => String(a.start_date || '').localeCompare(String(b.start_date || ''))),
+    () => [...leaves].sort((a, b) => String(b.start_date || '').localeCompare(String(a.start_date || ''))),
     [leaves]
   )
 

@@ -156,6 +156,52 @@ function GanttListView({ sitesSorted, year, month, navigate, leaves, members }) 
     })
   }
 
+  // Member IDs tied to a site each day — whoever's left over is "at store".
+  const assignedMemberIdsByDate = useMemo(() => {
+    const map = {}
+    sitesSorted.forEach(site => {
+      const start = site.scheduled_date
+      const end   = site.end_date || site.scheduled_date
+      if (!start) return
+      dayNums.forEach(d => {
+        const dateStr = dateStrOf(d)
+        if (dateStr < start || dateStr > end) return
+        assignmentsForDate(site.site_assignments, dateStr).forEach(a => {
+          const id = a.team_members?.id
+          if (!id) return
+          if (!map[dateStr]) map[dateStr] = new Set()
+          map[dateStr].add(id)
+        })
+      })
+    })
+    return map
+  }, [sitesSorted, year, month])
+
+  const leaveMemberIdsByDate = useMemo(() => {
+    const map = {}
+    leavesThisMonth.forEach(leave => {
+      const lStart = leave.start_date
+      const lEnd   = leave.end_date || leave.start_date
+      dayNums.forEach(d => {
+        const dateStr = dateStrOf(d)
+        if (dateStr < lStart || dateStr > lEnd) return
+        if (!map[dateStr]) map[dateStr] = new Set()
+        map[dateStr].add(leave.member_id)
+      })
+    })
+    return map
+  }, [leavesThisMonth, year, month])
+
+  function atStoreNamesForDate(dateStr) {
+    const assigned = assignedMemberIdsByDate[dateStr] || new Set()
+    const onLeave  = leaveMemberIdsByDate[dateStr] || new Set()
+    return members
+      .filter(m => !assigned.has(m.id) && !onLeave.has(m.id))
+      .map(m => m.short_name || m.full_name)
+      .filter(Boolean)
+      .join(', ')
+  }
+
   const todayObj = new Date()
   const todayStr = `${todayObj.getFullYear()}-${String(todayObj.getMonth() + 1).padStart(2, '0')}-${String(todayObj.getDate()).padStart(2, '0')}`
   const lastPin  = GANTT_COLS.length - 1
@@ -309,6 +355,54 @@ function GanttListView({ sitesSorted, year, month, navigate, leaves, members }) 
                 )
               })
             )}
+
+            <tr>
+              <td colSpan={GANTT_COLS.length + dayNums.length} style={{
+                background: '#eff6ff', color: '#1d4ed8', fontSize: '11px', fontWeight: '800',
+                textTransform: 'uppercase', letterSpacing: '.06em', padding: '9px 10px',
+                borderBottom: '1px solid #bfdbfe', borderTop: '2px solid #e5eaf1',
+              }}>
+                At Store
+              </td>
+            </tr>
+            <tr className="gantt-row">
+              {GANTT_COLS.map((c, ci) => (
+                <td key={c.key} className="gantt-pin" style={{
+                  position: 'sticky', left: ganttColLeft(ci), zIndex: 1,
+                  width: c.width, minWidth: c.width, maxWidth: c.width,
+                  background: '#f8fbff', verticalAlign: 'top',
+                  padding: '13px 10px', borderBottom: '1px solid #e5eaf1',
+                  borderRight: ci === lastPin ? '1px solid #d7dee7' : '1px solid #eef1f5',
+                  boxShadow: ci === lastPin ? '6px 0 10px -6px rgba(15,23,42,0.16)' : 'none',
+                  fontSize: c.key === 'site' ? '13px' : '12px',
+                  fontWeight: c.key === 'site' ? '700' : '400',
+                  color: c.key === 'site' ? '#1d4ed8' : '#94a3b8',
+                }}>
+                  {c.key === 'site' ? (
+                    <>
+                      <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#3b82f6', marginRight: '6px' }} />
+                      At Store
+                    </>
+                  ) : '—'}
+                </td>
+              ))}
+              {dayNums.map(d => {
+                const dateStr = dateStrOf(d)
+                const isSun   = new Date(year, month, d).getDay() === 0
+                const names   = isSun ? '' : atStoreNamesForDate(dateStr)
+                const isToday = dateStr === todayStr
+                return (
+                  <td key={d} style={{
+                    width: GANTT_DAY_WIDTH, minWidth: GANTT_DAY_WIDTH,
+                    background: names ? '#dbeafe' : (isToday ? '#e6f0ff' : 'white'), verticalAlign: 'middle',
+                    borderBottom: '1px solid #e5eaf1', borderRight: '1px solid #eef1f5',
+                    padding: '8px 6px', textAlign: 'center',
+                  }}>
+                    {names && <span style={{ fontSize: '9px', fontWeight: '800', color: '#1d4ed8', lineHeight: 1.3 }}>{names}</span>}
+                  </td>
+                )
+              })}
+            </tr>
 
             {leavesThisMonth.length > 0 && (
               <>
