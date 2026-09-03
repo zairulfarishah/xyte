@@ -3,10 +3,11 @@ import { supabase } from '../supabase'
 import { useViewport } from '../utils/useViewport'
 import { getSiteTitle } from '../utils/siteTitle'
 import {
-  BASE, areaOf, countBy, daysBetween, distanceFromBase, formatNumber,
-  monthKey, monthLabel, siteEndDate, sumBy, toDate, topEntries, weekKey,
+  BASE, RANGE_PRESETS, areaOf, clippedDaySpan, countBy, dateWithinBounds, daysBetween, distanceFromBase,
+  formatNumber, getRangeBounds, monthKey, monthLabel, siteEndDate, sumBy, toDate, topEntries, weekKey,
 } from '../utils/statistics'
 import { getSiteDayCount, hasDailyCrew, memberDaysOnSite, siteMemberIds } from '../utils/siteDays'
+import { LEAVE_TYPES, fetchTeamLeaves } from '../utils/teamLeaves'
 
 /* ── Viz tokens (validated: light surface, sequential blue + fixed status) ── */
 const SURFACE = '#ffffff'
@@ -207,21 +208,25 @@ export default function Statistics() {
   const [sites, setSites] = useState([])
   const [members, setMembers] = useState([])
   const [docCount, setDocCount] = useState(0)
+  const [leaves, setLeaves] = useState([])
   const [loading, setLoading] = useState(true)
+  const [range, setRange] = useState('all')
 
   useEffect(() => {
     let active = true
 
     async function fetchAll() {
-      const [{ data: siteData }, { data: memberData }, { data: docs }] = await Promise.all([
+      const [{ data: siteData }, { data: memberData }, { data: docs }, leaveData] = await Promise.all([
         supabase.from('sites').select('*, site_assignments(assignment_role, work_date, member_id, team_members(id, full_name))'),
         supabase.from('team_members').select('id, full_name, short_name').order('full_name'),
         supabase.from('library_documents').select('id'),
+        fetchTeamLeaves().catch(() => []),
       ])
       if (!active) return
       setSites(siteData || [])
       setMembers(memberData || [])
       setDocCount(docs?.length || 0)
+      setLeaves(leaveData || [])
       setLoading(false)
     }
 
@@ -229,7 +234,15 @@ export default function Statistics() {
     return () => { active = false }
   }, [])
 
+  const bounds = useMemo(() => getRangeBounds(range), [range])
+
+  const scopedSites = useMemo(
+    () => (bounds ? sites.filter(s => dateWithinBounds(toDate(s.scheduled_date), bounds)) : sites),
+    [sites, bounds]
+  )
+
   const stats = useMemo(() => {
+    const sites = scopedSites
     const real = sites.filter(s => String(s.site_status || '').toLowerCase() !== 'cancelled')
     const dated = sites.filter(s => toDate(s.scheduled_date))
 
@@ -415,7 +428,33 @@ export default function Statistics() {
       longestJob,
       docCount,
     }
-  }, [sites, members, docCount])
+  }, [scopedSites, members, docCount])
+
+  const leaveStats = useMemo(() => {
+    const overlapping = leaves
+      .map(l => ({ leave: l, days: clippedDaySpan(toDate(l.start_date), toDate(l.end_date || l.start_date), bounds) }))
+      .filter(l => l.days > 0)
+
+    const byType = new Map()
+    const byMember = new Map()
+    overlapping.forEach(({ leave, days }) => {
+      byType.set(leave.leave_type, (byType.get(leave.leave_type) || 0) + days)
+      byMember.set(leave.member_id, (byMember.get(leave.member_id) || 0) + days)
+    })
+
+    const nameOf = id => members.find(m => m.id === id)?.full_name || 'Unknown'
+
+    return {
+      totalDays: overlapping.reduce((sum, r) => sum + r.days, 0),
+      totalRecords: overlapping.length,
+      uniqueMembers: byMember.size,
+      typeRows: LEAVE_TYPES
+        .map(type => ({ label: type, value: byType.get(type) || 0 }))
+        .filter(r => r.value > 0)
+        .sort((a, b) => b.value - a.value),
+      memberRows: topEntries(byMember, 5).map(r => ({ ...r, label: nameOf(r.label) })),
+    }
+  }, [leaves, members, bounds])
 
   if (loading) {
     return (
@@ -430,11 +469,33 @@ export default function Statistics() {
 
   return (
     <div style={{ padding: isMobile ? '16px' : '24px 28px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div>
-        <h1 style={{ margin: 0, fontSize: isMobile ? '20px' : '24px', fontWeight: '800', color: INK, letterSpacing: '-.02em' }}>Statistics</h1>
-        <p style={{ margin: '4px 0 0', fontSize: '12px', color: INK_FAINT, fontWeight: '600' }}>
-          Everything the team has logged — {stats.totalSites} site{stats.totalSites === 1 ? '' : 's'} across {stats.distinctLocations} location{stats.distinctLocations === 1 ? '' : 's'}
-        </p>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: '12px' }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: isMobile ? '20px' : '24px', fontWeight: '800', color: INK, letterSpacing: '-.02em' }}>Statistics</h1>
+          <p style={{ margin: '4px 0 0', fontSize: '12px', color: INK_FAINT, fontWeight: '600' }}>
+            {range === 'all' ? 'Everything the team has logged' : 'Filtered view'} — {stats.totalSites} site{stats.totalSites === 1 ? '' : 's'} across {stats.distinctLocations} location{stats.distinctLocations === 1 ? '' : 's'}
+          </p>
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+          {RANGE_PRESETS.map(p => (
+            <button
+              key={p.key}
+              onClick={() => setRange(p.key)}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '999px',
+                border: `1px solid ${range === p.key ? SEQ.step450 : 'rgba(203,213,225,.85)'}`,
+                background: range === p.key ? SEQ.step450 : SURFACE,
+                color: range === p.key ? '#fff' : INK_MUTED,
+                fontSize: '11px',
+                fontWeight: '700',
+                cursor: 'pointer',
+              }}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Headline */}
@@ -565,6 +626,23 @@ export default function Statistics() {
               </span>
             </div>
           </div>
+        </Card>
+      </div>
+
+      {/* Leave */}
+      <div style={grid}>
+        <Card title="Team leave" subtitle={range === 'all' ? 'All time' : 'Within selected range'}>
+          <RecordRow label="Leave days taken" value={formatNumber(leaveStats.totalDays, 1)} />
+          <RecordRow label="Leave records" value={formatNumber(leaveStats.totalRecords)} />
+          <RecordRow label="Members who took leave" value={formatNumber(leaveStats.uniqueMembers)} />
+        </Card>
+
+        <Card title="Leave by type" subtitle="Days taken, by leave type">
+          <BarList rows={leaveStats.typeRows} unit=" days" color={SEQ.step350} emptyText="No leave logged in this range" />
+        </Card>
+
+        <Card title="Leave leaders" subtitle="Most days taken off">
+          <BarList rows={leaveStats.memberRows.map(r => ({ ...r, decimals: 1 }))} unit=" days" color={SEQ.step550} emptyText="No leave logged in this range" />
         </Card>
       </div>
 

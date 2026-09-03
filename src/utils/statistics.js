@@ -88,6 +88,48 @@ export function daysBetween(from, to) {
   return Math.round((to - from) / 86400000)
 }
 
+export const RANGE_PRESETS = [
+  { key: 'all', label: 'All time' },
+  { key: '12m', label: 'Last 12 months' },
+  { key: 'year', label: 'This year' },
+  { key: 'month', label: 'This month' },
+  { key: '30d', label: 'Last 30 days' },
+]
+
+// null bounds = no filtering (all time)
+export function getRangeBounds(key, now = new Date()) {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  switch (key) {
+    case 'year':
+      return { start: new Date(now.getFullYear(), 0, 1), end: today }
+    case 'month':
+      return { start: new Date(now.getFullYear(), now.getMonth(), 1), end: today }
+    case '30d':
+      return { start: new Date(today.getTime() - 29 * 86400000), end: today }
+    case '12m':
+      return { start: new Date(now.getFullYear() - 1, now.getMonth(), now.getDate() + 1), end: today }
+    default:
+      return null
+  }
+}
+
+export function dateWithinBounds(date, bounds) {
+  if (!bounds) return true
+  if (!date) return false
+  if (bounds.start && date < bounds.start) return false
+  if (bounds.end && date > bounds.end) return false
+  return true
+}
+
+// Days of [from, to] that fall inside bounds, inclusive on both ends
+export function clippedDaySpan(from, to, bounds) {
+  if (!from || !to) return 0
+  const start = bounds?.start && bounds.start > from ? bounds.start : from
+  const end = bounds?.end && bounds.end < to ? bounds.end : to
+  if (start > end) return 0
+  return daysBetween(start, end) + 1
+}
+
 // Site end date: explicit column, else derived from duration
 export function siteEndDate(site) {
   const explicit = toDate(site?.scheduled_end_date) || toDate(site?.end_date)
