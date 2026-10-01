@@ -112,6 +112,20 @@ export function getMembersOnLeave(leaves, members, date) {
     .filter(item => item.leave)
 }
 
+const LEAVE_ABBR = {
+  'ANNUAL LEAVE': 'AL',
+  MEDICAL: 'MC',
+  'EMERGENCY LEAVE': 'EL',
+  'HOSPITALIZATION LEAVE': 'HL',
+  'MARRIAGE LEAVE': 'ML',
+  'PARENTAL LEAVE': 'PL',
+  UNPAID: 'UPL',
+}
+
+export function leaveAbbr(type) {
+  return LEAVE_ABBR[type] || (type || '').slice(0, 2).toUpperCase()
+}
+
 export function getLeaveSessionLabel(session) {
   if (session === 'AM_ONLY') return 'AM Only'
   if (session === 'PM_ONLY') return 'PM Only'

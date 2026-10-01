@@ -19,6 +19,7 @@ const Tools = lazy(() => import('./pages/Tools'))
 const TaskPage = lazy(() => import('./pages/Task'))
 const Statistics = lazy(() => import('./pages/Statistics'))
 const Claim = lazy(() => import('./pages/Claim'))
+const Schedule = lazy(() => import('./pages/Schedule'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const ReportBuilder = lazy(() => import('./pages/ReportBuilder'))
 
@@ -36,6 +37,7 @@ const NAV = [
   { to: '/tasks', label: 'Tasks', end: false },
   { to: '/statistics', label: 'Statistics', end: false },
   { to: '/claim', label: 'Claim', end: false },
+  { to: '/schedule', label: 'Schedule', end: false },
   { to: '/settings', label: 'Settings', end: false },
 ].filter(item => !item.hidden)
 
@@ -564,6 +566,7 @@ function AppShell() {
             <Route path="/tasks" element={<TaskPage />} />
             <Route path="/statistics" element={<Statistics />} />
             <Route path="/claim" element={<Claim />} />
+            <Route path="/schedule" element={<Schedule />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/report-builder" element={<ReportBuilder />} />
           </Routes>
