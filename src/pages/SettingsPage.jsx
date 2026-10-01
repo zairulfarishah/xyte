@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { supabase } from '../supabase'
+import { supabase, createDetachedClient } from '../supabase'
 import { User, Info, Lock, CalendarDays, Plus, Pencil, Trash2, UserPlus, X } from 'lucide-react'
 import { ROLE_MULTIPLIERS, WEEKLY_CAPACITY_DAYS } from '../utils/workload'
 import { useAuth } from '../context/AuthContext'
@@ -31,6 +31,7 @@ const EMPTY_MEMBER_FORM = {
   role: 'GPR Engineer',
   email: '',
   phone: '',
+  password: '',
 }
 
 const EMPTY_LEAVE_FORM = {
@@ -78,6 +79,7 @@ export default function SettingsPage() {
   const [memberSaving, setMemberSaving] = useState(false)
   const [memberError, setMemberError] = useState('')
   const [memberRemoving, setMemberRemoving] = useState(null)
+  const [memberNotice, setMemberNotice] = useState(null)   // { tone: 'ok' | 'warn', text }
 
   useEffect(() => { fetchAll() }, [])
 
@@ -168,7 +170,18 @@ export default function SettingsPage() {
       return
     }
 
+    const password = memberForm.password
+    if (password && !email) {
+      setMemberError('An email is needed to create a login — add one, or leave the password blank.')
+      return
+    }
+    if (password && password.length < 6) {
+      setMemberError('Password must be at least 6 characters.')
+      return
+    }
+
     setMemberError('')
+    setMemberNotice(null)
     setMemberSaving(true)
     const { data, error } = await supabase
       .from('team_members')
@@ -181,15 +194,37 @@ export default function SettingsPage() {
       })
       .select()
       .single()
-    setMemberSaving(false)
 
     if (error) {
+      setMemberSaving(false)
       setMemberError(error.message)
       return
     }
 
     setMembers(prev => [...prev, data])
+    setMemberNotice(password ? await createLogin(email, password, fullName) : null)
+    setMemberSaving(false)
     closeMemberForm()
+  }
+
+  // Login accounts match team members by email (see AuthContext).
+  async function createLogin(email, password, fullName) {
+    const { data, error } = await createDetachedClient().auth.signUp({
+      email,
+      password,
+      options: { data: { full_name: fullName } },
+    })
+    if (error) {
+      return { tone: 'warn', text: `${fullName} was added, but the login could not be created: ${error.message}` }
+    }
+    // Supabase hides "already registered" behind a user with no identities.
+    if (data.user && data.user.identities?.length === 0) {
+      return { tone: 'warn', text: `${fullName} was added. ${email} already has a login, so they can sign in with their existing password.` }
+    }
+    if (!data.session) {
+      return { tone: 'warn', text: `${fullName} was added and a login was created, but they must click the confirmation email sent to ${email} before signing in.` }
+    }
+    return { tone: 'ok', text: `${fullName} was added. They can sign in now with ${email} and the password you set.` }
   }
 
   async function removeMember(member) {
@@ -400,6 +435,12 @@ export default function SettingsPage() {
                   {memberError && (
                     <p style={{ fontSize: '12px', color: '#b91c1c', fontWeight: '600', marginTop: '8px' }}>{memberError}</p>
                   )}
+                  {memberNotice && (
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginTop: '8px', padding: '9px 12px', borderRadius: '10px', fontSize: '12px', fontWeight: '600', ...(memberNotice.tone === 'ok' ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }) }}>
+                      <span style={{ flex: 1 }}>{memberNotice.text}</span>
+                      <button onClick={() => setMemberNotice(null)} title="Dismiss" style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, display: 'flex' }}><X size={14} /></button>
+                    </div>
+                  )}
                 </div>
 
                 {showMemberForm && (
@@ -410,12 +451,15 @@ export default function SettingsPage() {
                         { key: 'short_name', label: 'Short Name', placeholder: 'Shown on calendar — defaults to first name' },
                         { key: 'email', label: 'Email', placeholder: 'name@xradar.asia — needed to log in' },
                         { key: 'phone', label: 'Phone', placeholder: '012-345 6789' },
-                      ].map(({ key, label, placeholder, required }) => (
+                        { key: 'password', label: 'Login Password', placeholder: 'Min. 6 characters — leave blank to skip', type: 'password' },
+                      ].map(({ key, label, placeholder, required, type = 'text' }) => (
                         <div key={key}>
                           <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#64748b', marginBottom: '6px' }}>
                             {label}{required ? ' *' : ''}
                           </label>
                           <input
+                            type={type}
+                            autoComplete={type === 'password' ? 'new-password' : undefined}
                             value={memberForm[key]}
                             onChange={e => setMemberForm(form => ({ ...form, [key]: e.target.value }))}
                             onKeyDown={e => { if (e.key === 'Enter') addMember() }}
