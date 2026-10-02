@@ -28,11 +28,11 @@ const Feed = lazy(() => import('./pages/Feed'))
 // Hidden for now — routes still work by direct URL: /report-builder (Xport), /tools
 const NAV = [
   { to: '/', label: 'Dashboard', end: true },
+  { to: '/sites', label: 'Sites', end: false },
   { to: '/feed', label: 'Feed', end: false },
   {
     label: 'Field',
     items: [
-      { to: '/sites', label: 'Sites' },
       { to: '/map', label: 'Map' },
       { to: '/calendar', label: 'Calendar' },
       { to: '/tasks', label: 'Tasks' },

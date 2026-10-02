@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { useViewport } from '../utils/useViewport'
-import { ChevronLeft, ChevronRight, Loader2, Plus, X } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, Loader2, Plus, Search, X } from 'lucide-react'
 import { fetchTeamLeaves, getMemberLeaveOnDate, getLeaveSessionLabel } from '../utils/teamLeaves'
 import { normalizeDate, getSiteDates, assignmentsForDate, assignmentMemberId } from '../utils/siteDays'
 import { calcTimecard, hasOverlap, dayInfo, formatMinutes, formatTime12, monthDates, isMissingDay } from '../utils/timecard'
@@ -67,11 +67,12 @@ export default function MyTimecard({ month, setMonth, viewId, setViewId }) {
   useEffect(() => {
     Promise.all([
       supabase.from('team_members').select('id, full_name, short_name').order('full_name'),
-      supabase.from('sites').select('id, site_name, scheduled_date, end_date, site_assignments(member_id, work_date, assignment_role)'),
+      supabase.from('sites').select('id, site_name, site_status, scheduled_date, end_date, site_assignments(member_id, work_date, assignment_role)'),
       fetchTeamLeaves().catch(() => []),
     ]).then(([m, s, l]) => {
       setMembers(m.data || [])
-      setSites(s.data || [])
+      // Newest first — the site picker lists them in date order.
+      setSites((s.data || []).slice().sort((a, b) => String(b.scheduled_date || '').localeCompare(String(a.scheduled_date || ''))))
       setLeaves(l)
     })
   }, [])
@@ -102,12 +103,14 @@ export default function MyTimecard({ month, setMonth, viewId, setViewId }) {
     return () => { cancelled = true }
   }, [viewId, dates])
 
-  // Site the member is assigned to on a date, used to pre-fill the site pick.
-  function suggestedSiteId(date) {
-    const site = sites.find(s =>
-      getSiteDates(s).includes(date) &&
-      assignmentsForDate(s.site_assignments || [], date).some(a => assignmentMemberId(a) === viewId))
-    return site?.id || ''
+  // Sites the member is assigned to on a date (not cancelled), used to pre-fill the site pick.
+  // No assignment means the default: Store (site_id '').
+  function suggestedSiteIds(date) {
+    return sites
+      .filter(s => s.site_status !== 'cancelled' &&
+        getSiteDates(s).includes(date) &&
+        assignmentsForDate(s.site_assignments || [], date).some(a => assignmentMemberId(a) === viewId))
+      .map(s => s.id)
   }
 
   function dayValues(date) {
@@ -115,7 +118,7 @@ export default function MyTimecard({ month, setMonth, viewId, setViewId }) {
     const saved = cards[date]
     const slots = saved ? savedSlots(saved) : []
     return {
-      segments: slots.length > 0 ? slots : [{ ...EMPTY_SLOT, site_id: saved ? '' : suggestedSiteId(date) }],
+      segments: slots.length > 0 ? slots : [{ ...EMPTY_SLOT, site_id: suggestedSiteIds(date)[0] || '' }],
       remarks: saved?.remarks || '',
     }
   }
@@ -248,6 +251,7 @@ export default function MyTimecard({ month, setMonth, viewId, setViewId }) {
               leave={leave}
               missing={isMissingDay(date, today, cards[date], leave)}
               sites={sites}
+              suggested={suggestedSiteIds(date)}
               canEdit={canEdit}
               isMobile={isMobile}
               onChange={(values, opts) => changeDay(date, values, opts)}
@@ -266,7 +270,7 @@ export default function MyTimecard({ month, setMonth, viewId, setViewId }) {
   )
 }
 
-function DayRow({ date, isToday, values, leave, missing, sites, canEdit, isMobile, onChange, onSave }) {
+function DayRow({ date, isToday, values, leave, missing, sites, suggested, canEdit, isMobile, onChange, onSave }) {
   const info = dayInfo(date)
   const { segments, remarks } = values
   const { normal, ot } = calcTimecard(date, segments)
@@ -292,7 +296,9 @@ function DayRow({ date, isToday, values, leave, missing, sites, canEdit, isMobil
     onChange({ ...values, segments: next.length > 0 ? next : [{ ...EMPTY_SLOT }] })
   }
   function addSlot() {
-    onChange({ ...values, segments: [...segments, { ...EMPTY_SLOT }] }, { save: false })
+    // A second assigned site that day (if any) is the likely pick for the new slot.
+    const nextSite = suggested.find(id => !segments.some(s => s.site_id === id)) || ''
+    onChange({ ...values, segments: [...segments, { ...EMPTY_SLOT, site_id: nextSite }] }, { save: false })
   }
 
   const dateLabel = (
@@ -321,10 +327,8 @@ function DayRow({ date, isToday, values, leave, missing, sites, canEdit, isMobil
     ),
     site: (
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 0 }}>
-        <select value={slot.site_id} disabled={!canEdit} style={inputStyle} onChange={e => updateSlot(i, { site_id: e.target.value })}>
-          <option value="">— Office / none —</option>
-          {sites.map(s => <option key={s.id} value={s.id}>{s.site_name}</option>)}
-        </select>
+        <SitePicker value={slot.site_id} sites={sites} date={date} suggested={suggested} disabled={!canEdit}
+          onChange={site_id => updateSlot(i, { site_id })} />
         {canEdit && segments.length > 1 && (
           <button onClick={() => removeSlot(i)} title="Remove this time slot" style={{ flexShrink: 0, width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', borderRadius: 999, background: '#f1f5f9', color: '#64748b', cursor: 'pointer' }}>
             <X size={14} />
@@ -425,4 +429,129 @@ function Badge({ text, color, bg }) {
 
 function IconBtn({ children, onClick }) {
   return <button onClick={onClick} style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', borderRadius: 999, background: '#f1f5f9', color: '#0f172a', cursor: 'pointer' }}>{children}</button>
+}
+
+const STORE_LABEL = 'Store'
+
+function shortDate(value) {
+  if (!value) return ''
+  return new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+// Searchable site picker. Store (no site) first, then the sites running that day
+// (yours marked), then every site newest first. The list floats above the page
+// because the timecard card clips anything that overflows it.
+function SitePicker({ value, sites, date, suggested, disabled, onChange }) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [pos, setPos] = useState(null)
+  const buttonRef = useRef(null)
+  const panelRef = useRef(null)
+  const selected = sites.find(s => s.id === value)
+
+  function openPanel() {
+    if (disabled) return
+    const r = buttonRef.current.getBoundingClientRect()
+    const width = Math.min(Math.max(r.width, 300), window.innerWidth - 16)
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8))
+    const below = window.innerHeight - r.bottom
+    const height = 340
+    setPos(below >= height || below > r.top
+      ? { left, width, top: r.bottom + 4, maxHeight: Math.min(height, below - 12) }
+      : { left, width, bottom: window.innerHeight - r.top + 4, maxHeight: Math.min(height, r.top - 12) })
+    setQuery('')
+    setOpen(true)
+  }
+
+  useEffect(() => {
+    if (!open) return undefined
+    const close = e => {
+      if (panelRef.current?.contains(e.target) || buttonRef.current?.contains(e.target)) return
+      setOpen(false)
+    }
+    const onScroll = e => { if (!panelRef.current?.contains(e.target)) setOpen(false) }
+    const onResize = () => setOpen(false)
+    document.addEventListener('mousedown', close)
+    window.addEventListener('scroll', onScroll, true)
+    window.addEventListener('resize', onResize)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      window.removeEventListener('scroll', onScroll, true)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [open])
+
+  const q = query.trim().toLowerCase()
+  const sections = useMemo(() => {
+    if (!open) return []
+    const match = s => !q || s.site_name.toLowerCase().includes(q) || shortDate(s.scheduled_date).toLowerCase().includes(q)
+    const onDay = sites.filter(s => getSiteDates(s).includes(date) && match(s))
+      .sort((a, b) => (suggested.includes(b.id) ? 1 : 0) - (suggested.includes(a.id) ? 1 : 0))
+    const onDayIds = new Set(onDay.map(s => s.id))
+    const rest = sites.filter(s => !onDayIds.has(s.id) && match(s)).slice(0, 150)
+    return [
+      ...(onDay.length ? [{ title: 'On this day', items: onDay }] : []),
+      { title: q ? 'Matching sites' : 'All sites (newest first)', items: rest },
+    ]
+  }, [open, q, sites, date, suggested])
+
+  const showStore = !q || STORE_LABEL.toLowerCase().includes(q) || 'office'.includes(q)
+  function pick(id) { onChange(id); setOpen(false) }
+  function onKeyDown(e) {
+    if (e.key === 'Escape') setOpen(false)
+    if (e.key === 'Enter') {
+      const firstSite = sections.flatMap(sec => sec.items)[0]
+      if (q && firstSite) pick(firstSite.id)
+      else if (showStore) pick('')
+    }
+  }
+
+  const row = active => ({ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', border: 'none', borderRadius: 8, background: active ? '#eff6ff' : 'transparent', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' })
+
+  return (
+    <>
+      <button ref={buttonRef} type="button" onClick={() => (open ? setOpen(false) : openPanel())} disabled={disabled}
+        style={{ ...inputStyle, display: 'flex', alignItems: 'center', gap: 6, cursor: disabled ? 'default' : 'pointer', textAlign: 'left' }}>
+        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: selected ? '#0f172a' : '#475569', fontWeight: selected ? 600 : 400 }}>
+          {selected ? selected.site_name : STORE_LABEL}
+        </span>
+        {!disabled && <ChevronDown size={14} color="#94a3b8" style={{ flexShrink: 0 }} />}
+      </button>
+
+      {open && pos && (
+        <div ref={panelRef} style={{ position: 'fixed', zIndex: 1200, left: pos.left, width: pos.width, top: pos.top, bottom: pos.bottom, maxHeight: pos.maxHeight, display: 'flex', flexDirection: 'column', background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, boxShadow: '0 16px 40px rgba(15,23,42,0.2)', overflow: 'hidden' }}>
+          <div style={{ position: 'relative', padding: 8, borderBottom: '1px solid #f1f5f9' }}>
+            <Search size={14} color="#94a3b8" style={{ position: 'absolute', left: 18, top: '50%', transform: 'translateY(-50%)' }} />
+            <input autoFocus value={query} onChange={e => setQuery(e.target.value)} onKeyDown={onKeyDown} placeholder="Search site name or date…"
+              style={{ ...inputStyle, paddingLeft: 30 }} />
+          </div>
+          <div style={{ overflowY: 'auto', padding: 4 }}>
+            {showStore && (
+              <button type="button" onClick={() => pick('')} style={row(!value)}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#3b82f6', flexShrink: 0 }} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', flex: 1 }}>{STORE_LABEL}</span>
+                <span style={{ fontSize: 11, color: '#94a3b8' }}>No site</span>
+              </button>
+            )}
+            {sections.map(sec => sec.items.length > 0 && (
+              <div key={sec.title}>
+                <p style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#94a3b8', padding: '8px 10px 4px' }}>{sec.title}</p>
+                {sec.items.map(s => (
+                  <button key={s.id} type="button" onClick={() => pick(s.id)} style={row(s.id === value)}>
+                    <span style={{ fontSize: 13, color: '#0f172a', fontWeight: s.id === value ? 700 : 500, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.site_name}</span>
+                    {suggested.includes(s.id) && <Badge text="Assigned to you" color="#166534" bg="#dcfce7" />}
+                    {s.site_status === 'cancelled' && <Badge text="Cancelled" color="#991b1b" bg="#fee2e2" />}
+                    <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>{shortDate(s.scheduled_date)}</span>
+                  </button>
+                ))}
+              </div>
+            ))}
+            {!showStore && sections.every(sec => sec.items.length === 0) && (
+              <p style={{ padding: '14px 10px', fontSize: 12.5, color: '#94a3b8', textAlign: 'center' }}>No sites match “{query}”</p>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  )
 }
