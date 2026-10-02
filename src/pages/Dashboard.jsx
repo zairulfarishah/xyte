@@ -598,7 +598,8 @@ export default function Dashboard() {
   const upcomingSitesCount = sites.filter(site => site.site_status === 'upcoming').length
   const pendingReports = sites.filter(site => ['pending', 'in_progress'].includes(site.report_status) && site.site_type === 'site_scanning')
   const withCoords = sites.filter(site => site.latitude && site.longitude)
-  const mapCenter = withCoords.length > 0 ? [withCoords[0].latitude, withCoords[0].longitude] : [3.1390, 101.6869]
+  const latestSiteWithCoords = [...withCoords].sort((a, b) => new Date(b.scheduled_date) - new Date(a.scheduled_date))[0]
+  const mapCenter = latestSiteWithCoords ? [latestSiteWithCoords.latitude, latestSiteWithCoords.longitude] : [3.1390, 101.6869]
   const filteredMapSites = withCoords.filter(site => {
     if (mapFilter === 'upcoming') return site.site_status === 'upcoming'
     if (mapFilter === 'completed') return site.site_status === 'completed'
