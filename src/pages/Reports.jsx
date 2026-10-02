@@ -97,8 +97,8 @@ export default function Reports() {
     setUpdateError(null)
     const involvedIds = siteMemberIds(site)
     if (prev !== newStatus) {
-      if (newStatus === 'submitted') await notify(`Report for "${site?.site_name}" has been submitted — ready for review`, fullName)
-      if (newStatus === 'approved')  await notify(`Report for "${site?.site_name}" has been approved`, fullName)
+      if (newStatus === 'submitted') await notify(`Report for "${site?.site_name}" has been submitted — ready for review`, fullName, null, 'general')
+      if (newStatus === 'approved')  await notify(`Report for "${site?.site_name}" has been approved`, fullName, null, 'general')
     }
     setUpdating(null)
   }

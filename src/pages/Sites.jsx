@@ -6,7 +6,7 @@ import {
   Pencil, Trash2, Search, ArrowUpRight, MapPin, MessageCircle, X, Camera,
   Calendar, Clock, CheckCircle,
 } from 'lucide-react'
-import { notify, notifyAssignments, notifyDailyAssignments, notifyMany } from '../utils/notify'
+import { notify, notifyAssignments, notifyDailyAssignments, notifyMany, siteRoleIds } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
 import { getSiteHeaderImage } from '../utils/siteHeader'
@@ -163,7 +163,7 @@ function LocationPicker({ lat, lng, onPick, mapKey }) {
 }
 
 export default function Sites() {
-  const { fullName, isZairul } = useAuth()
+  const { fullName, isZairul, memberId } = useAuth()
   const { isMobile, isTablet } = useViewport()
   const [sites, setSites]             = useState([])
   const [members, setMembers]         = useState([])
@@ -250,24 +250,23 @@ export default function Sites() {
       if (error) { setQuickSaving(null); return }
       setSites(prev => prev.map(s => s.id === site.id ? { ...s, ...updates } : s))
 
-      // Collect all member IDs involved in this site (deduped — a per-day site
-      // can have the same person assigned across multiple day-specific rows)
-      const involvedIds = [...new Set((site.site_assignments || [])
-        .map(a => a.team_members?.id).filter(Boolean))]
+      // PICs and crew of this site hear about it under separate notification settings
+      // (deduped — a per-day site can list the same person on several days).
+      const { picIds, crewIds } = siteRoleIds(site)
+      const tell = async msg => {
+        await notifyMany(`${msg} (you are PIC)`, fullName, picIds.filter(id => id !== memberId), 'pic_update')
+        await notifyMany(msg, fullName, crewIds.filter(id => id !== memberId), 'site_update')
+      }
 
       if (updates.site_status) {
-        await notifyMany(
-          `Site "${site.site_name}" status changed to ${updates.site_status}`,
-          fullName, involvedIds
-        )
+        await tell(`Site "${site.site_name}" status changed to ${updates.site_status}`)
       }
       if (updates.report_status) {
-        const msg = updates.report_status === 'approved'
+        await tell(updates.report_status === 'approved'
           ? `Report for "${site.site_name}" has been approved by Zairul`
           : updates.report_status === 'submitted'
           ? `Report for "${site.site_name}" has been submitted — awaiting review`
-          : `Report for "${site.site_name}" status changed to ${updates.report_status.replace(/_/g, ' ')}`
-        await notifyMany(msg, fullName, involvedIds)
+          : `Report for "${site.site_name}" status changed to ${updates.report_status.replace(/_/g, ' ')}`)
       }
       setQuickSaving(null)
     }
@@ -479,7 +478,16 @@ export default function Sites() {
           })
         }
       }
-      await notify(`${editSite?'Updated':'Added'} site: ${form.site_name}`, fullName)
+      await notify(`${editSite?'Updated':'Added'} site: ${form.site_name}`, fullName, null, 'general')
+      if (editSite) {
+        // Existing PICs hear about edits to their site; newly assigned ones already got an assignment alert.
+        const statusNote = editSite.site_status !== form.site_status ? ` — status: ${form.site_status}` : ''
+        const stillPic = siteRoleIds(editSite).picIds.filter(id => id !== memberId && (
+          form.assign_mode === 'per_day'
+            ? Object.values(form.daily_assignments).some(day => day.pic_id === id)
+            : form.pic_id === id))
+        await notifyMany(`${fullName} updated site "${form.site_name}" (you are PIC)${statusNote}`, fullName, stillPic, 'pic_update')
+      }
       window.dispatchEvent(new CustomEvent('xyte:site-saved'))
       setShowForm(false); setEditSite(null); fetchAll()
     } catch (err) {

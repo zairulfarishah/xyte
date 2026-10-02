@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Bell, BellOff, BellRing, Share, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Bell, BellOff, BellRing, Settings2, Share, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { getPushState, enablePush, disablePush, isIos, isStandalone } from '../utils/push'
 
@@ -36,8 +37,25 @@ function useToggle(setState) {
 
 const needsHomeScreen = () => isIos() && !isStandalone()
 
-// Row for the avatar menu.
-export function PushToggle() {
+// Rows for the avatar menu: device on/off + link to per-category settings.
+export function PushToggle({ onNavigate }) {
+  return (
+    <>
+      <PushDeviceRow />
+      <Link
+        to="/settings"
+        onClick={onNavigate}
+        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '11px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '13px', fontWeight: '500', color: '#334155', textDecoration: 'none' }}
+        onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc' }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'none' }}
+      >
+        <Settings2 size={14} /> Notification settings
+      </Link>
+    </>
+  )
+}
+
+function PushDeviceRow() {
   const [state, setState] = usePushState()
   const { busy, error, turnOn, turnOff } = useToggle(setState)
   if (state === 'loading') return null

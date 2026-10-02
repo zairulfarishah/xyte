@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase, createDetachedClient } from '../supabase'
-import { User, Info, Lock, CalendarDays, Plus, Pencil, Trash2, UserPlus, X } from 'lucide-react'
+import { User, Info, Bell, CalendarDays, Plus, Pencil, Trash2, UserPlus, X } from 'lucide-react'
 import { ROLE_MULTIPLIERS, WEEKLY_CAPACITY_DAYS } from '../utils/workload'
 import { useAuth } from '../context/AuthContext'
 import { useViewport } from '../utils/useViewport'
 import { LEAVE_SESSIONS, LEAVE_TYPES, fetchTeamLeaves, getLeaveSessionLabel, saveTeamLeaves } from '../utils/teamLeaves'
 import { formatPhoneDisplay, isValidPhone, normalizePhone } from '../utils/whatsapp'
+import NotificationSettings from '../components/NotificationSettings'
 
 const AVATAR_COLORS = ['#2563eb', '#7c3aed', '#db2777', '#059669', '#d97706', '#dc2626']
 
 const SECTIONS = [
   { key: 'team', label: 'Team Members', icon: User },
   { key: 'leave', label: 'Team Leave', icon: CalendarDays },
+  { key: 'notifications', label: 'Notifications', icon: Bell },
   { key: 'app', label: 'App Info', icon: Info },
 ]
 
@@ -361,15 +363,14 @@ export default function SettingsPage() {
     }
   }
 
+  // Team members only get their own notification settings; the rest is admin-only.
   if (!isZairul) return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: '16px' }}>
-      <div style={{ width: '56px', height: '56px', borderRadius: '16px', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Lock size={24} color="#ef4444" />
+    <div style={{ padding: isMobile ? '16px 14px 24px' : '28px', maxWidth: '760px' }}>
+      <div style={{ marginBottom: '24px' }}>
+        <h1 style={{ fontSize: '22px', fontWeight: '700', color: '#0f172a' }}>Settings</h1>
+        <p style={{ color: '#64748b', fontSize: '13px', marginTop: '2px' }}>Choose which notifications you receive</p>
       </div>
-      <div style={{ textAlign: 'center' }}>
-        <p style={{ fontWeight: '700', fontSize: '16px', color: '#0f172a', marginBottom: '4px' }}>Access Restricted</p>
-        <p style={{ color: '#64748b', fontSize: '13px' }}>Settings are only accessible by Zairul.</p>
-      </div>
+      <NotificationSettings />
     </div>
   )
 
@@ -770,6 +771,8 @@ export default function SettingsPage() {
               </div>
             </div>
           )}
+
+          {section === 'notifications' && <NotificationSettings />}
 
           {section === 'app' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>

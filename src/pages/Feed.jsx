@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { useViewport } from '../utils/useViewport'
-import { notifyMany } from '../utils/notify'
+import { notify, notifyMany } from '../utils/notify'
 import {
   FEED_BUCKET, feedPublicUrl, isImageAttachment, notExpiredFilter, isExpired,
   timeAgo, fmtDateTime, fmtShortDate, expiryFromDate, dateFromExpiry,
@@ -223,8 +223,8 @@ function Composer({ members, sites, onPosted, onClose }) {
     const others = members.map(m => m.id).filter(id => id !== memberId && !mentioned.includes(id))
     const snippet = text.length > 80 ? `${text.slice(0, 80).trimEnd()}…` : text
     await Promise.all([
-      mentioned.length && notifyMany(`${fullName} mentioned you in a Feed post`, fullName, mentioned),
-      others.length && notifyMany(snippet ? `${fullName} posted in Feed: "${snippet}"` : `${fullName} shared a new Feed post`, fullName, others),
+      mentioned.length && notifyMany(`${fullName} mentioned you in a Feed post`, fullName, mentioned, 'mention'),
+      others.length && notifyMany(snippet ? `${fullName} posted in Feed: "${snippet}"` : `${fullName} shared a new Feed post`, fullName, others, 'feed_post'),
     ])
 
     setBody(''); setFiles([]); setSiteId(''); setHideAfter(''); setSaving(false)
@@ -464,7 +464,11 @@ function Comments({ post, comments, members, onChange }) {
     })
     if (error) { setSaving(false); alert(error.message); return }
     const mentioned = mentionedIds(body, members).filter(id => id !== memberId)
-    if (mentioned.length) await notifyMany(`${fullName} mentioned you in a Feed comment`, fullName, mentioned)
+    if (mentioned.length) await notifyMany(`${fullName} mentioned you in a Feed comment`, fullName, mentioned, 'mention')
+    if (post.author_id && post.author_id !== memberId && !mentioned.includes(post.author_id)) {
+      const snippet = body.length > 60 ? `${body.slice(0, 60).trimEnd()}…` : body
+      await notify(`${fullName} commented on your Feed post: "${snippet}"`, fullName, post.author_id, 'feed_comment')
+    }
     setSaving(false)
     setText('')
     onChange()
@@ -543,7 +547,7 @@ function PostCard({ post, comments, reactions, members, sites, onChange, onToggl
 
     const before = new Set(mentionedIds(post.body || '', members))
     const added = mentionedIds(body, members).filter(id => !before.has(id) && id !== memberId)
-    if (added.length) await notifyMany(`${fullName} mentioned you in a Feed post`, fullName, added)
+    if (added.length) await notifyMany(`${fullName} mentioned you in a Feed post`, fullName, added, 'mention')
 
     setSaving(false)
     setEditing(false)

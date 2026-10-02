@@ -1,9 +1,9 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../supabase'
+import { ADMIN_EMAIL } from '../utils/admin'
 
 const AuthContext = createContext(null)
 
-const ADMIN_EMAIL = 'zairul.f@xradar.asia'
 
 function getAuthDisplayName(user) {
   return (

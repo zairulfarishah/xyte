@@ -5,7 +5,7 @@ import L from 'leaflet'
 import { Link } from 'react-router-dom'
 import { ArrowUpRight, CheckCircle, Plus, Pencil, Sparkles, Camera } from 'lucide-react'
 import { calculateWorkload } from '../utils/workload'
-import { notify, notifyAssignments } from '../utils/notify'
+import { notify, notifyAssignments, notifyMany, siteRoleIds } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
 import { PinnedFeedCard } from '../components/FeedWidgets'
@@ -285,7 +285,7 @@ function getTrendText(value, kind = 'default') {
 }
 
 export default function Dashboard() {
-  const { fullName, firstName, isZairul } = useAuth()
+  const { fullName, firstName, isZairul, memberId } = useAuth()
   const { isMobile, isTablet } = useViewport()
   const [members, setMembers] = useState([])
   const [sites, setSites] = useState([])
@@ -454,7 +454,7 @@ export default function Dashboard() {
       })
     }
 
-    await notify(`Added new site: ${form.site_name}`, fullName)
+    await notify(`Added new site: ${form.site_name}`, fullName, null, 'general')
     setSaving(false)
     setShowAdd(false)
     setForm(EMPTY_FORM)
@@ -496,13 +496,20 @@ export default function Dashboard() {
       return
     }
 
-    await notify(`Updated ${updateSite.site_name} → ${updateSite.site_status}`, fullName)
+    await notify(`Updated ${updateSite.site_name} → ${updateSite.site_status}`, fullName, null, 'general')
+
+    const picIds = siteRoleIds(original).picIds.filter(id => id !== memberId)
+    if (original?.site_status !== updateSite.site_status) {
+      await notifyMany(`Site "${updateSite.site_name}" status changed to ${updateSite.site_status} (you are PIC)`, fullName, picIds, 'pic_update')
+    }
 
     if (original?.report_status !== updateSite.report_status) {
       if (updateSite.report_status === 'submitted')
-        await notify(`Report for "${updateSite.site_name}" has been submitted — ready for review`)
-      if (updateSite.report_status === 'approved')
-        await notify(`Report for "${updateSite.site_name}" has been approved by Zairul`)
+        await notify(`Report for "${updateSite.site_name}" has been submitted — ready for review`, 'System', null, 'general')
+      if (updateSite.report_status === 'approved') {
+        await notify(`Report for "${updateSite.site_name}" has been approved by Zairul`, 'System', null, 'general')
+        await notifyMany(`Report for "${updateSite.site_name}" has been approved (you are PIC)`, fullName, picIds, 'pic_update')
+      }
     }
 
     setSaving(false)
@@ -579,7 +586,7 @@ export default function Dashboard() {
       actor: fullName,
     })
 
-    await notify(`Updated assignments for ${targetSite?.site_name || 'site'}`, fullName)
+    await notify(`Updated assignments for ${targetSite?.site_name || 'site'}`, fullName, null, 'general')
     setQuickAssignSaving(false)
     setQuickAssign(null)
     fetchAll()
