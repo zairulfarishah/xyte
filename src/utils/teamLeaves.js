@@ -3,6 +3,10 @@ import { supabase } from '../supabase'
 const LEAVE_BUCKET = 'site-photos'
 const LEAVE_FILE_PATH = 'app-data/team-leaves.json'
 
+// Not leave: a rostered day off (e.g. alternate Saturdays). Stored with the leave
+// records so people on it drop out of "At Store", but kept out of leave stats.
+export const OFF_DAY_TYPE = 'OFF DAY'
+
 export const LEAVE_TYPES = [
   'ANNUAL LEAVE',
   'EMERGENCY LEAVE',
@@ -11,6 +15,7 @@ export const LEAVE_TYPES = [
   'MEDICAL',
   'PARENTAL LEAVE',
   'UNPAID',
+  OFF_DAY_TYPE,
 ]
 
 export const LEAVE_SESSIONS = [
@@ -120,10 +125,48 @@ const LEAVE_ABBR = {
   'MARRIAGE LEAVE': 'ML',
   'PARENTAL LEAVE': 'PL',
   UNPAID: 'UPL',
+  [OFF_DAY_TYPE]: 'OFF',
 }
 
 export function leaveAbbr(type) {
   return LEAVE_ABBR[type] || (type || '').slice(0, 2).toUpperCase()
+}
+
+export const isOffDay = leave => leave?.leave_type === OFF_DAY_TYPE
+
+// Turn one member's day off on/off. Adds a single-day OFF DAY record, or removes that
+// date from an existing one (splitting a multi-day record around it). Returns a new array.
+export function setOffDay(leaves, memberId, date, off) {
+  const day = normalizeDate(date)
+  const covers = l => isOffDay(l) && l.member_id === memberId &&
+    normalizeDate(l.start_date) <= day && normalizeDate(l.end_date || l.start_date) >= day
+
+  if (off) {
+    if (leaves.some(covers)) return leaves
+    return [...leaves, {
+      id: `${memberId}-${day}-off-${Date.now()}`,
+      member_id: memberId,
+      leave_type: OFF_DAY_TYPE,
+      leave_session: 'FULL_DAY',
+      start_date: day,
+      end_date: day,
+      note: '',
+    }]
+  }
+
+  const shift = (d, n) => {
+    const x = new Date(`${d}T00:00:00`); x.setDate(x.getDate() + n)
+    return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`
+  }
+  return leaves.flatMap(l => {
+    if (!covers(l)) return [l]
+    const start = normalizeDate(l.start_date)
+    const end = normalizeDate(l.end_date || l.start_date)
+    const parts = []
+    if (start < day) parts.push({ ...l, end_date: shift(day, -1) })
+    if (end > day) parts.push({ ...l, id: `${l.id}-b`, start_date: shift(day, 1) })
+    return parts
+  })
 }
 
 export function getLeaveSessionLabel(session) {

@@ -7,7 +7,7 @@ import {
   formatNumber, getRangeBounds, monthKey, monthLabel, siteEndDate, sumBy, toDate, topEntries, weekKey,
 } from '../utils/statistics'
 import { getSiteDayCount, hasDailyCrew, memberDaysOnSite, siteMemberIds } from '../utils/siteDays'
-import { LEAVE_TYPES, fetchTeamLeaves } from '../utils/teamLeaves'
+import { LEAVE_TYPES, fetchTeamLeaves, isOffDay } from '../utils/teamLeaves'
 
 /* ── Viz tokens (validated: light surface, sequential blue + fixed status) ── */
 const SURFACE = '#ffffff'
@@ -431,7 +431,9 @@ export default function Statistics() {
   }, [scopedSites, members, docCount])
 
   const leaveStats = useMemo(() => {
+    // Rostered off days aren't leave.
     const overlapping = leaves
+      .filter(l => !isOffDay(l))
       .map(l => ({ leave: l, days: clippedDaySpan(toDate(l.start_date), toDate(l.end_date || l.start_date), bounds) }))
       .filter(l => l.days > 0)
 

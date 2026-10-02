@@ -1,9 +1,10 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { supabase } from '../supabase'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useViewport } from '../utils/useViewport'
-import { fetchTeamLeaves, leaveAbbr } from '../utils/teamLeaves'
+import { fetchTeamLeaves, leaveAbbr, isOffDay, setOffDay, saveTeamLeaves } from '../utils/teamLeaves'
+import { useAuth } from '../context/AuthContext'
 import { publicHolidayName } from '../utils/holidays'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -89,10 +90,11 @@ const LEGEND_ITEMS = [
   { label: 'Night Work', swatch: SESSION_COLORS['Night Work'] },
   { label: 'Weekend', swatch: '#0f172a' },
   { label: 'Public holiday', swatch: '#2563eb' },
+  { label: 'Off day', swatch: '#e2e8f0' },
   { label: 'On leave (AL/MC/etc.)', swatch: '#fecaca' },
 ]
 
-function GanttListView({ sitesSorted, year, month, navigate, leaves, members }) {
+function GanttListView({ sitesSorted, year, month, navigate, leaves, members, canEditRota, onToggleOff }) {
   const lastDay = new Date(year, month + 1, 0).getDate()
   const dayNums = Array.from({ length: lastDay }, (_, i) => i + 1)
 
@@ -109,7 +111,7 @@ function GanttListView({ sitesSorted, year, month, navigate, leaves, members }) 
 
   const leavesByType = useMemo(() => {
     const map = {}
-    for (const l of leavesThisMonth) {
+    for (const l of leavesThisMonth.filter(l => !isOffDay(l))) {
       const key = l.leave_type || 'OTHER'
       if (!map[key]) map[key] = []
       map[key].push(l)
@@ -162,6 +164,43 @@ function GanttListView({ sitesSorted, year, month, navigate, leaves, members }) 
     return map
   }, [leavesThisMonth, year, month])
 
+  // Rostered off days (e.g. alternate Saturdays), by date.
+  const offMemberIdsByDate = useMemo(() => {
+    const map = {}
+    leavesThisMonth.filter(isOffDay).forEach(leave => {
+      dayNums.forEach(d => {
+        const dateStr = dateStrOf(d)
+        if (dateStr < leave.start_date || dateStr > (leave.end_date || leave.start_date)) return
+        if (!map[dateStr]) map[dateStr] = new Set()
+        map[dateStr].add(leave.member_id)
+      })
+    })
+    return map
+  }, [leavesThisMonth, year, month])
+
+  function offNamesForDate(dateStr) {
+    const off = offMemberIdsByDate[dateStr] || new Set()
+    return members.filter(m => off.has(m.id)).map(m => m.short_name || m.full_name).filter(Boolean).join(', ')
+  }
+
+  // Who can be switched between Store and Off on a date: not on a site and not on real leave.
+  function rotaCandidates(dateStr) {
+    const assigned = assignedMemberIdsByDate[dateStr] || new Set()
+    const realLeave = new Set(leavesThisMonth
+      .filter(l => !isOffDay(l) && dateStr >= l.start_date && dateStr <= (l.end_date || l.start_date))
+      .map(l => l.member_id))
+    const off = offMemberIdsByDate[dateStr] || new Set()
+    return members
+      .filter(m => !assigned.has(m.id) && !realLeave.has(m.id))
+      .map(m => ({ id: m.id, name: m.short_name || m.full_name, off: off.has(m.id) }))
+  }
+
+  const [rota, setRota] = useState(null) // { dateStr, rect }
+  function openRota(e, dateStr) {
+    if (!canEditRota) return
+    setRota({ dateStr, rect: e.currentTarget.getBoundingClientRect() })
+  }
+
   function atStoreNamesForDate(dateStr) {
     const assigned = assignedMemberIdsByDate[dateStr] || new Set()
     const onLeave  = leaveMemberIdsByDate[dateStr] || new Set()
@@ -178,6 +217,15 @@ function GanttListView({ sitesSorted, year, month, navigate, leaves, members }) 
 
   return (
     <div style={{ display: 'grid', gap: '14px' }}>
+      {rota && (
+        <RotaPopover
+          dateStr={rota.dateStr}
+          rect={rota.rect}
+          people={rotaCandidates(rota.dateStr)}
+          onToggle={(memberId, off) => onToggleOff(memberId, rota.dateStr, off)}
+          onClose={() => setRota(null)}
+        />
+      )}
       <div className="gantt-scroll" style={{ background: 'white', borderRadius: '14px', border: '1px solid #cbd5e1', overflow: 'auto', maxHeight: '72vh' }}>
         <table className="gantt-table" style={{ borderCollapse: 'separate', borderSpacing: 0, width: 'max-content' }}>
           <thead>
@@ -362,12 +410,13 @@ function GanttListView({ sitesSorted, year, month, navigate, leaves, members }) 
                 const holiday = publicHolidayName(dateStr)
                 const names   = (isSun || holiday) ? '' : atStoreNamesForDate(dateStr)
                 const isToday = dateStr === todayStr
+                const editable = canEditRota && !isSun && !holiday
                 return (
-                  <td key={d} style={{
+                  <td key={d} onClick={editable ? e => openRota(e, dateStr) : undefined} title={editable ? 'Set who is at store or off' : undefined} style={{
                     width: GANTT_DAY_WIDTH, minWidth: GANTT_DAY_WIDTH,
                     background: names ? '#dbeafe' : (isToday ? '#e6f0ff' : 'white'), verticalAlign: 'middle',
                     borderBottom: '1px solid #e5eaf1', borderRight: '1px solid #eef1f5',
-                    padding: '8px 6px', textAlign: 'center',
+                    padding: '8px 6px', textAlign: 'center', cursor: editable ? 'pointer' : 'default',
                   }}>
                     {names && <span style={{ fontSize: '9px', fontWeight: '800', color: '#1d4ed8', lineHeight: 1.3 }}>{names}</span>}
                   </td>
@@ -375,7 +424,48 @@ function GanttListView({ sitesSorted, year, month, navigate, leaves, members }) 
               })}
             </tr>
 
-            {leavesThisMonth.length > 0 && (
+            <tr className="gantt-row">
+              {GANTT_COLS.map((c, ci) => (
+                <td key={c.key} className="gantt-pin" style={{
+                  position: 'sticky', left: ganttColLeft(ci), zIndex: 1,
+                  width: c.width, minWidth: c.width, maxWidth: c.width,
+                  background: '#f8fafc', verticalAlign: 'top',
+                  padding: '13px 10px', borderBottom: '1px solid #e5eaf1',
+                  borderRight: ci === lastPin ? '1px solid #d7dee7' : '1px solid #eef1f5',
+                  boxShadow: ci === lastPin ? '6px 0 10px -6px rgba(15,23,42,0.16)' : 'none',
+                  fontSize: c.key === 'site' ? '13px' : '12px',
+                  fontWeight: c.key === 'site' ? '700' : '400',
+                  color: c.key === 'site' ? '#475569' : '#94a3b8',
+                }}>
+                  {c.key === 'site' ? (
+                    <>
+                      <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#94a3b8', marginRight: '6px' }} />
+                      Off
+                    </>
+                  ) : c.key === 'details' && canEditRota ? 'Tap a day to set Store / Off' : '—'}
+                </td>
+              ))}
+              {dayNums.map(d => {
+                const dateStr = dateStrOf(d)
+                const isSun   = new Date(year, month, d).getDay() === 0
+                const holiday = publicHolidayName(dateStr)
+                const names   = offNamesForDate(dateStr)
+                const isToday = dateStr === todayStr
+                const editable = canEditRota && !isSun && !holiday
+                return (
+                  <td key={d} onClick={editable ? e => openRota(e, dateStr) : undefined} title={editable ? 'Set who is at store or off' : undefined} style={{
+                    width: GANTT_DAY_WIDTH, minWidth: GANTT_DAY_WIDTH,
+                    background: names ? '#e2e8f0' : (isToday ? '#e6f0ff' : 'white'), verticalAlign: 'middle',
+                    borderBottom: '1px solid #e5eaf1', borderRight: '1px solid #eef1f5',
+                    padding: '8px 6px', textAlign: 'center', cursor: editable ? 'pointer' : 'default',
+                  }}>
+                    {names && <span style={{ fontSize: '9px', fontWeight: '800', color: '#475569', lineHeight: 1.3 }}>{names}</span>}
+                  </td>
+                )
+              })}
+            </tr>
+
+            {leavesByType.length > 0 && (
               <>
                 <tr>
                   <td colSpan={GANTT_COLS.length + dayNums.length} style={{
@@ -519,6 +609,7 @@ function GanttListView({ sitesSorted, year, month, navigate, leaves, members }) 
 
 export default function CalendarPage() {
   const navigate = useNavigate()
+  const { isZairul } = useAuth()
   const { isMobile } = useViewport()
   const today    = useMemo(() => new Date(), [])
   const [current, setCurrent]   = useState(() => new Date(today.getFullYear(), today.getMonth(), 1))
@@ -542,6 +633,20 @@ export default function CalendarPage() {
     fetchTeamLeaves().then(setLeaves).catch(() => setLeaves([]))
     supabase.from('team_members').select('id, short_name, full_name').then(({ data }) => setMembers(data || []))
   }, [])
+
+  // Admin switches someone between Store and Off for a day (saved with the team leave records).
+  async function toggleOff(memberId, date, off) {
+    const prev = leaves
+    const next = setOffDay(leaves, memberId, date, off)
+    if (next === prev) return
+    setLeaves(next)
+    try {
+      await saveTeamLeaves(next)
+    } catch (err) {
+      setLeaves(prev)
+      alert(`Could not save: ${err.message}`)
+    }
+  }
 
   async function fetchSites() {
     setLoading(true)
@@ -759,7 +864,7 @@ export default function CalendarPage() {
               Loading…
             </div>
           ) : (
-            <GanttListView sitesSorted={sitesSorted} year={year} month={month} navigate={navigate} leaves={leaves} members={members} />
+            <GanttListView sitesSorted={sitesSorted} year={year} month={month} navigate={navigate} leaves={leaves} members={members} canEditRota={isZairul} onToggleOff={toggleOff} />
           )
         ) : (
         <>
@@ -996,6 +1101,56 @@ export default function CalendarPage() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// Store / Off switch for one day. Floats above the page because the calendar table scrolls.
+function RotaPopover({ dateStr, rect, people, onToggle, onClose }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    const onDown = e => { if (ref.current && !ref.current.contains(e.target)) onClose() }
+    const onKey = e => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    window.addEventListener('resize', onClose)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+      window.removeEventListener('resize', onClose)
+    }
+  }, [onClose])
+
+  const width = 250
+  const left = Math.max(8, Math.min(rect.left + rect.width / 2 - width / 2, window.innerWidth - width - 8))
+  const below = window.innerHeight - rect.bottom
+  const place = below > 260 || below > rect.top ? { top: rect.bottom + 6 } : { bottom: window.innerHeight - rect.top + 6 }
+  const label = new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-MY', { weekday: 'short', day: 'numeric', month: 'short' })
+  const seg = (active, tone) => ({
+    padding: '5px 10px', border: 'none', cursor: 'pointer', fontSize: '11.5px', fontWeight: '700', fontFamily: 'inherit',
+    background: active ? (tone === 'off' ? '#475569' : '#2563eb') : 'transparent',
+    color: active ? 'white' : '#64748b',
+  })
+
+  return (
+    <div ref={ref} style={{ position: 'fixed', zIndex: 1300, left, width, ...place, background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 16px 40px rgba(15,23,42,0.22)', overflow: 'hidden' }}>
+      <div style={{ padding: '10px 12px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: '13px', fontWeight: '800', color: '#0f172a' }}>{label}</span>
+        <span style={{ fontSize: '11px', color: '#94a3b8' }}>Store / Off</span>
+      </div>
+      <div style={{ maxHeight: '260px', overflowY: 'auto', padding: '6px' }}>
+        {people.length === 0 ? (
+          <p style={{ padding: '12px 8px', fontSize: '12px', color: '#94a3b8', textAlign: 'center' }}>Everyone is on a site or on leave this day.</p>
+        ) : people.map(p => (
+          <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '6px 6px' }}>
+            <span style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a' }}>{p.name}</span>
+            <div style={{ display: 'flex', border: '1px solid #e2e8f0', borderRadius: '999px', overflow: 'hidden' }}>
+              <button onClick={() => onToggle(p.id, false)} style={seg(!p.off, 'store')}>Store</button>
+              <button onClick={() => onToggle(p.id, true)} style={seg(p.off, 'off')}>Off</button>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
