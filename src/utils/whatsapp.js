@@ -57,30 +57,30 @@ export function buildAssignmentMessage({
     ? `${formatAssignmentDate(site?.scheduled_date)} (${duration} days)`
     : formatAssignmentDate(site?.scheduled_date)
 
-  const lines = [
-    `Hi ${memberName || 'there'}, you're *${label}* for this site:`,
-    '',
-    `*Site:* ${site?.site_name || '-'}`,
-    `*Date:* ${dateLine}`,
-  ]
+  // Blocks are separated by a blank line: greeting / site + date / objective /
+  // location / client / team. Empty blocks are dropped.
+  const blocks = [[`Hi ${memberName || 'there'}, you're *${label}* for this site:`]]
 
+  const when = [`*Site:* ${site?.site_name || '-'}`, `*Date:* ${dateLine}`]
   if (memberDates.length > 0 && dayRoster.length > 1 && memberDates.length < dayRoster.length) {
-    lines.push(`*Your days:* ${memberDates.map(shortDayLabel).join(', ')}`)
+    when.push(`*Your days:* ${memberDates.map(shortDayLabel).join(', ')}`)
   }
-  // Multi-line scopes start on their own line so the list stays readable.
+  blocks.push(when)
+
+  // The objective always starts on its own line (scopes are often a numbered list).
   const objective = String(site?.scope_of_work || '').trim().replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n')
-  if (objective) lines.push(objective.includes('\n') ? `*Objective:*\n${objective}` : `*Objective:* ${objective}`)
+  if (objective) blocks.push([`*Objective:*`, objective])
 
   // A map link takes people straight there; fall back to the typed address.
   if (site?.latitude && site?.longitude) {
-    lines.push(`*Location:* https://maps.google.com/?q=${site.latitude},${site.longitude}`)
+    blocks.push([`*Location:* https://maps.google.com/?q=${site.latitude},${site.longitude}`])
   } else if (site?.location) {
-    lines.push(`*Location:* ${site.location}`)
+    blocks.push([`*Location:* ${site.location}`])
   }
 
   const clientPhone = site?.client_number ? (formatPhoneDisplay(site.client_number) || site.client_number) : ''
   const client = [site?.client_name, clientPhone].filter(Boolean).join(' – ')
-  if (client) lines.push(`*Client:* ${client}`)
+  if (client) blocks.push([`*Client:* ${client}`])
 
   // Whole team on one line, PIC first. On a rotating crew, everyone who works any day.
   const pics = dayRoster.length > 1
@@ -94,9 +94,9 @@ export function buildAssignmentMessage({
     ...uniquePics.map(n => `${n} (PIC)`),
     ...[...new Set(crewNames.filter(Boolean))].filter(n => !uniquePics.includes(n)),
   ]
-  if (team.length > 0) lines.push(`*Team:* ${team.join(', ')}`)
+  if (team.length > 0) blocks.push([`*Team:* ${team.join(', ')}`])
 
-  return lines.join('\n')
+  return blocks.map(block => block.join('\n')).join('\n\n')
 }
 
 function shortDayLabel(date) {
