@@ -10,7 +10,7 @@ import {
 } from '../utils/feed'
 import {
   Paperclip, Pin, PinOff, Trash2, MessageCircle, Send, X, FileText, Image as ImageIcon,
-  Pencil, MapPin, CalendarClock, Search, SmilePlus, ChevronLeft, ChevronRight, ExternalLink,
+  Pencil, MapPin, CalendarClock, Search, SmilePlus, ChevronLeft, ChevronRight, ExternalLink, Plus,
 } from 'lucide-react'
 
 const MAX_FILE_MB = 20
@@ -161,7 +161,7 @@ function PostOptions({ sites, siteId, setSiteId, hideAfter, setHideAfter }) {
 }
 
 // ── Composer ────────────────────────────────────────────────
-function Composer({ members, sites, onPosted }) {
+function Composer({ members, sites, onPosted, onClose }) {
   const { memberId, fullName, avatarUrl } = useAuth()
   const [body, setBody] = useState('')
   const [files, setFiles] = useState([])
@@ -227,12 +227,22 @@ function Composer({ members, sites, onPosted }) {
 
   const canPost = (body.trim() || files.length) && !saving
 
+  function handleClose() {
+    if ((body.trim() || files.length) && !confirm('Discard this post?')) return
+    onClose()
+  }
+
   return (
     <div style={{ ...card, padding: '16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+        <p style={{ fontSize: '14px', fontWeight: '700', color: '#0f172a' }}>New Post</p>
+        <button onClick={handleClose} title="Close" style={{ ...iconBtn, padding: '4px' }}><X size={17} /></button>
+      </div>
       <div style={{ display: 'flex', gap: '12px' }}>
         <Avatar person={{ avatar_url: avatarUrl, full_name: fullName }} name={fullName} />
         <MentionInput
           multiline
+          autoFocus
           value={body}
           onChange={setBody}
           members={members}
@@ -273,7 +283,10 @@ function Composer({ members, sites, onPosted }) {
           <Paperclip size={14} /> Photo / File
         </button>
         <PostOptions sites={sites} siteId={siteId} setSiteId={setSiteId} hideAfter={hideAfter} setHideAfter={setHideAfter} />
-        <button onClick={handlePost} disabled={!canPost} style={{ ...BTN.blue, marginLeft: 'auto', padding: '8px 18px', fontSize: '13px', opacity: canPost ? 1 : 0.5, cursor: canPost ? 'pointer' : 'default' }}>
+        <button onClick={handleClose} disabled={saving} style={{ ...BTN.ghost, marginLeft: 'auto', padding: '7px 14px', fontSize: '12.5px' }}>
+          Cancel
+        </button>
+        <button onClick={handlePost} disabled={!canPost} style={{ ...BTN.blue, padding: '8px 18px', fontSize: '13px', opacity: canPost ? 1 : 0.5, cursor: canPost ? 'pointer' : 'default' }}>
           <Send size={14} /> {saving ? 'Posting…' : 'Post'}
         </button>
       </div>
@@ -633,6 +646,7 @@ export default function Feed() {
   const [search, setSearch] = useState('')
   const [showExpired, setShowExpired] = useState(false)
   const [viewer, setViewer] = useState(null)
+  const [composing, setComposing] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -730,8 +744,6 @@ export default function Feed() {
           </div>
         )}
 
-        <Composer members={members} sites={sites} onPosted={fetchPosts} />
-
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
             <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
@@ -751,7 +763,21 @@ export default function Feed() {
               Show expired
             </label>
           )}
+          {!composing && (
+            <button onClick={() => setComposing(true)} style={{ ...BTN.blue, padding: '9px 16px', fontSize: '13px' }}>
+              <Plus size={15} /> New Post
+            </button>
+          )}
         </div>
+
+        {composing && (
+          <Composer
+            members={members}
+            sites={sites}
+            onPosted={() => { setComposing(false); fetchPosts() }}
+            onClose={() => setComposing(false)}
+          />
+        )}
 
         {loading ? (
           <p style={{ color: '#64748b', fontSize: '13px', padding: '40px 0', textAlign: 'center' }}>Loading feed…</p>

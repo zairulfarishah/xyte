@@ -21,7 +21,8 @@
     "react-dom": "^19.2.5",
     "react-leaflet": "^5.0.0",
     "react-router-dom": "^7.14.2",
-    "tailwindcss": "^4.2.4"
+    "tailwindcss": "^4.2.4",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

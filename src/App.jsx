@@ -4,6 +4,7 @@ import { Search, Bell, X, MapPin, Users, Plus, LogOut, Menu, ChevronDown } from 
 import { supabase } from './supabase'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { useViewport } from './utils/useViewport'
+import { PushToggle, PushPrompt } from './components/PushControls'
 
 const LoginPage = lazy(() => import('./pages/LoginPage'))
 
@@ -516,6 +517,7 @@ function AppShell() {
                       <p style={{ fontWeight: '600', fontSize: '13px', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fullName}</p>
                       <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</p>
                     </div>
+                    <PushToggle />
                     <button onClick={handleSignOut} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: '#ef4444', fontSize: '13px', fontWeight: '500' }}>
                       <LogOut size={14} /> Sign Out
                     </button>
@@ -609,6 +611,7 @@ function AppShell() {
                       <p style={{ fontWeight: '600', fontSize: '13px', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fullName}</p>
                       <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</p>
                     </div>
+                    <PushToggle />
                     <button onClick={handleSignOut} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: '#ef4444', fontSize: '13px', fontWeight: '500' }}
                       onMouseEnter={e => e.currentTarget.style.background = '#fff1f2'}
                       onMouseLeave={e => e.currentTarget.style.background = 'none'}
@@ -690,6 +693,7 @@ function AppShell() {
       </main>
 
       {searchOpen && <SearchOverlay onClose={() => setSearchOpen(false)} />}
+      <PushPrompt />
     </div>
   )
 }
