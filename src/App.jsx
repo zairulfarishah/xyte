@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState, useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { Search, Bell, X, MapPin, Users, Plus, LogOut, Menu } from 'lucide-react'
+import { Search, Bell, X, MapPin, Users, Plus, LogOut, Menu, ChevronDown } from 'lucide-react'
 import { supabase } from './supabase'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { useViewport } from './utils/useViewport'
@@ -22,24 +22,126 @@ const Claim = lazy(() => import('./pages/Claim'))
 const Schedule = lazy(() => import('./pages/Schedule'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const ReportBuilder = lazy(() => import('./pages/ReportBuilder'))
+const Feed = lazy(() => import('./pages/Feed'))
 
+// Hidden for now — routes still work by direct URL: /report-builder (Xport), /tools
 const NAV = [
   { to: '/', label: 'Dashboard', end: true },
-  { to: '/sites', label: 'Sites', end: false },
-  { to: '/map', label: 'Map', end: false },
-  { to: '/team', label: 'Team', end: false },
-  { to: '/calendar', label: 'Calendar', end: false },
-  { to: '/library', label: 'Library', end: false },
-  { to: '/reports', label: 'Reports', end: false },
-  // Hidden for now — routes still work by direct URL
-  { to: '/report-builder', label: 'Xport', end: false, hidden: true },
-  { to: '/tools', label: 'Tools', end: false, hidden: true },
-  { to: '/tasks', label: 'Tasks', end: false },
-  { to: '/statistics', label: 'Statistics', end: false },
-  { to: '/claim', label: 'Claim', end: false },
-  { to: '/schedule', label: 'Schedule', end: false },
-  { to: '/settings', label: 'Settings', end: false },
-].filter(item => !item.hidden)
+  { to: '/feed', label: 'Feed', end: false },
+  {
+    label: 'Field',
+    items: [
+      { to: '/sites', label: 'Sites' },
+      { to: '/map', label: 'Map' },
+      { to: '/calendar', label: 'Calendar' },
+      { to: '/tasks', label: 'Tasks' },
+    ],
+  },
+  {
+    label: 'Office',
+    items: [
+      { to: '/library', label: 'Library' },
+      { to: '/reports', label: 'Reports' },
+      { to: '/claim', label: 'Claim' },
+      { to: '/schedule', label: 'Schedule' },
+    ],
+  },
+  {
+    label: 'Admin',
+    items: [
+      { to: '/team', label: 'Team' },
+      { to: '/statistics', label: 'Statistics' },
+      { to: '/settings', label: 'Settings' },
+    ],
+  },
+]
+
+const FEED_SEEN_KEY = 'xyte_feed_seen'
+
+// Count of Feed posts by other members since this browser last opened /feed.
+// Polls once a minute and re-checks on every route change.
+function useFeedUnread(user, memberId, pathname) {
+  const [count, setCount] = useState(0)
+
+  useEffect(() => {
+    if (!user) return undefined
+    let cancelled = false
+    if (pathname === '/feed') {
+      try { localStorage.setItem(FEED_SEEN_KEY, new Date().toISOString()) } catch { /* storage unavailable */ }
+    }
+
+    async function check() {
+      let seen = '1970-01-01'
+      try { seen = localStorage.getItem(FEED_SEEN_KEY) || seen } catch { /* storage unavailable */ }
+      const { data, error } = await supabase.from('feed_posts').select('author_id').gt('created_at', seen)
+      if (cancelled || error) return
+      setCount((data || []).filter(p => !memberId || p.author_id !== memberId).length)
+    }
+
+    check()
+    const timer = setInterval(check, 60000)
+    return () => { cancelled = true; clearInterval(timer) }
+  }, [user, memberId, pathname])
+
+  return pathname === '/feed' ? 0 : count
+}
+
+function UnreadBadge({ count }) {
+  if (!count) return null
+  return (
+    <span style={{ minWidth: '17px', height: '17px', padding: '0 5px', borderRadius: '999px', background: '#ef4444', color: 'white', fontSize: '10px', fontWeight: '800', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, boxShadow: '0 0 0 2px #0f172a' }}>
+      {count > 9 ? '9+' : count}
+    </span>
+  )
+}
+
+function NavGroup({ label, items, pillStyle }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const { pathname } = useLocation()
+  const isActive = items.some(i => pathname === i.to || pathname.startsWith(i.to + '/'))
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open])
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{ ...pillStyle({ isActive }), border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+      >
+        {label}
+        <ChevronDown size={13} style={{ transition: 'transform 0.15s', transform: open ? 'rotate(180deg)' : 'none' }} />
+      </button>
+      {open && (
+        <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', top: '42px', minWidth: '170px', background: '#0f172a', border: '1px solid rgba(148,163,184,0.18)', borderRadius: '14px', boxShadow: '0 16px 40px rgba(0,0,0,0.35)', padding: '6px', zIndex: 1100, display: 'grid', gap: '2px' }}>
+          {items.map(item => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              onClick={() => setOpen(false)}
+              style={({ isActive }) => ({
+                padding: '9px 12px',
+                borderRadius: '10px',
+                textDecoration: 'none',
+                fontSize: '13px',
+                fontWeight: '600',
+                background: isActive ? '#2563eb' : 'transparent',
+                color: isActive ? 'white' : '#cbd5e1',
+              })}
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function timeAgo(dateStr) {
   const diff = Date.now() - new Date(dateStr)
@@ -242,6 +344,7 @@ function AppShell() {
   const notifRef = useRef(null)
   const avatarRef = useRef(null)
   const { isMobile, isTablet } = useViewport()
+  const feedUnread = useFeedUnread(user, memberId, location.pathname)
 
   useEffect(() => {
     setMobileMenuOpen(false)
@@ -367,9 +470,12 @@ function AppShell() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
               <button
                 onClick={() => setMobileMenuOpen(open => !open)}
-                style={{ width: '34px', height: '34px', borderRadius: '10px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+                style={{ position: 'relative', width: '34px', height: '34px', borderRadius: '10px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
               >
                 {mobileMenuOpen ? <X size={17} /> : <Menu size={17} />}
+                {feedUnread > 0 && !mobileMenuOpen && (
+                  <span style={{ position: 'absolute', top: '-3px', right: '-3px', width: '10px', height: '10px', borderRadius: '50%', background: '#ef4444', border: '2px solid #0f172a' }} />
+                )}
               </button>
 
               <NavLink to="/" style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', flexShrink: 0 }}>
@@ -441,13 +547,16 @@ function AppShell() {
               </div>
             </NavLink>
 
-            <div style={{ width: '100%', overflowX: 'auto', display: 'flex', justifyContent: 'center' }}>
+            <div style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '2px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '999px', padding: '4px', width: 'max-content', maxWidth: '100%' }}>
-                {NAV.map(({ to, label, end }) => (
-                  <NavLink key={to} to={to} end={end} style={desktopNavStyle}>
-                    {label}
-                  </NavLink>
-                ))}
+                {NAV.map(item => item.items
+                  ? <NavGroup key={item.label} label={item.label} items={item.items} pillStyle={desktopNavStyle} />
+                  : (
+                    <NavLink key={item.to} to={item.to} end={item.end} style={args => ({ ...desktopNavStyle(args), display: 'flex', alignItems: 'center', gap: '6px' })}>
+                      {item.label}
+                      {item.to === '/feed' && <UnreadBadge count={feedUnread} />}
+                    </NavLink>
+                  ))}
               </div>
             </div>
 
@@ -526,7 +635,9 @@ function AppShell() {
             </button>
 
             <div style={{ display: 'grid', gap: '6px' }}>
-              {NAV.map(({ to, label, end }) => (
+              {NAV.flatMap(item => item.items ? [{ heading: item.label }, ...item.items] : [item]).map(({ heading, to, label, end }) => heading ? (
+                <p key={heading} style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '0.08em', textTransform: 'uppercase', color: '#64748b', margin: '8px 4px 0' }}>{heading}</p>
+              ) : (
                 <NavLink
                   key={to}
                   to={to}
@@ -541,9 +652,13 @@ function AppShell() {
                     background: isActive ? '#2563eb' : 'rgba(255,255,255,0.04)',
                     color: isActive ? 'white' : '#cbd5e1',
                     border: isActive ? '1px solid #3b82f6' : '1px solid rgba(148,163,184,0.08)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
                   })}
                 >
                   {label}
+                  {to === '/feed' && <UnreadBadge count={feedUnread} />}
                 </NavLink>
               ))}
             </div>
@@ -555,6 +670,7 @@ function AppShell() {
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/feed" element={<Feed />} />
             <Route path="/sites" element={<Sites />} />
             <Route path="/sites/:id" element={<SiteDetail />} />
             <Route path="/map" element={<MapView />} />
