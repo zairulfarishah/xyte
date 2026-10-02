@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Pencil, MapPin, Upload, X, Users, FileText, 
 import { getSiteHeaderImage } from '../utils/siteHeader'
 import { parseCompletionMeta } from '../utils/completionMeta'
 import { useViewport } from '../utils/useViewport'
+import { SiteFeedPosts } from '../components/FeedWidgets'
 import {
   crewForDate, formatDayLabel, getSiteDates, hasDailyCrew, isPic,
   memberDatesOnSite, picForDate, uniqueAssignments,
@@ -410,6 +411,8 @@ export default function SiteDetail() {
               </div>
             </div>
           </div>
+
+          <SiteFeedPosts siteId={site.id} />
 
           {/* Site History */}
           <div style={{ background: 'white', borderRadius: '14px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>

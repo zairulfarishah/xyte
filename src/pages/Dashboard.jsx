@@ -8,6 +8,7 @@ import { calculateWorkload } from '../utils/workload'
 import { notify, notifyAssignments } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
+import { PinnedFeedCard } from '../components/FeedWidgets'
 import { mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../utils/completionMeta'
 import { useViewport } from '../utils/useViewport'
 import { fetchTeamLeaves, getLeaveSessionLabel, getLeaveSummary, getMemberLeaveOnDate, getMembersOnLeave } from '../utils/teamLeaves'
@@ -904,6 +905,8 @@ export default function Dashboard() {
               </div>
             </div>
           </section>
+
+          <PinnedFeedCard />
 
           <section
             style={{
