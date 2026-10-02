@@ -218,8 +218,14 @@ function Composer({ members, sites, onPosted, onClose }) {
       return
     }
 
+    // Mentioned people get the mention alert; everyone else gets a "new post" alert.
     const mentioned = mentionedIds(text, members).filter(id => id !== memberId)
-    if (mentioned.length) await notifyMany(`${fullName} mentioned you in a Feed post`, fullName, mentioned)
+    const others = members.map(m => m.id).filter(id => id !== memberId && !mentioned.includes(id))
+    const snippet = text.length > 80 ? `${text.slice(0, 80).trimEnd()}…` : text
+    await Promise.all([
+      mentioned.length && notifyMany(`${fullName} mentioned you in a Feed post`, fullName, mentioned),
+      others.length && notifyMany(snippet ? `${fullName} posted in Feed: "${snippet}"` : `${fullName} shared a new Feed post`, fullName, others),
+    ])
 
     setBody(''); setFiles([]); setSiteId(''); setHideAfter(''); setSaving(false)
     onPosted()

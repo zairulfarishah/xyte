@@ -25,7 +25,10 @@ export default async function handler(req, res) {
   webpush.setVapidDetails(VAPID_SUBJECT || 'mailto:admin@example.com', VITE_VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
 
   const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})
-  const ids = Array.isArray(body.ids) ? body.ids.filter(id => typeof id === 'string').slice(0, 100) : []
+  // notifications.id is a bigint, so ids arrive as numbers (accept numeric strings too).
+  const ids = Array.isArray(body.ids)
+    ? body.ids.filter(id => Number.isInteger(id) || /^\d+$/.test(String(id))).map(String).slice(0, 100)
+    : []
   if (!ids.length) return res.status(400).json({ error: 'No ids' })
 
   const supabase = createClient(VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, { auth: { persistSession: false } })
@@ -50,7 +53,7 @@ export default async function handler(req, res) {
     const targets = (subs || []).filter(s => n.recipient_id
       ? s.member_id === n.recipient_id
       : s.member?.full_name !== n.actor)
-    const payload = JSON.stringify({ title: 'Xyte', body: n.message, url: urlFor(n.message), tag: n.id })
+    const payload = JSON.stringify({ title: 'Xyte', body: n.message, url: urlFor(n.message), tag: String(n.id) })
     for (const s of targets) {
       jobs.push(
         webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 60 * 60 * 24 })
