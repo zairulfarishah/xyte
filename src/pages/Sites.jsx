@@ -13,7 +13,7 @@ import { getSiteHeaderImage } from '../utils/siteHeader'
 import { mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../utils/completionMeta'
 import { fetchTeamLeaves, getLeaveSessionLabel, getLeaveSummary, getMemberLeaveOnDate } from '../utils/teamLeaves'
 import { useViewport } from '../utils/useViewport'
-import { buildAssignmentMessage, openWhatsApp } from '../utils/whatsapp'
+import { buildAssignmentMessage, openWhatsApp, shortNameOf } from '../utils/whatsapp'
 import { getSiteTitle } from '../utils/siteTitle'
 import {
   assignmentMemberId, assignmentsForDate, crewForDate, getSiteDates, hasDailyCrew,
@@ -212,7 +212,7 @@ export default function Sites() {
     const [{ data:s }, { data:m }, leaveData] = await Promise.all([
       supabase
         .from('sites')
-        .select(`*, site_assignments(assignment_role, work_date, team_members(id, full_name, avatar_url, phone))`)
+        .select(`*, site_assignments(assignment_role, work_date, team_members(id, full_name, short_name, avatar_url, phone))`)
         .order('scheduled_date', { ascending:false }),
       supabase.from('team_members').select('*').order('full_name'),
       fetchTeamLeaves().catch(() => []),
@@ -617,8 +617,8 @@ export default function Sites() {
               // Per-day rosters travel with the WhatsApp brief so everyone sees the rotation
               const dayRoster = perDay ? siteDates.map(date => ({
                 date,
-                picName: picForDate(site.site_assignments || [], date)?.team_members?.full_name || '',
-                crewNames: crewForDate(site.site_assignments || [], date).map(c => c.team_members?.full_name).filter(Boolean),
+                picName: shortNameOf(picForDate(site.site_assignments || [], date)?.team_members),
+                crewNames: crewForDate(site.site_assignments || [], date).map(c => shortNameOf(c.team_members)).filter(Boolean),
               })) : []
               const memberDatesOn = memberId => perDay
                 ? siteDates.filter(date => assignmentsForDate(site.site_assignments || [], date).some(a => assignmentMemberId(a) === memberId))
@@ -783,7 +783,7 @@ export default function Sites() {
                               if (waTargets.length === 1) {
                                 const { role, member } = waTargets[0]
                                 openWhatsApp(member.phone, buildAssignmentMessage({
-                                  role, memberName: member.full_name, site,
+                                  role, memberName: shortNameOf(member), site,
                                   pic: pic?.team_members, crew: crew.map(c => c.team_members),
                                   memberDates: memberDatesOn(member.id), dayRoster,
                                 }))
@@ -804,7 +804,7 @@ export default function Sites() {
                                   onClick={e => {
                                     e.stopPropagation()
                                     openWhatsApp(member.phone, buildAssignmentMessage({
-                                  role, memberName: member.full_name, site,
+                                  role, memberName: shortNameOf(member), site,
                                   pic: pic?.team_members, crew: crew.map(c => c.team_members),
                                   memberDates: memberDatesOn(member.id), dayRoster,
                                 }))

@@ -38,10 +38,16 @@ export function buildWhatsAppUrl(phone, message = '') {
   return `https://wa.me/${digits}${text}`
 }
 
-// Assignment brief sent to a PIC or crew member
-// Plain-text labels only — emoji render as tofu on some devices
+// Short name for messages: the member's short_name, else their first name.
+export function shortNameOf(member) {
+  return member?.short_name || String(member?.full_name || '').split(' ')[0] || ''
+}
+
+// Assignment brief sent to a PIC or crew member — short, one screen.
+// Plain-text labels only — emoji render as tofu on some devices. Lines with no data are left out.
+// memberName  — short name used in the greeting
 // memberDates — the days this person is on site (only some days, on a rotating crew)
-// dayRoster  — [{ date, picName, crewNames }] when the site runs a different crew per day
+// dayRoster   — [{ date, picName, crewNames }] (short names) when the site runs a different crew per day
 export function buildAssignmentMessage({
   role, memberName, site, pic = null, crew = [], memberDates = [], dayRoster = [],
 }) {
@@ -52,46 +58,43 @@ export function buildAssignmentMessage({
     : formatAssignmentDate(site?.scheduled_date)
 
   const lines = [
-    `Hi ${String(memberName || '').split(' ')[0] || 'there'},`,
-    '',
-    `You are assigned as *${label}* for:`,
+    `Hi ${memberName || 'there'}, you're *${label}* for this site:`,
     '',
     `*Site:* ${site?.site_name || '-'}`,
     `*Date:* ${dateLine}`,
   ]
 
-  if (memberDates.length > 0 && dayRoster.length > 1) {
+  if (memberDates.length > 0 && dayRoster.length > 1 && memberDates.length < dayRoster.length) {
     lines.push(`*Your days:* ${memberDates.map(shortDayLabel).join(', ')}`)
   }
+  // Multi-line scopes start on their own line so the list stays readable.
+  const objective = String(site?.scope_of_work || '').trim().replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n')
+  if (objective) lines.push(objective.includes('\n') ? `*Objective:*\n${objective}` : `*Objective:* ${objective}`)
 
-  if (site?.location) lines.push(`*Location:* ${site.location}`)
+  // A map link takes people straight there; fall back to the typed address.
   if (site?.latitude && site?.longitude) {
-    lines.push(`*Map:* https://maps.google.com/?q=${site.latitude},${site.longitude}`)
-  }
-  if (site?.client_name) lines.push(`*Client:* ${site.client_name}`)
-
-  // Full team roster, so everyone knows who else is on the job
-  const mark = name => (name && memberName && name === memberName ? `${name} (you)` : name)
-
-  if (dayRoster.length > 1) {
-    lines.push('')
-    lines.push('*Crew by day:*')
-    dayRoster.forEach(day => {
-      const names = [
-        day.picName ? `${mark(day.picName)} (PIC)` : null,
-        ...(day.crewNames || []).map(mark),
-      ].filter(Boolean)
-      lines.push(`${shortDayLabel(day.date)} - ${names.length > 0 ? names.join(', ') : 'Not assigned'}`)
-    })
-    return lines.join('\n')
+    lines.push(`*Location:* https://maps.google.com/?q=${site.latitude},${site.longitude}`)
+  } else if (site?.location) {
+    lines.push(`*Location:* ${site.location}`)
   }
 
-  const crewNames = crew.map(c => mark(c?.full_name)).filter(Boolean)
-  if (pic?.full_name || crewNames.length > 0) {
-    lines.push('')
-    lines.push(`*PIC:* ${mark(pic?.full_name) || 'Not assigned'}`)
-    lines.push(`*Crew:* ${crewNames.length > 0 ? crewNames.join(', ') : 'None'}`)
-  }
+  const clientPhone = site?.client_number ? (formatPhoneDisplay(site.client_number) || site.client_number) : ''
+  const client = [site?.client_name, clientPhone].filter(Boolean).join(' – ')
+  if (client) lines.push(`*Client:* ${client}`)
+
+  // Whole team on one line, PIC first. On a rotating crew, everyone who works any day.
+  const pics = dayRoster.length > 1
+    ? dayRoster.map(d => d.picName)
+    : [shortNameOf(pic)]
+  const crewNames = dayRoster.length > 1
+    ? dayRoster.flatMap(d => d.crewNames || [])
+    : crew.map(shortNameOf)
+  const uniquePics = [...new Set(pics.filter(Boolean))]
+  const team = [
+    ...uniquePics.map(n => `${n} (PIC)`),
+    ...[...new Set(crewNames.filter(Boolean))].filter(n => !uniquePics.includes(n)),
+  ]
+  if (team.length > 0) lines.push(`*Team:* ${team.join(', ')}`)
 
   return lines.join('\n')
 }
