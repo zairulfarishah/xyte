@@ -1,21 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../supabase'
-import { MapContainer, TileLayer, Marker, Tooltip, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
-import { Link } from 'react-router-dom'
-import { ArrowUpRight, CheckCircle, Plus, Pencil, Sparkles, Camera } from 'lucide-react'
+import { Camera } from 'lucide-react'
 import { calculateWorkload } from '../utils/workload'
 import { memberSchedule, notify, notifyAssignments, notifyMany, notifyScheduleChanges, siteRoleIds } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
-import { PinnedFeedCard } from '../components/FeedWidgets'
 import { mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../utils/completionMeta'
 import { useViewport } from '../utils/useViewport'
-import { fetchTeamLeaves, getLeaveSessionLabel, getLeaveSummary, getMemberLeaveOnDate, getMembersOnLeave } from '../utils/teamLeaves'
+import { fetchTeamLeaves, getLeaveSessionLabel, getLeaveSummary, getMemberLeaveOnDate } from '../utils/teamLeaves'
 import {
-  assignmentDays, assignmentMemberId, crewForDate, getSiteDates, isMissingPic, memberRoleOnSite,
-  picForDate, representativeDate, sitePic, uniqueAssignments,
+  assignmentMemberId, crewForDate, getSiteDates, isMissingPic, memberRoleOnSite, picForDate, representativeDate,
 } from '../utils/siteDays'
+import DashboardBento from './DashboardBento'
 import 'leaflet/dist/leaflet.css'
 
 function xIcon(color, selected = false) {
@@ -28,39 +26,6 @@ function xIcon(color, selected = false) {
     tooltipAnchor: [0, -(size / 2) - 4],
   })
 }
-
-function getGreeting() {
-  const h = new Date().getHours()
-  if (h < 12) return 'Good morning'
-  if (h < 17) return 'Good afternoon'
-  return 'Good evening'
-}
-
-const STATUS_COLORS = {
-  upcoming: { bg: '#fef3c7', text: '#92400e', border: '#facc15' },
-  ongoing: { bg: '#ffedd5', text: '#9a3412', border: '#fb923c' },
-  completed: { bg: '#dcfce7', text: '#166534', border: '#4ade80' },
-  cancelled: { bg: '#fee2e2', text: '#991b1b', border: '#f87171' },
-  postponed: { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' },
-}
-
-const REPORT_COLORS = {
-  pending: { bg: '#fee2e2', text: '#991b1b', border: '#fecaca' },
-  in_progress: { bg: '#fef3c7', text: '#92400e', border: '#fde68a' },
-  submitted: { bg: '#dbeafe', text: '#1d4ed8', border: '#bfdbfe' },
-  approved: { bg: '#dcfce7', text: '#166534', border: '#bbf7d0' },
-  not_applicable: { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' },
-}
-
-const MAP_COLORS = {
-  upcoming: '#f59e0b',
-  ongoing: '#2563eb',
-  completed: '#22c55e',
-  cancelled: '#ef4444',
-  postponed: '#94a3b8',
-}
-
-const AVATAR_COLORS = ['#2563eb', '#7c3aed', '#db2777', '#059669', '#d97706', '#dc2626']
 
 const SITE_TYPES = [
   { value: 'site_scanning', label: 'Site Scanning' },
@@ -144,43 +109,6 @@ function LocationPicker({ lat, lng, onPick, mapKey }) {
   )
 }
 
-function Avatar({ name, size = 36, index = 0, avatarUrl = null }) {
-  const initials = name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?'
-  return (
-    <div style={{
-      width: size, height: size, borderRadius: '50%', flexShrink: 0, overflow: 'hidden',
-      background: avatarUrl ? '#0f172a' : AVATAR_COLORS[index % AVATAR_COLORS.length],
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: 'white', fontWeight: '700', fontSize: size * 0.35,
-      boxShadow: '0 12px 24px rgba(15,23,42,0.12)',
-    }}>
-      {avatarUrl ? <img src={avatarUrl} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initials}
-    </div>
-  )
-}
-
-function StatusPill({ status }) {
-  const c = STATUS_COLORS[status] || STATUS_COLORS.postponed
-
-  return (
-    <span
-      style={{
-        background: c.bg,
-        color: c.text,
-        border: `1px solid ${c.border}`,
-        padding: '5px 9px',
-        borderRadius: '999px',
-        fontSize: '11px',
-        fontWeight: '800',
-        textTransform: 'capitalize',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {status}
-    </span>
-  )
-}
-
 function buildMemberRecord(member, sites) {
   const assignments = sites.flatMap(site =>
     (site.site_assignments || [])
@@ -210,72 +138,6 @@ function formatShortDate(date) {
   return new Date(date).toLocaleDateString('en-MY', { day: 'numeric', month: 'short' })
 }
 
-// Milestone-weighted completion: driven by the actual site + report workflow
-function getSiteProgress(site) {
-  const siteStatus = String(site?.site_status || '').toLowerCase()
-  const reportStatus = String(site?.report_status || '').toLowerCase()
-
-  if (siteStatus === 'completed') {
-    if (reportStatus === 'approved' || reportStatus === 'not_applicable') return 100
-    if (reportStatus === 'submitted') return 85
-    if (reportStatus === 'in_progress') return 65
-    return 50   // fieldwork done, report not started
-  }
-
-  if (reportStatus === 'approved') return 100
-  if (reportStatus === 'submitted') return 85
-  if (reportStatus === 'in_progress') return 65
-
-  if (siteStatus === 'ongoing') return 35
-  if (siteStatus === 'postponed') return 0
-  return 10     // upcoming
-}
-
-function getProgressStage(site) {
-  const siteStatus = String(site?.site_status || '').toLowerCase()
-  const reportStatus = String(site?.report_status || '').toLowerCase()
-
-  if (reportStatus === 'approved') return 'Report approved'
-  if (reportStatus === 'submitted') return 'Report submitted'
-  if (reportStatus === 'in_progress') return 'Report in progress'
-  if (siteStatus === 'completed') return reportStatus === 'not_applicable' ? 'Completed' : 'Report not started'
-  if (siteStatus === 'ongoing') return 'On site'
-  if (siteStatus === 'postponed') return 'Postponed'
-  return 'Scheduled'
-}
-
-// Days a site is past due: upcoming past its date, or ongoing past its end date
-function getDaysOverdue(site, today = new Date()) {
-  const status = String(site?.site_status || '').toLowerCase()
-  const start = site?.scheduled_date ? new Date(`${String(site.scheduled_date).slice(0, 10)}T00:00:00`) : null
-  if (!start || Number.isNaN(start.getTime())) return 0
-
-  const ref = new Date(today)
-  ref.setHours(0, 0, 0, 0)
-
-  if (status === 'upcoming') {
-    return Math.max(0, Math.round((ref - start) / 86400000))
-  }
-
-  if (status === 'ongoing') {
-    const end = site?.scheduled_end_date
-      ? new Date(`${String(site.scheduled_end_date).slice(0, 10)}T00:00:00`)
-      : new Date(start.getTime() + (Math.max(1, Math.ceil(Number(site?.site_duration_days) || 1)) - 1) * 86400000)
-    return Math.max(0, Math.round((ref - end) / 86400000))
-  }
-
-  return 0
-}
-
-function formatLongDate(date) {
-  return new Date(date).toLocaleDateString('en-MY', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
-}
-
 function getTrendText(value, kind = 'default') {
   if (kind === 'alert') return value === 0 ? 'No backlog' : `${value} needs action`
   if (kind === 'sites') return value > 0 ? `+${value} this week` : 'No change this week'
@@ -286,7 +148,7 @@ function getTrendText(value, kind = 'default') {
 
 export default function Dashboard() {
   const { fullName, firstName, isZairul, memberId } = useAuth()
-  const { isMobile, isTablet } = useViewport()
+  const { isMobile } = useViewport()
   const [members, setMembers] = useState([])
   const [sites, setSites] = useState([])
   const [upcoming, setUpcoming] = useState([])
@@ -299,18 +161,12 @@ export default function Dashboard() {
   const [updateSite, setUpdateSite] = useState(null)
   const [quickAssign, setQuickAssign] = useState(null)
   const [quickAssignSaving, setQuickAssignSaving] = useState(false)
-  const [mapFilter, setMapFilter] = useState('all')
   const [leaves, setLeaves] = useState([])
-  const [now, setNow] = useState(() => new Date())
 
   useEffect(() => {
     fetchAll()
   }, [])
 
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), 1000)
-    return () => window.clearInterval(timer)
-  }, [])
 
 
   useEffect(() => {
@@ -599,58 +455,12 @@ export default function Dashboard() {
   const completedSites = sites.filter(site => site.site_status === 'completed').length
   const upcomingSitesCount = sites.filter(site => site.site_status === 'upcoming').length
   const pendingReports = sites.filter(site => ['pending', 'in_progress'].includes(site.report_status) && site.site_type === 'site_scanning')
-  const withCoords = sites.filter(site => site.latitude && site.longitude)
-  const latestSiteWithCoords = [...withCoords].sort((a, b) => new Date(b.scheduled_date) - new Date(a.scheduled_date))[0]
-  const mapCenter = latestSiteWithCoords ? [latestSiteWithCoords.latitude, latestSiteWithCoords.longitude] : [3.1390, 101.6869]
-  const filteredMapSites = withCoords.filter(site => {
-    if (mapFilter === 'upcoming') return site.site_status === 'upcoming'
-    if (mapFilter === 'completed') return site.site_status === 'completed'
-    return true
-  })
   // Any day of a multi-day site without a PIC counts as unassigned
   const noPicSites = sites.filter(site => isMissingPic(site) && !['completed', 'cancelled'].includes(site.site_status))
   const soonSites = sites.filter(site => {
     const diff = (new Date(site.scheduled_date) - new Date()) / (1000 * 60 * 60 * 24)
     return diff >= 0 && diff <= 2 && site.site_status === 'upcoming'
   })
-  const overdueSites = sites
-    .map(site => ({ site, days: getDaysOverdue(site) }))
-    .filter(item => item.days > 0)
-    .sort((a, b) => b.days - a.days)
-  const overloaded = members.filter(member => member.workload.workload_percentage > 80)
-  const allClear = noPicSites.length === 0 && soonSites.length === 0 && pendingReports.length === 0
-    && overdueSites.length === 0 && overloaded.length === 0
-  const todayStr = new Date().toISOString().split('T')[0]
-  const membersOnLeaveToday = getMembersOnLeave(leaves, members, todayStr)
-  const upcomingLeaves = leaves
-    .map(leave => ({
-      leave,
-      member: members.find(member => member.id === leave.member_id),
-    }))
-    .filter(item => item.member && String(item.leave.start_date || '') > todayStr)
-    .sort((a, b) => String(a.leave.start_date || '').localeCompare(String(b.leave.start_date || '')))
-    .slice(0, 4)
-  const leaveConflicts = upcoming
-    .map(site => {
-      // Each row is checked against the day it actually covers, and a person
-      // clashing on several days is still one conflict to flag
-      const flagged = new Set()
-      const conflicts = assignmentDays(site)
-        .map(({ assignment, date }) => ({
-          assignment,
-          date,
-          leave: getMemberLeaveOnDate(leaves, assignment.member_id, date),
-        }))
-        .filter(item => {
-          if (!item.leave || flagged.has(item.assignment.member_id)) return false
-          flagged.add(item.assignment.member_id)
-          return true
-        })
-      return conflicts.length > 0 ? { site, conflicts } : null
-    })
-    .filter(Boolean)
-    .slice(0, 3)
-
   const addFormUnavailable = members
     .reduce((acc, member) => {
       const leave = getMemberLeaveOnDate(leaves, member.id, form.scheduled_date)
@@ -666,148 +476,11 @@ export default function Dashboard() {
       return acc
     }, {})
 
-  const teamAverage = members.length > 0
-    ? Math.round(members.reduce((sum, member) => sum + member.workload.workload_percentage, 0) / members.length)
-    : 0
-
-  const busiestMember = useMemo(
-    () => [...members].sort((a, b) => b.workload.workload_percentage - a.workload.workload_percentage)[0] || null,
-    [members]
-  )
-
-  const supportCandidates = useMemo(
-    () => [...members]
-      .sort((a, b) => a.workload.workload_percentage - b.workload.workload_percentage)
-      .slice(0, 2),
-    [members]
-  )
-
-  const smartInsight = useMemo(() => {
-    const shortestName = person => person?.full_name?.split(' ')[0] || 'Team member'
-    const primarySupport = supportCandidates.map(shortestName).join(' or ')
-    const topPendingReport = pendingReports[0]
-    const nearestSite = soonSites[0]
-
-    if (overloaded[0] && busiestMember) {
-      return {
-        tone: {
-          bg: '#fff7ed',
-          border: '#fed7aa',
-          title: '#7c2d12',
-          text: '#9a3412',
-          pillBg: '#ffedd5',
-          pillText: '#9a3412',
-        },
-        badge: 'Capacity Risk',
-        title: `${shortestName(busiestMember)} is carrying the heaviest load this week`,
-        body: `${busiestMember.workload.workload_percentage}% workload is starting to crowd the schedule. Shift prep or crew support to ${primarySupport || 'the lowest-load engineer'} to keep delivery stable.`,
-      }
-    }
-
-    if (nearestSite) {
-      const picName = shortestName(sitePic(nearestSite)?.team_members)
-      return {
-        tone: {
-          bg: '#eff6ff',
-          border: '#bfdbfe',
-          title: '#1d4ed8',
-          text: '#1e40af',
-          pillBg: '#dbeafe',
-          pillText: '#1d4ed8',
-        },
-        badge: 'Upcoming Visit',
-        title: `${nearestSite.site_name} needs final readiness check`,
-        body: `${formatShortDate(nearestSite.scheduled_date)} is coming up soon. Confirm PIC ${picName}, crew availability, and exact location pin before the visit window closes.`,
-      }
-    }
-
-    if (topPendingReport) {
-      return {
-        tone: {
-          bg: '#fefce8',
-          border: '#fde68a',
-          title: '#854d0e',
-          text: '#a16207',
-          pillBg: '#fef3c7',
-          pillText: '#92400e',
-        },
-        badge: 'Report Queue',
-        title: `${pendingReports.length} report${pendingReports.length === 1 ? '' : 's'} still need attention`,
-        body: `${topPendingReport.site_name} is the next reporting priority. Clearing the oldest draft first will reduce backlog and keep approvals moving.`,
-      }
-    }
-
-    if (noPicSites[0]) {
-      return {
-        tone: {
-          bg: '#fef2f2',
-          border: '#fecaca',
-          title: '#991b1b',
-          text: '#b91c1c',
-          pillBg: '#fee2e2',
-          pillText: '#991b1b',
-        },
-        badge: 'Ownership Gap',
-        title: `${noPicSites[0].site_name} does not have a PIC yet`,
-        body: 'Assigning one owner now will make the rest of the workflow clearer for crew planning, status updates, and report handoff.',
-      }
-    }
-
-    return {
-      tone: {
-        bg: '#f0fdf4',
-        border: '#bbf7d0',
-        title: '#166534',
-        text: '#15803d',
-        pillBg: '#dcfce7',
-        pillText: '#166534',
-      },
-      badge: 'All Clear',
-      title: 'The dashboard is in a healthy state today',
-      body: `No urgent deadline, overload, or ownership gap is standing out right now. Team average load is ${teamAverage}% with ${upcoming.length} upcoming task${upcoming.length === 1 ? '' : 's'} in view.`,
-    }
-  }, [busiestMember, noPicSites, overloaded, pendingReports, soonSites, supportCandidates, teamAverage, upcoming])
-
-  const focusSite = useMemo(() => {
-    if (soonSites[0]) return soonSites[0]
-    if (upcoming[0]) return upcoming[0]
-    if (sites[0]) return sites[0]
-    return null
-  }, [sites, soonSites, upcoming])
-
-  const reportSummary = useMemo(() => ({
-    pending: sites.filter(site => site.report_status === 'pending').length,
-    in_progress: sites.filter(site => site.report_status === 'in_progress').length,
-    submitted: sites.filter(site => site.report_status === 'submitted').length,
-    approved: sites.filter(site => site.report_status === 'approved').length,
-    not_applicable: sites.filter(site => site.report_status === 'not_applicable').length,
-  }), [sites])
-
   const assignableSites = useMemo(
     () => sites.filter(site => !['completed', 'cancelled'].includes(site.site_status)),
     [sites]
   )
 
-  // Most relevant first: on-site now, then imminent, then finished jobs with an open report
-  const progressSites = useMemo(() => {
-    const rank = site => {
-      const status = String(site.site_status || '').toLowerCase()
-      const report = String(site.report_status || '').toLowerCase()
-      if (status === 'ongoing') return 0
-      if (status === 'upcoming') return 1
-      if (status === 'completed' && ['pending', 'in_progress', 'submitted'].includes(report)) return 2
-      return 3
-    }
-
-    return sites
-      .filter(site => ['upcoming', 'ongoing', 'completed'].includes(String(site.site_status || '').toLowerCase()))
-      .sort((a, b) => {
-        const byRank = rank(a) - rank(b)
-        if (byRank !== 0) return byRank
-        return new Date(a.scheduled_date) - new Date(b.scheduled_date)
-      })
-      .slice(0, 3)
-  }, [sites])
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
@@ -816,730 +489,42 @@ export default function Dashboard() {
     )
   }
 
+  const kpis = [
+    { label: 'Total Sites',     value: totalSites,            trend: getTrendText(upcoming.length, 'sites'),        icon: '▦', color: '#2563eb', gradient: 'linear-gradient(135deg,#60a5fa,#2563eb)' },
+    { label: 'Upcoming',        value: upcomingSitesCount,    trend: getTrendText(upcomingSitesCount, 'upcoming'),  icon: '▣', color: '#d97706', gradient: 'linear-gradient(135deg,#fbbf24,#f97316)' },
+    { label: 'Ongoing',         value: activeSites,           trend: activeSites === 0 ? 'All clear' : `${activeSites} active now`, icon: '◉', color: '#ea580c', gradient: 'linear-gradient(135deg,#fb923c,#dc2626)' },
+    { label: 'Completed',       value: completedSites,        trend: completedSites > 0 ? `${Math.round((completedSites / Math.max(totalSites, 1)) * 100)}% done` : 'None yet', icon: '✓', color: '#16a34a', gradient: 'linear-gradient(135deg,#4ade80,#16a34a)' },
+    { label: 'Team Members',    value: members.length,        trend: getTrendText(members.length, 'team'),          icon: '◈', color: '#7c3aed', gradient: 'linear-gradient(135deg,#a78bfa,#6d28d9)' },
+    { label: 'Pending Reports', value: pendingReports.length, trend: getTrendText(pendingReports.length, 'alert'),  icon: '▤', color: '#dc2626', gradient: 'linear-gradient(135deg,#f87171,#dc2626)' },
+  ]
+
+  function openStatusUpdate(site) {
+    const completionMeta = parseCompletionMeta(site.notes || '')
+    setUpdateSite({
+      id: site.id,
+      site_name: site.site_name,
+      site_status: site.site_status,
+      report_status: site.report_status,
+      site_type: site.site_type || 'site_scanning',
+      delivery_order_number: completionMeta.deliveryOrderNumber,
+      completion_reason: completionMeta.completionReason,
+    })
+  }
+
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background: '#eef3f8',
-        color: '#0b1220',
-      }}
-    >
-      <div
-        style={{
-          minHeight: '100vh',
-          background: 'radial-gradient(circle at 18% 5%, rgba(59,130,246,.22), transparent 26%), radial-gradient(circle at 70% 0%, rgba(14,165,233,.12), transparent 30%), linear-gradient(180deg, #071226 0 220px, #eef3f8 220px 100%)',
-        }}
-      >
-        <main style={{ maxWidth: '1720px', margin: '0 auto', padding: isMobile ? '16px 14px 28px' : isTablet ? '24px 16px 32px' : '30px 18px 36px' }}>
-          <section
-            style={{
-              display: 'grid',
-              gridTemplateColumns: isTablet ? '1fr' : 'minmax(240px, 1fr) minmax(280px, 340px) minmax(360px, 500px)',
-              gap: '18px',
-              marginBottom: '24px',
-              alignItems: 'stretch',
-            }}
-          >
-            <div style={{ color: 'white', padding: '10px 0 6px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-              <h1 style={{ margin: 0, fontSize: isMobile ? '28px' : '30px', letterSpacing: '-.05em', fontWeight: '850', lineHeight: 1.05 }}>
-                {getGreeting()}, {firstName}!
-              </h1>
-              <p style={{ margin: '10px 0 0', color: '#b8c7dd', fontSize: '14px', lineHeight: 1.45 }}>
-                {new Date().toLocaleDateString('en-MY', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · Team command center
-              </p>
-            </div>
-
-            <div
-              style={{
-                display: 'grid',
-                justifyItems: 'center',
-                gap: '8px',
-                padding: isTablet ? '14px 16px' : '16px 18px',
-                borderRadius: '20px',
-                background: 'linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04))',
-                border: '1px solid rgba(148, 163, 184, .18)',
-                boxShadow: '0 12px 28px rgba(2,8,23,.16)',
-                backdropFilter: 'blur(14px)',
-                color: 'white',
-                textAlign: 'center',
-                alignContent: 'center',
-              }}
-            >
-              <div style={{ fontSize: '10px', fontWeight: '800', color: '#93c5fd', textTransform: 'uppercase', letterSpacing: '.16em' }}>
-                Malaysia Time
-              </div>
-              <div style={{ display: 'inline-flex', alignItems: 'baseline', gap: '8px' }}>
-                <div style={{ fontSize: isMobile ? '20px' : '24px', fontWeight: '900', letterSpacing: '.08em', color: '#f8fbff', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-                  {now.toLocaleTimeString('en-MY', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit',
-                    hour12: false,
-                  })}
-                </div>
-                <div style={{ fontSize: '10px', fontWeight: '800', color: '#cbd5e1', textTransform: 'uppercase', letterSpacing: '.12em' }}>
-                  MYT
-                </div>
-              </div>
-            </div>
-
-            <div
-              style={{
-                background: 'linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04))',
-                color: 'white',
-                borderRadius: '20px',
-                padding: '16px 18px',
-                border: '1px solid rgba(148, 163, 184, .18)',
-                boxShadow: '0 12px 28px rgba(2,8,23,.16)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '14px',
-                backdropFilter: 'blur(14px)',
-                minHeight: '88px',
-              }}
-            >
-              <div style={{ minWidth: 0 }}>
-                <small style={{ fontSize: '11px', fontWeight: '800', color: '#b8c7dd', textTransform: 'uppercase', letterSpacing: '.08em' }}>Today</small>
-                <h2 style={{ margin: '6px 0 0', fontSize: '15px', fontWeight: '750', color: 'white', lineHeight: 1.35 }}>
-                  {focusSite ? `${focusSite.site_name} · ${formatShortDate(focusSite.scheduled_date)} · ${pendingReports.length} report${pendingReports.length === 1 ? '' : 's'} pending` : 'No active focus today'}
-                </h2>
-              </div>
-              <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                <div style={{ padding: '7px 11px', borderRadius: '999px', background: 'rgba(255,255,255,.08)', fontSize: '12px', fontWeight: '800', color: '#eaf1ff', border: '1px solid rgba(255,255,255,.05)' }}>
-                  {teamAverage}% load
-                </div>
-                <div style={{ padding: '7px 11px', borderRadius: '999px', background: 'rgba(255,255,255,.08)', fontSize: '12px', fontWeight: '800', color: '#eaf1ff', border: '1px solid rgba(255,255,255,.05)' }}>
-                  {upcoming.length} tasks
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <PinnedFeedCard />
-
-          <section
-            style={{
-              display: 'grid',
-              gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : isTablet ? 'repeat(3, minmax(0, 1fr))' : 'repeat(6, minmax(0, 1fr))',
-              gap: '12px',
-              marginBottom: '24px',
-            }}
-          >
-            {[
-              { label: 'Total Sites',     value: totalSites,           trend: getTrendText(upcoming.length, 'sites'),   icon: '▦', color: '#2563eb', tint: 'rgba(37,99,235,.08)',   gradient: 'linear-gradient(135deg,#60a5fa,#2563eb)',  glow: 'rgba(37,99,235,.22)'  },
-              { label: 'Upcoming',        value: upcomingSitesCount,   trend: getTrendText(upcomingSitesCount,'upcoming'),icon: '▣', color: '#d97706', tint: 'rgba(217,119,6,.08)',   gradient: 'linear-gradient(135deg,#fbbf24,#f97316)',  glow: 'rgba(217,119,6,.22)'  },
-              { label: 'Ongoing',         value: activeSites,          trend: activeSites === 0 ? 'All clear' : `${activeSites} active now`, icon: '◉', color: '#ea580c', tint: 'rgba(234,88,12,.08)', gradient: 'linear-gradient(135deg,#fb923c,#dc2626)', glow: 'rgba(234,88,12,.22)' },
-              { label: 'Completed',       value: completedSites,       trend: completedSites > 0 ? `${Math.round((completedSites/Math.max(totalSites,1))*100)}% done` : 'None yet', icon: '✓', color: '#16a34a', tint: 'rgba(22,163,74,.08)', gradient: 'linear-gradient(135deg,#4ade80,#16a34a)', glow: 'rgba(22,163,74,.22)' },
-              { label: 'Team Members',    value: members.length,       trend: getTrendText(members.length,'team'),      icon: '◈', color: '#7c3aed', tint: 'rgba(124,58,237,.08)',  gradient: 'linear-gradient(135deg,#a78bfa,#6d28d9)',  glow: 'rgba(124,58,237,.22)' },
-              { label: 'Pending Reports', value: pendingReports.length,trend: getTrendText(pendingReports.length,'alert'),icon: '▤', color: '#dc2626', tint: 'rgba(220,38,38,.08)',  gradient: 'linear-gradient(135deg,#f87171,#dc2626)',  glow: 'rgba(220,38,38,.22)'  },
-            ].map(card => (
-              <div
-                key={card.label}
-                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = `0 12px 32px ${card.glow}, 0 2px 8px rgba(0,0,0,.06)` }}
-                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 1px 4px rgba(15,23,42,.06), 0 4px 16px rgba(15,23,42,.06)' }}
-                style={{
-                  background: 'white',
-                  border: '1px solid rgba(226,232,240,.9)',
-                  borderRadius: '16px',
-                  padding: '16px 18px 14px',
-                  boxShadow: '0 1px 4px rgba(15,23,42,.06), 0 4px 16px rgba(15,23,42,.06)',
-                  position: 'relative',
-                  overflow: 'hidden',
-                  cursor: 'default',
-                  transition: 'transform .18s, box-shadow .18s',
-                }}
-              >
-                {/* tinted top bar */}
-                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: card.gradient }} />
-
-                {/* faint background glow blob */}
-                <div style={{ position: 'absolute', top: '-20px', right: '-20px', width: '80px', height: '80px', borderRadius: '50%', background: card.tint, filter: 'blur(16px)', pointerEvents: 'none' }} />
-
-                {/* icon badge */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-                  <span style={{ fontSize: '10px', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.07em' }}>{card.label}</span>
-                  <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: card.gradient, display: 'grid', placeItems: 'center', color: 'white', fontSize: '13px', fontWeight: '900', boxShadow: `0 4px 10px ${card.glow}`, flexShrink: 0 }}>
-                    {card.icon}
-                  </div>
-                </div>
-
-                {/* value */}
-                <div style={{ fontSize: '38px', fontWeight: '850', letterSpacing: '-.05em', color: '#0f172a', lineHeight: 1 }}>
-                  {card.value}
-                </div>
-
-                {/* divider */}
-                <div style={{ height: '1px', background: 'rgba(226,232,240,.7)', margin: '10px 0 8px' }} />
-
-                {/* trend */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: card.color, flexShrink: 0 }} />
-                  <span style={{ fontSize: '11px', fontWeight: '700', color: card.color }}>{card.trend}</span>
-                </div>
-              </div>
-            ))}
-          </section>
-
-          <section
-            style={{
-              display: 'grid',
-              gridTemplateColumns: isTablet ? '1fr' : '340px minmax(0, 1fr) 320px',
-              gap: '16px',
-              alignItems: 'start',
-            }}
-          >
-            <aside
-              style={{
-                background: 'rgba(255,255,255,.96)',
-                border: '1px solid rgba(203,213,225,.85)',
-                borderRadius: '16px',
-                boxShadow: '0 18px 45px rgba(15,23,42,.08)',
-                overflow: 'hidden',
-              }}
-            >
-              <div
-                style={{
-                  padding: '16px 18px',
-                  borderBottom: '1px solid rgba(226,232,240,.9)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                }}
-              >
-                <h3 style={{ margin: 0, fontSize: '16px' }}>Team Workload</h3>
-                <span style={{ color: '#2563eb', fontSize: '13px', fontWeight: '700' }}>This week</span>
-              </div>
-
-              <div style={{ padding: '16px 18px 18px' }}>
-                {smartInsight && (
-                  <div
-                    style={{
-                      display: 'block',
-                      margin: '4px 0 14px',
-                      padding: '12px 12px 13px',
-                      borderRadius: '14px',
-                      background: smartInsight.tone.bg,
-                      border: `1px solid ${smartInsight.tone.border}`,
-                      color: smartInsight.tone.text,
-                      fontSize: '12px',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '8px' }}>
-                      <b style={{ display: 'flex', alignItems: 'center', gap: '6px', color: smartInsight.tone.title, fontSize: '12px' }}>
-                        <Sparkles size={12} />
-                        Smart insight
-                      </b>
-                      <span
-                        style={{
-                          padding: '5px 8px',
-                          borderRadius: '999px',
-                          background: smartInsight.tone.pillBg,
-                          color: smartInsight.tone.pillText,
-                          fontSize: '10px',
-                          fontWeight: '800',
-                          letterSpacing: '.02em',
-                          textTransform: 'uppercase',
-                        }}
-                      >
-                        {smartInsight.badge}
-                      </span>
-                    </div>
-                    <div style={{ color: smartInsight.tone.title, fontSize: '13px', fontWeight: '800', lineHeight: 1.4 }}>
-                      {smartInsight.title}
-                    </div>
-                    <div style={{ marginTop: '5px', color: smartInsight.tone.text, fontSize: '12px', lineHeight: 1.6, fontWeight: '600' }}>
-                      {smartInsight.body}
-                    </div>
-                  </div>
-                )}
-
-                {(membersOnLeaveToday.length > 0 || leaveConflicts.length > 0 || upcomingLeaves.length > 0) && (
-                  <div style={{ display: 'grid', gap: '10px', marginBottom: '14px' }}>
-                    {membersOnLeaveToday.length > 0 && (
-                      <div style={{ padding: '12px 12px 13px', borderRadius: '14px', background: '#eff6ff', border: '1px solid #bfdbfe' }}>
-                        <div style={{ fontSize: '12px', fontWeight: '800', color: '#1d4ed8', marginBottom: '8px' }}>On Leave Today</div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          {membersOnLeaveToday.map(({ member, leave }) => (
-                            <div key={member.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-                              <div style={{ fontSize: '12px', color: '#1e3a8a', fontWeight: '700' }}>{member.full_name}</div>
-                              <div style={{ padding: '4px 8px', borderRadius: '999px', background: 'white', border: '1px solid #bfdbfe', fontSize: '10px', color: '#2563eb', fontWeight: '800', textAlign: 'right' }}>
-                                {getLeaveSummary(leave)}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {upcomingLeaves.length > 0 && (
-                      <div style={{ padding: '12px 12px 13px', borderRadius: '14px', background: '#f8fafc', border: '1px solid #cbd5e1' }}>
-                        <div style={{ fontSize: '12px', fontWeight: '800', color: '#334155', marginBottom: '8px' }}>Taking Leave Soon</div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          {upcomingLeaves.map(({ member, leave }) => (
-                            <div key={leave.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'center', gap: '12px', padding: '10px 12px', borderRadius: '12px', background: 'white', border: '1px solid #e2e8f0' }}>
-                              <div style={{ minWidth: 0 }}>
-                                <div style={{ fontSize: '12px', color: '#0f172a', fontWeight: '800', lineHeight: 1.35 }}>
-                                  {member.full_name}
-                                </div>
-                                <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '700', marginTop: '3px', textTransform: 'uppercase', letterSpacing: '.04em' }}>
-                                  {leave.leave_type}{leave.leave_session ? ` · ${leave.leave_session}` : ''}
-                                </div>
-                              </div>
-                              <div style={{ fontSize: '11px', color: '#475569', fontWeight: '800', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                                {leave.start_date === leave.end_date
-                                  ? formatShortDate(leave.start_date)
-                                  : `${formatShortDate(leave.start_date)} - ${formatShortDate(leave.end_date)}`}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {leaveConflicts.length > 0 && (
-                      <div style={{ padding: '12px 12px 13px', borderRadius: '14px', background: '#fff7ed', border: '1px solid #fdba74' }}>
-                        <div style={{ fontSize: '12px', fontWeight: '800', color: '#c2410c', marginBottom: '8px' }}>Upcoming Leave Conflicts</div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          {leaveConflicts.map(({ site, conflicts }) => (
-                            <div key={site.id} style={{ display: 'grid', gap: '4px' }}>
-                              <div style={{ fontSize: '12px', color: '#9a3412', fontWeight: '800', lineHeight: 1.5 }}>
-                                {site.site_name} · {formatShortDate(site.scheduled_date)}
-                              </div>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                {conflicts.map(({ assignment, leave }) => (
-                                  <div key={`${site.id}-${assignment.member_id}`} style={{ fontSize: '11px', color: '#b45309', fontWeight: '700', lineHeight: 1.5 }}>
-                                    {assignment.team_members?.full_name} · {getLeaveSummary(leave)}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {members.map((member, index) => {
-                  const leave = getMemberLeaveOnDate(leaves, member.id, todayStr)
-                  return (
-                  <div key={member.id} style={{ padding: '14px 0', borderBottom: index === members.length - 1 ? 0 : '1px solid #e5eaf2' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <Avatar name={member.full_name} size={36} index={index} avatarUrl={member.avatar_url} />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                          <b style={{ fontSize: '14px' }}>{member.full_name}</b>
-                          {leave && (
-                            <span style={{ padding: '3px 8px', borderRadius: '999px', background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', fontSize: '10px', fontWeight: '800' }}>
-                              {getLeaveSummary(leave)}
-                            </span>
-                          )}
-                        </div>
-                        <p style={{ margin: '3px 0 0', color: '#64748b', fontSize: '12px' }}>{member.role}</p>
-                      </div>
-                      <div style={{ fontWeight: '850', fontSize: '13px', color: member.workload.workload_percentage > 60 ? '#f59e0b' : '#22c55e' }}>
-                        {member.workload.workload_percentage}%
-                      </div>
-                    </div>
-                    <div style={{ marginTop: '9px', height: '8px', background: '#edf2f7', borderRadius: '999px', overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${Math.min(member.workload.workload_percentage, 100)}%`, background: member.workload.status_colors.bar, borderRadius: '999px' }} />
-                    </div>
-                  </div>
-                )})}
-
-                <button
-                  onClick={() => openQuickAssign()}
-                  style={{
-                    marginTop: '14px',
-                    width: '100%',
-                    border: 0,
-                    background: '#0f172a',
-                    color: 'white',
-                    borderRadius: '13px',
-                    padding: '12px 14px',
-                    fontWeight: '850',
-                    boxShadow: '0 12px 28px rgba(15,23,42,.18)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Quick Assign →
-                </button>
-              </div>
-            </aside>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0 }}>
-              <section
-                style={{
-                  background: 'rgba(255,255,255,.96)',
-                  border: '1px solid rgba(203,213,225,.85)',
-                  borderRadius: '16px',
-                  boxShadow: '0 18px 45px rgba(15,23,42,.08)',
-                  overflow: 'hidden',
-                  position: 'relative',
-                  zIndex: 0,
-                  isolation: 'isolate',
-                }}
-              >
-                <div
-                  style={{
-                    padding: '16px 18px',
-                    borderBottom: '1px solid rgba(226,232,240,.9)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <h3 style={{ margin: 0, fontSize: '16px' }}>Site Map</h3>
-                  <Link to="/map" style={{ color: '#2563eb', fontSize: '13px', fontWeight: '700', textDecoration: 'none', display: 'flex', gap: '4px', alignItems: 'center' }}>
-                    Full map <ArrowUpRight size={13} />
-                  </Link>
-                </div>
-
-                <div style={{ position: 'relative', height: '350px' }}>
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: '16px',
-                      left: '16px',
-                      display: 'flex',
-                      zIndex: 500,
-                    }}
-                  >
-                    <div
-                      style={{
-                        background: 'rgba(255,255,255,.9)',
-                        backdropFilter: 'blur(12px)',
-                        padding: '7px',
-                        borderRadius: '999px',
-                        display: 'flex',
-                        gap: '6px',
-                        boxShadow: '0 12px 30px rgba(15,23,42,.14)',
-                      }}
-                    >
-                      {[
-                        { label: 'All', value: 'all' },
-                        { label: 'Upcoming', value: 'upcoming' },
-                        { label: 'Completed', value: 'completed' },
-                      ].map(item => (
-                        <button
-                          key={item.value}
-                          onClick={() => setMapFilter(item.value)}
-                          style={{
-                            border: 0,
-                            background: mapFilter === item.value ? '#0f172a' : 'transparent',
-                            color: mapFilter === item.value ? 'white' : '#475569',
-                            padding: '8px 12px',
-                            borderRadius: '999px',
-                            fontWeight: '750',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          {item.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <MapContainer
-                    key={`dashboard-map-${mapCenter[0]}-${mapCenter[1]}-${mapFilter}`}
-                    center={mapCenter}
-                    zoom={10}
-                    style={{ height: '100%', width: '100%' }}
-                    zoomControl={false}
-                    scrollWheelZoom={true}
-                  >
-                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                    {filteredMapSites.map(site => (
-                      <Marker
-                        key={site.id}
-                        position={[site.latitude, site.longitude]}
-                        icon={xIcon(MAP_COLORS[site.site_status] || '#2563eb')}
-                      >
-                        <Tooltip direction="top" offset={[0, -4]} opacity={1}>
-                          <div style={{ minWidth: '180px' }}>
-                            <div style={{ fontWeight: '800', fontSize: '13px', color: '#0f172a' }}>{site.site_name}</div>
-                            <div style={{ marginTop: '4px', fontSize: '11px', color: '#475569' }}>{site.location}</div>
-                            <div style={{ marginTop: '6px', fontSize: '11px', color: '#64748b' }}>
-                              Status: {site.site_status}
-                              <br />
-                              PIC: {sitePic(site)?.team_members?.full_name || 'No PIC'}
-                              <br />
-                              Visit: {formatLongDate(site.scheduled_date)}
-                            </div>
-                          </div>
-                        </Tooltip>
-                      </Marker>
-                    ))}
-                  </MapContainer>
-                </div>
-              </section>
-
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px' }}>
-                <section
-                  style={{
-                    background: 'rgba(255,255,255,.96)',
-                    border: '1px solid rgba(203,213,225,.85)',
-                    borderRadius: '16px',
-                    boxShadow: '0 18px 45px rgba(15,23,42,.08)',
-                    overflow: 'hidden',
-                  }}
-                >
-                  <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(226,232,240,.9)' }}>
-                    <h3 style={{ margin: 0, fontSize: '16px' }}>Site Progress</h3>
-                  </div>
-                  <div style={{ padding: '14px 18px 16px', minHeight: '216px' }}>
-                    {progressSites.map(site => {
-                      const progress = getSiteProgress(site)
-                      const stage = getProgressStage(site)
-                      const overdueDays = getDaysOverdue(site)
-                      const siteStatus = String(site.site_status || '').toLowerCase()
-                      const reportStatus = String(site.report_status || '').toLowerCase()
-                      const scanDone = siteStatus === 'completed'
-                      const scanActive = siteStatus === 'ongoing'
-                      const reportNA = reportStatus === 'not_applicable'
-                      const dataDone = !reportNA && (scanDone || reportStatus !== 'pending')
-
-                      return (
-                        <div key={site.id} style={{ padding: '12px 0', borderBottom: '1px solid #eef2f7' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontWeight: '800', fontSize: '13px' }}>
-                            {site.site_name}
-                            <span style={{ color: '#64748b', fontSize: '12px' }}>{progress}%</span>
-                          </div>
-                          <div style={{ marginTop: '3px', fontSize: '11px', fontWeight: '700', color: overdueDays > 0 ? '#b91c1c' : '#94a3b8' }}>
-                            {stage}{overdueDays > 0 ? ` · overdue ${overdueDays}d` : ''}
-                          </div>
-                          <div style={{ marginTop: '10px', height: '8px', background: '#edf2f7', borderRadius: '999px', overflow: 'hidden' }}>
-                            <div style={{ width: `${progress}%`, height: '100%', background: progress >= 80 ? '#22c55e' : progress >= 50 ? '#2563eb' : '#f59e0b', borderRadius: '999px' }} />
-                          </div>
-                          <div style={{ marginTop: '9px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                            <span style={{ borderRadius: '999px', padding: '5px 8px', background: scanDone ? '#dcfce7' : scanActive ? '#fef9c3' : '#f1f5f9', color: scanDone ? '#166534' : scanActive ? '#854d0e' : '#475569', fontSize: '11px', fontWeight: '800' }}>Scan</span>
-                            <span style={{ borderRadius: '999px', padding: '5px 8px', background: dataDone ? '#dcfce7' : '#f1f5f9', color: dataDone ? '#166534' : '#475569', fontSize: '11px', fontWeight: '800' }}>Data</span>
-                            <span style={{ borderRadius: '999px', padding: '5px 8px', background: reportStatus === 'approved' ? '#dcfce7' : reportNA ? '#f1f5f9' : '#fee2e2', color: reportStatus === 'approved' ? '#166534' : reportNA ? '#475569' : '#991b1b', fontSize: '11px', fontWeight: '800' }}>{reportNA ? 'No report' : 'Report'}</span>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </section>
-
-                <section
-                  style={{
-                    background: 'rgba(255,255,255,.96)',
-                    border: '1px solid rgba(203,213,225,.85)',
-                    borderRadius: '16px',
-                    boxShadow: '0 18px 45px rgba(15,23,42,.08)',
-                    overflow: 'hidden',
-                  }}
-                >
-                  <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(226,232,240,.9)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <h3 style={{ margin: 0, fontSize: '16px' }}>Alerts</h3>
-                    <span style={{ color: '#2563eb', fontSize: '13px', fontWeight: '700' }}>Priority</span>
-                  </div>
-                  <div style={{ padding: '14px 18px 16px', minHeight: '216px' }}>
-                    {allClear ? (
-                      <div style={{ minHeight: '186px', display: 'grid', placeItems: 'center', textAlign: 'center', color: '#16a34a', fontWeight: '800', fontSize: '13px', padding: '18px' }}>
-                        <CheckCircle size={20} color="#16a34a" style={{ marginBottom: '6px' }} />
-                        <div>All clear — no issues detected</div>
-                      </div>
-                    ) : (
-                      <div>
-                        {overdueSites.slice(0, 3).map(({ site, days }) => (
-                          <div key={`overdue-${site.id}`} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '10px 12px', borderRadius: '10px', background: '#fef2f2', border: '1px solid #fecaca', marginBottom: '8px' }}>
-                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#dc2626', flexShrink: 0, marginTop: '4px' }} />
-                            <div>
-                              <div style={{ fontSize: '12px', fontWeight: '700', color: '#991b1b' }}>
-                                {site.site_status === 'ongoing' ? `Running ${days}d past end date` : `Started ${days}d ago — still marked upcoming`}
-                              </div>
-                              <div style={{ fontSize: '12px', color: '#b91c1c', marginTop: '1px' }}>{site.site_name} — update status</div>
-                            </div>
-                          </div>
-                        ))}
-                        {noPicSites.slice(0, 3).map(site => (
-                          <div key={site.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '10px 12px', borderRadius: '10px', background: '#eff6ff', border: '1px solid #bfdbfe', marginBottom: '8px' }}>
-                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#2563eb', flexShrink: 0, marginTop: '4px' }} />
-                            <div>
-                              <div style={{ fontSize: '12px', fontWeight: '700', color: '#1d4ed8' }}>No PIC assigned</div>
-                              <div style={{ fontSize: '12px', color: '#1e40af', marginTop: '1px' }}>{site.site_name}</div>
-                            </div>
-                          </div>
-                        ))}
-                        {soonSites.slice(0, 3).map(site => (
-                          <div key={site.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '10px 12px', borderRadius: '10px', background: '#fefce8', border: '1px solid #fde68a', marginBottom: '8px' }}>
-                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f59e0b', flexShrink: 0, marginTop: '4px' }} />
-                            <div>
-                              <div style={{ fontSize: '12px', fontWeight: '700', color: '#854d0e' }}>Site in {Math.round((new Date(site.scheduled_date) - new Date()) / 86400000)}d</div>
-                              <div style={{ fontSize: '12px', color: '#a16207', marginTop: '1px' }}>{site.site_name} — confirm readiness</div>
-                            </div>
-                          </div>
-                        ))}
-                        {pendingReports.slice(0, 3).map(site => (
-                          <div key={site.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '10px 12px', borderRadius: '10px', background: '#fef2f2', border: '1px solid #fecaca', marginBottom: '8px' }}>
-                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444', flexShrink: 0, marginTop: '4px' }} />
-                            <div>
-                              <div style={{ fontSize: '12px', fontWeight: '700', color: '#991b1b' }}>Report {site.report_status.replace('_', ' ')}</div>
-                              <div style={{ fontSize: '12px', color: '#b91c1c', marginTop: '1px' }}>{site.site_name}</div>
-                            </div>
-                          </div>
-                        ))}
-                        {overloaded.slice(0, 3).map(member => (
-                          <div key={member.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '10px 12px', borderRadius: '10px', background: '#fff7ed', border: '1px solid #fed7aa', marginBottom: '8px' }}>
-                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f97316', flexShrink: 0, marginTop: '4px' }} />
-                            <div>
-                              <div style={{ fontSize: '12px', fontWeight: '700', color: '#7c2d12' }}>Overloaded — {member.workload.workload_percentage}%</div>
-                              <div style={{ fontSize: '12px', color: '#9a3412', marginTop: '1px' }}>{member.full_name}</div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </section>
-              </div>
-            </div>
-
-            <aside style={{ display: 'grid', gap: '16px' }}>
-              <section
-                style={{
-                  background: 'rgba(255,255,255,.96)',
-                  border: '1px solid rgba(203,213,225,.85)',
-                  borderRadius: '16px',
-                  boxShadow: '0 18px 45px rgba(15,23,42,.08)',
-                  overflow: 'hidden',
-                }}
-              >
-                <div
-                  style={{
-                    padding: '16px 18px',
-                    borderBottom: '1px solid rgba(226,232,240,.9)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <h3 style={{ margin: 0, fontSize: '16px' }}>Upcoming</h3>
-                  <Link to="/sites" style={{ color: '#2563eb', fontSize: '13px', fontWeight: '700', textDecoration: 'none' }}>All ↗</Link>
-                </div>
-                <div style={{ padding: '12px 14px 14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {upcoming.length === 0 ? (
-                    <div style={{ textAlign: 'center', color: '#16a34a', fontWeight: '800', fontSize: '13px', padding: '24px 18px' }}>
-                      No upcoming sites in the next 14 days
-                    </div>
-                  ) : upcoming.map(site => {
-                    const pic = sitePic(site)
-                    const roster = uniqueAssignments(site.site_assignments || [])
-                    const urgent = soonSites.some(item => item.id === site.id)
-                    const accentColor = urgent ? '#dc2626' : site.site_status === 'ongoing' ? '#ea580c' : '#d97706'
-
-                    return (
-                      <div key={site.id} style={{
-                        background: '#f8fafc',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '12px',
-                        borderLeft: `3px solid ${accentColor}`,
-                        padding: '12px 14px',
-                        transition: 'background .15s',
-                      }}
-                        onMouseEnter={e => e.currentTarget.style.background = '#f1f5f9'}
-                        onMouseLeave={e => e.currentTarget.style.background = '#f8fafc'}
-                      >
-                        {/* top row */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '5px' }}>
-                          <b style={{ fontSize: '13px', color: '#0f172a', lineHeight: 1.3 }}>{site.site_name}</b>
-                          <span style={{
-                            padding: '3px 8px', borderRadius: '999px', fontSize: '10px', fontWeight: '800', whiteSpace: 'nowrap', flexShrink: 0,
-                            background: urgent ? '#fee2e2' : STATUS_COLORS[site.site_status]?.bg || '#fef3c7',
-                            color: urgent ? '#991b1b' : STATUS_COLORS[site.site_status]?.text || '#92400e',
-                            border: `1px solid ${urgent ? '#fecaca' : STATUS_COLORS[site.site_status]?.border || '#facc15'}`,
-                          }}>
-                            {urgent ? 'Urgent' : site.site_status}
-                          </span>
-                        </div>
-
-                        {/* meta */}
-                        <p style={{ margin: '0 0 8px', color: '#64748b', fontSize: '11px' }}>
-                          {formatShortDate(site.scheduled_date)} · PIC: {pic?.team_members?.full_name || 'No PIC'}
-                        </p>
-
-                        {/* bottom row: avatars + button */}
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <div style={{ display: 'flex', gap: '4px' }}>
-                            {roster.slice(0, 4).map((assignment, idx) => (
-                              <div key={`${site.id}-${idx}`} title={assignment.team_members?.full_name} style={{ marginLeft: idx > 0 ? '-5px' : 0, borderRadius: '50%', border: '2px solid white', overflow: 'hidden', flexShrink: 0 }}>
-                                <Avatar name={assignment.team_members?.full_name || '?'} size={22} index={idx} avatarUrl={assignment.team_members?.avatar_url} />
-                              </div>
-                            ))}
-                          </div>
-                          <button
-                            onClick={() => {
-                              const completionMeta = parseCompletionMeta(site.notes || '')
-                              setUpdateSite({
-                                id: site.id,
-                                site_name: site.site_name,
-                                site_status: site.site_status,
-                                report_status: site.report_status,
-                                site_type: site.site_type || 'site_scanning',
-                                delivery_order_number: completionMeta.deliveryOrderNumber,
-                                completion_reason: completionMeta.completionReason,
-                              })
-                            }}
-                            style={{
-                              border: 'none', background: '#2563eb', color: 'white',
-                              borderRadius: '7px', padding: '5px 10px', fontWeight: '600',
-                              fontSize: '11px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px',
-                            }}
-                          >
-                            <Pencil size={11} /> Update
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </section>
-
-              <section
-                style={{
-                  background: 'rgba(255,255,255,.96)',
-                  border: '1px solid rgba(203,213,225,.85)',
-                  borderRadius: '16px',
-                  boxShadow: '0 18px 45px rgba(15,23,42,.08)',
-                  overflow: 'hidden',
-                }}
-              >
-                <div
-                  style={{
-                    padding: '16px 18px',
-                    borderBottom: '1px solid rgba(226,232,240,.9)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <h3 style={{ margin: 0, fontSize: '16px' }}>Reports</h3>
-                  <span style={{ color: '#2563eb', fontSize: '13px', fontWeight: '700' }}>Status</span>
-                </div>
-                <div style={{ padding: '14px 18px 16px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: '8px' }}>
-                    {[
-                      { label: 'Pending',   value: reportSummary.pending,     color: '#ef4444' },
-                      { label: 'Draft',     value: reportSummary.in_progress, color: '#f59e0b' },
-                      { label: 'Submitted', value: reportSummary.submitted,   color: '#7c3aed' },
-                      { label: 'Approved',  value: reportSummary.approved,    color: '#16a34a' },
-                      { label: 'N/A',       value: reportSummary.not_applicable, color: '#64748b' },
-                    ].map(({ label, value, color }) => (
-                      <div key={label} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px', textAlign: 'center' }}>
-                        <b style={{ display: 'block', fontSize: '22px', letterSpacing: '-.04em', color }}>{value}</b>
-                        <span style={{ display: 'block', marginTop: '3px', color: '#64748b', fontSize: '11px', fontWeight: '800' }}>{label}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </section>
-
-            </aside>
-          </section>
-        </main>
+    <div style={{ minHeight: '100vh', background: '#eef3f8', color: '#0b1220' }}>
+      <div>
+        <DashboardBento
+          sites={sites}
+          members={members}
+          leaves={leaves}
+          kpis={kpis}
+          firstName={firstName}
+          memberId={memberId}
+          isZairul={isZairul}
+          onAssign={openQuickAssign}
+          onUpdate={openStatusUpdate}
+        />
 
         <button
           onClick={() => {

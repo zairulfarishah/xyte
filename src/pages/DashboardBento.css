@@ -1,0 +1,111 @@
+/* Dashboard — Bento tiles. Colours are the Bento palette softened ~20% toward slate. Classes prefixed db-. */
+.db {
+  --soft: #64748b;
+  --g-red:    linear-gradient(135deg, color-mix(in srgb, #fb7185 80%, var(--soft)), color-mix(in srgb, #e11d48 80%, var(--soft)));
+  --g-teal:   linear-gradient(135deg, color-mix(in srgb, #2dd4bf 80%, var(--soft)), color-mix(in srgb, #0891b2 80%, var(--soft)));
+  --g-blue:   linear-gradient(135deg, color-mix(in srgb, #1e3a8a 80%, var(--soft)), color-mix(in srgb, #2563eb 80%, var(--soft)) 55%, color-mix(in srgb, #0891b2 80%, var(--soft)));
+  --g-violet: linear-gradient(135deg, color-mix(in srgb, #a78bfa 80%, var(--soft)), color-mix(in srgb, #6d28d9 80%, var(--soft)));
+  --g-amber:  linear-gradient(135deg, color-mix(in srgb, #fbbf24 80%, var(--soft)), color-mix(in srgb, #f97316 80%, var(--soft)));
+  --g-pink:   linear-gradient(135deg, color-mix(in srgb, #f472b6 80%, var(--soft)), color-mix(in srgb, #db2777 80%, var(--soft)));
+  --shadow: 0 1px 2px rgba(15,23,42,.05), 0 10px 30px rgba(15,23,42,.08);
+  min-height: 100vh;
+  background: #eef3f8;
+  color: #0f172a;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+:where(.db) button { font: inherit; cursor: pointer; border: 0; background: none; color: inherit; padding: 0; text-align: left; }
+:where(.db) a { color: inherit; text-decoration: none; }
+
+/* header */
+.db-hero { background: radial-gradient(circle at 15% 0%, rgba(59,130,246,.28), transparent 40%), radial-gradient(circle at 85% 10%, rgba(168,85,247,.2), transparent 40%), radial-gradient(circle at 60% 120%, rgba(14,165,233,.16), transparent 45%), #071226; color: #fff; }
+.db-hero-in { max-width: 1440px; margin: 0 auto; padding: 24px 16px 88px; }
+@media (min-width: 900px) { .db-hero-in { padding: 28px 32px 92px; } }
+.db-hero .eyebrow { font-size: 12px; font-weight: 700; color: #93c5fd; letter-spacing: .08em; text-transform: uppercase; }
+.db-hero h1 { font-size: 28px; font-weight: 900; letter-spacing: -.03em; margin-top: 6px; }
+.db-hero h1 span { background: linear-gradient(90deg, color-mix(in srgb, #60a5fa 80%, #64748b), color-mix(in srgb, #c084fc 80%, #64748b), color-mix(in srgb, #f472b6 80%, #64748b)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.db-hero p { color: #94a3b8; font-size: 14px; margin-top: 6px; }
+
+.db-wrap { max-width: 1440px; margin: 0 auto; padding: 0 16px 90px; }
+@media (min-width: 900px) { .db-wrap { padding: 0 32px 90px; } }
+
+/* six summary cards */
+.db-kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: -64px; position: relative; }
+@media (min-width: 700px) { .db-kpis { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 1200px) { .db-kpis { grid-template-columns: repeat(6, 1fr); } }
+.db-kpi { background: #fff; border-radius: 16px; padding: 16px 18px; border: 1px solid rgba(226,232,240,.9); border-top: 3px solid color-mix(in srgb, var(--kc) 80%, #64748b); box-shadow: 0 1px 2px rgba(15,23,42,.05), 0 12px 28px -12px rgba(15,23,42,.18); position: relative; overflow: hidden; transition: transform .15s, box-shadow .15s; }
+.db-kpi:hover { transform: translateY(-3px); box-shadow: 0 18px 34px -14px color-mix(in srgb, var(--kc) 70%, transparent); }
+.db-kpi::after { content: ''; position: absolute; right: -40px; top: -40px; width: 110px; height: 110px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--kc) 13%, transparent), transparent 70%); }
+.db-kpi .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; position: relative; z-index: 1; }
+.db-kpi small { font-size: 11px; font-weight: 800; letter-spacing: .08em; color: #64748b; text-transform: uppercase; }
+.db-kpi .ico { width: 32px; height: 32px; border-radius: 10px; background: var(--kg); filter: saturate(.8); display: grid; place-items: center; color: #fff; font-size: 14px; font-weight: 900; flex-shrink: 0; }
+.db-kpi b { display: block; font-size: 38px; font-weight: 900; letter-spacing: -.04em; margin: 12px 0; line-height: 1; font-variant-numeric: tabular-nums; }
+.db-kpi .tr { border-top: 1px solid #eef2f6; padding-top: 11px; font-size: 12.5px; font-weight: 700; color: color-mix(in srgb, var(--kc) 85%, #334155); display: flex; gap: 7px; align-items: center; }
+.db-kpi .tr::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+
+.db-pinned { margin-top: 18px; }
+.db-pinned > section { margin-bottom: 0 !important; }
+
+/* bento */
+.db-bento { display: grid; grid-template-columns: 1fr; gap: 14px; margin-top: 18px; }
+@media (min-width: 700px) { .db-bento { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1100px) { .db-bento { grid-template-columns: repeat(4, 1fr); grid-auto-rows: minmax(150px, auto); } }
+@media (min-width: 700px) { .db-tile.w2 { grid-column: span 2; } }
+@media (min-width: 1100px) { .db-tile.h2 { grid-row: span 2; } }
+
+.db-tile { border-radius: 22px; padding: 20px; position: relative; overflow: hidden; box-shadow: var(--shadow); display: flex; flex-direction: column; min-width: 0; transition: transform .2s, box-shadow .2s; }
+a.db-tile:hover { transform: translateY(-2px); }
+.db-tile.c { color: #fff; }
+.db-tile.dark { background: #0f172a; color: #fff; }
+.db-tile.t-red    { background: var(--g-red);    box-shadow: 0 18px 36px -18px rgba(225,29,72,.45); }
+.db-tile.t-teal   { background: var(--g-teal);   box-shadow: 0 18px 36px -18px rgba(8,145,178,.45); }
+.db-tile.t-blue   { background: var(--g-blue);   box-shadow: 0 18px 36px -18px rgba(37,99,235,.45); }
+.db-tile.t-violet { background: var(--g-violet); box-shadow: 0 18px 36px -18px rgba(109,40,217,.45); }
+.db-tile.t-amber  { background: var(--g-amber);  box-shadow: 0 18px 36px -18px rgba(249,115,22,.45); }
+.db-tile.t-pink   { background: var(--g-pink);   box-shadow: 0 18px 36px -18px rgba(219,39,119,.45); }
+.db-tile .glow { position: absolute; width: 200px; height: 200px; border-radius: 50%; filter: blur(40px); opacity: .3; right: -60px; top: -60px; background: #fff; pointer-events: none; }
+.db-tile h4 { position: relative; display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; opacity: .9; }
+.db-tile h4 a { font-size: 12px; text-transform: none; letter-spacing: 0; font-weight: 700; opacity: .9; }
+.db-tile h4 a:hover { text-decoration: underline; }
+.db-tile .big { position: relative; font-size: 44px; font-weight: 900; letter-spacing: -.04em; line-height: 1; margin-top: 10px; font-variant-numeric: tabular-nums; }
+.db-tile .big small { font-size: 14px; font-weight: 700; opacity: .75; letter-spacing: 0; margin-left: 8px; }
+.db-tile p { position: relative; font-size: 13px; opacity: .9; margin-top: 8px; line-height: 1.5; }
+.db-tile p.now { margin-top: 10px; font-weight: 700; }
+.db-tile .next { position: relative; font-size: 20px; font-weight: 900; line-height: 1.25; margin-top: 10px; }
+
+.db-tile .list { position: relative; margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.db-tile .li { display: flex; gap: 10px; align-items: center; width: 100%; background: rgba(255,255,255,.14); border-radius: 12px; padding: 9px 11px; font-size: 13px; transition: background .15s; }
+.db-tile button.li:hover, .db-tile a.li:hover { background: rgba(255,255,255,.24); }
+.db-tile .li .ic { font-size: 18px; flex-shrink: 0; }
+.db-tile .li .grow { flex: 1; min-width: 0; }
+.db-tile .li b { font-weight: 700; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.db-tile .li small { display: block; font-size: 11.5px; opacity: .85; margin-top: 1px; }
+.db-tile .li .go { font-size: 11.5px; font-weight: 800; background: rgba(255,255,255,.92); color: #9f1239; border-radius: 8px; padding: 5px 9px; white-space: nowrap; flex-shrink: 0; }
+.db-tile .li.sev-red { box-shadow: inset 3px 0 0 #fff; }
+.db-tile .li.sev-grey { opacity: .85; }
+.db-tile .more { align-self: flex-start; font-size: 12.5px; font-weight: 800; color: #fff; opacity: .9; padding: 4px 2px; }
+.db-tile .more:hover { text-decoration: underline; }
+.db-tile .nocrew { font-size: 11px; font-weight: 800; background: #fff; color: #be123c; border-radius: 999px; padding: 3px 10px; flex-shrink: 0; }
+
+.db-av { border-radius: 50%; flex-shrink: 0; display: inline-grid; place-items: center; color: #fff; font-weight: 800; overflow: hidden; border: 2px solid rgba(255,255,255,.9); }
+.db-av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.db-tile .faces { position: relative; display: flex; margin-top: 12px; }
+.db-tile .faces.sm { margin-top: 0; flex-shrink: 0; }
+.db-tile .faces .db-av + .db-av { margin-left: -8px; }
+
+/* ring */
+.db-tile .ring { width: 124px; height: 124px; border-radius: 50%; display: grid; place-items: center; margin: 14px auto 0; background: conic-gradient(color-mix(in srgb, #22d3ee 80%, #64748b) calc(var(--p) * 1%), rgba(255,255,255,.12) 0); }
+.db-tile .ring > div { width: 96px; height: 96px; border-radius: 50%; background: #0f172a; display: grid; place-items: center; text-align: center; }
+.db-tile .ring b { display: block; font-size: 26px; font-weight: 900; line-height: 1; }
+.db-tile .ring small { font-size: 11px; opacity: .7; }
+
+/* week bars */
+.db-tile .bars { display: flex; align-items: flex-end; gap: 8px; height: 120px; margin-top: 14px; }
+.db-tile .bars > div { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 5px; height: 100%; font-size: 11px; font-weight: 800; }
+.db-tile .bars i { width: 100%; border-radius: 8px 8px 4px 4px; background: linear-gradient(180deg, color-mix(in srgb, #a78bfa 80%, #64748b), color-mix(in srgb, #6366f1 80%, #64748b)); min-height: 4px; }
+.db-tile .bars > div.today i { background: linear-gradient(180deg, color-mix(in srgb, #fbbf24 80%, #64748b), color-mix(in srgb, #f97316 80%, #64748b)); }
+.db-tile .bars span { opacity: .6; }
+
+/* leave */
+.db-tile .lt { font-size: 11px; font-weight: 900; padding: 4px 8px; border-radius: 8px; background: rgba(255,255,255,.92); color: #9d174d; flex-shrink: 0; }
+.db-tile .lw { font-size: 11.5px; font-weight: 800; padding: 4px 9px; border-radius: 999px; background: rgba(255,255,255,.22); white-space: nowrap; flex-shrink: 0; }
+.db-tile .lw.now { background: #fff; color: #be123c; }
