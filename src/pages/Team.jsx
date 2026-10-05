@@ -1,1400 +1,663 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
-import { Search, MapPin, Calendar, TrendingUp, Users, Briefcase, Activity, Clock, FileText, Radar, Camera } from 'lucide-react'
-import { calculateWorkload, getWeekBounds } from '../utils/workload'
-import { useViewport } from '../utils/useViewport'
-import { fetchTeamLeaves, getLeaveSummary, getMemberLeaveOnDate, getMembersOnLeave } from '../utils/teamLeaves'
-import { formatDayLabel, hasDailyCrew, memberDatesOnSite, memberDaysOnSite, memberRoleOnSite } from '../utils/siteDays'
+import { fetchTeamLeaves, getMemberLeaveOnDate, isOffDay } from '../utils/teamLeaves'
+import { publicHolidayName } from '../utils/holidays'
+import {
+  assignmentMemberId, assignmentsForDate, getSiteDates, isPic, memberDatesOnSite, memberRoleOnSite, siteMemberIds,
+} from '../utils/siteDays'
+import { buildWhatsAppUrl } from '../utils/whatsapp'
+import './Team.css'
 
-const AVATAR_COLORS = ['#2563eb', '#7c3aed', '#db2777', '#059669', '#d97706', '#dc2626']
-
-const ACTIVITY_TEMPLATES = [
-  { action: 'Updated site status', color: '#38bdf8' },
-  { action: 'Confirmed field coverage', color: '#22c55e' },
-  { action: 'Progressed reporting', color: '#f59e0b' },
-  { action: 'Rebalanced assignments', color: '#a855f7' },
+const VIEWS = [
+  { key: 'roster',  label: 'Roster' },
+  { key: 'week',    label: 'Week Board' },
+  { key: 'where',   label: "Where's Everyone" },
+  { key: 'ranking', label: 'Leaderboard' },
 ]
+const AVATAR_COLORS = ['#2563eb', '#db2777', '#7c3aed', '#059669', '#d97706', '#0891b2', '#dc2626', '#65a30d']
+const SITE_COLORS   = ['#2563eb', '#059669', '#d97706', '#7c3aed', '#db2777', '#0891b2', '#dc2626', '#65a30d', '#9333ea', '#ea580c']
+const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const OPEN_REPORT = ['pending', 'in_progress', 'submitted']
+const INACTIVE_SITE = ['cancelled', 'postponed']
+const NEW_MEMBER_DAYS = 45
 
-const SITE_TYPE_LABELS = {
-  site_scanning: 'Site Scanning',
-  site_visit: 'Site Visit',
-  meeting: 'Meeting',
-}
+// ── dates (local, YYYY-MM-DD) ──
+const isoOf = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+const addDays = (dateStr, n) => { const d = new Date(`${dateStr}T00:00:00`); d.setDate(d.getDate() + n); return isoOf(d) }
+const mondayOf = dateStr => { const d = new Date(`${dateStr}T00:00:00`); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return isoOf(d) }
+const dayNum = dateStr => Number(dateStr.slice(8, 10))
+const fmtDay = (dateStr, opts = { day: 'numeric', month: 'short' }) => new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-MY', opts)
+const titleCase = s => String(s || '').toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+const loadColor = pct => pct >= 100 ? '#dc2626' : pct >= 80 ? '#d97706' : '#059669'
 
-const SITE_TYPE_COLORS = {
-  site_scanning: { bg: 'rgba(59, 130, 246, 0.16)', text: '#bfdbfe', border: 'rgba(96, 165, 250, 0.35)' },
-  site_visit: { bg: 'rgba(34, 197, 94, 0.16)', text: '#bbf7d0', border: 'rgba(74, 222, 128, 0.35)' },
-  meeting: { bg: 'rgba(168, 85, 247, 0.16)', text: '#e9d5ff', border: 'rgba(192, 132, 252, 0.35)' },
-}
+const shortOf = m => m.short_name || m.full_name?.split(' ')[0] || '?'
+const initialsOf = m => (m.full_name || '?').split(' ').filter(Boolean).map(p => p[0]).join('').slice(0, 2).toUpperCase()
 
-function Avatar({ name, size = 40, index = 0, avatarUrl = null, onUpload = null }) {
-  const initials = name?.split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase() || '?'
-  const [hovered, setHovered] = useState(false)
-
+function Avatar({ m, size = 40, onUpload = null }) {
   return (
     <div
-      onClick={onUpload}
-      onMouseEnter={() => onUpload && setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        width: size, height: size, borderRadius: '50%', flexShrink: 0, position: 'relative', overflow: 'hidden',
-        background: avatarUrl ? '#0f172a' : AVATAR_COLORS[index % AVATAR_COLORS.length],
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: 'white', fontWeight: '700', fontSize: size * 0.35,
-        border: '2px solid rgba(255,255,255,0.82)',
-        boxShadow: '0 14px 30px rgba(15, 23, 42, 0.18)',
-        cursor: onUpload ? 'pointer' : 'default',
-      }}
+      className={`tm-av${onUpload ? ' can-upload' : ''}`}
+      onClick={onUpload ? e => { e.stopPropagation(); onUpload() } : undefined}
+      title={onUpload ? 'Change photo' : undefined}
+      style={{ width: size, height: size, fontSize: size * 0.36, background: m.color }}
     >
-      {avatarUrl
-        ? <img src={avatarUrl} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        : initials
-      }
-      {onUpload && hovered && (
-        <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Camera size={Math.max(size * 0.32, 12)} color="white" />
-        </div>
-      )}
+      {m.avatar_url ? <img src={m.avatar_url} alt="" /> : initialsOf(m)}
     </div>
   )
 }
 
-function normalizeRole(role) {
-  return String(role || '').toLowerCase()
-}
-
-function getRoleTone(role) {
-  if (normalizeRole(role) === 'pic') {
-    return { bg: 'rgba(59, 130, 246, 0.16)', text: '#bfdbfe', border: 'rgba(96, 165, 250, 0.35)' }
-  }
-
-  return { bg: 'rgba(148, 163, 184, 0.14)', text: '#cbd5e1', border: 'rgba(148, 163, 184, 0.22)' }
-}
-
-function getSiteTypeTone(siteType) {
-  return SITE_TYPE_COLORS[String(siteType || '').toLowerCase()] || SITE_TYPE_COLORS.site_scanning
-}
-
-function formatDate(date) {
-  if (!date) return '-'
-
-  return new Date(date).toLocaleDateString('en-MY', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
-}
-
-function getDayLabel(date) {
-  if (!date) return '-'
-
-  return new Date(date).toLocaleDateString('en-MY', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-  })
-}
-
-function timeAgo(index) {
-  const times = ['2h ago', '5h ago', '1d ago', '2d ago', '4d ago']
-  return times[index % times.length]
-}
-
-function siteHasReport(site) {
-  const siteType = String(site?.site_type || '').toLowerCase()
-  const reportStatus = String(site?.report_status || '').toLowerCase()
-  return siteType === 'site_scanning' && reportStatus !== 'not_applicable'
-}
-
-// Leave days (Mon-Sat) the member loses in the current workload week
-function getLeaveDaysThisWeek(leaves, memberId) {
-  const { start, end } = getWeekBounds()
-  let days = 0
-
-  for (let day = new Date(start); day < end; day.setDate(day.getDate() + 1)) {
-    if (day.getDay() === 0) continue
-    const iso = new Date(day.getTime() - day.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
-    const leave = getMemberLeaveOnDate(leaves, memberId, iso)
-    if (!leave) continue
-    days += leave.leave_session === 'FULL_DAY' ? 1 : 0.5
-  }
-
-  return days
-}
-
-function buildMemberRecord(member, sites, leaves = []) {
-  const assignments = sites.flatMap(site =>
-    (site.site_assignments || [])
-      .filter(assignment => assignment.member_id === member.id)
-      .map(assignment => ({ ...assignment, site }))
-  )
-
-  // A rotating crew gives one row per day — count each site once
-  const sitesById = new Map()
-  assignments.forEach(assignment => sitesById.set(assignment.site.id, assignment.site))
-  const memberSites = [...sitesById.values()]
-  const picCount = memberSites.filter(site => memberRoleOnSite(site, member.id) === 'PIC').length
-  const crewCount = memberSites.length - picCount
-  const reportInvolvedCount = memberSites.filter(siteHasReport).length
-  const siteDays = memberSites.reduce((sum, site) => sum + memberDaysOnSite(site, member.id), 0)
-
-  return {
-    ...member,
-    assignments,
-    pic_count: picCount,
-    crew_count: crewCount,
-    site_days: siteDays,
-    report_involved_count: reportInvolvedCount,
-    workload: calculateWorkload(assignments, { leaveDays: getLeaveDaysThisWeek(leaves, member.id) }),
-  }
-}
-
-// PIC on any day of the site outranks a crew day
-function getMemberRole(memberId, assignments) {
-  const mine = (assignments || []).filter(assignment => assignment.member_id === memberId)
-  if (mine.length === 0) return '-'
-  return mine.some(assignment => normalizeRole(assignment.assignment_role) === 'pic')
-    ? 'PIC'
-    : mine[0].assignment_role || '-'
-}
-
-function getRanking(members, key) {
-  return [...members]
-    .sort((a, b) => {
-      const diff = (b[key] || 0) - (a[key] || 0)
-      if (diff !== 0) return diff
-      return a.full_name.localeCompare(b.full_name)
-    })
-    .map((member, index) => ({
-      ...member,
-      rank: index + 1,
-      value: member[key] || 0,
-    }))
+function Tags({ m }) {
+  return <>
+    {m.isLead && <span className="tm-tag lead">Lead</span>}
+    {m.isNew && <span className="tm-tag new">New</span>}
+  </>
 }
 
 export default function Team() {
   const { isZairul } = useAuth()
-  const { isMobile, isTablet } = useViewport()
-  const [members, setMembers] = useState([])
-  const [allSites, setAllSites] = useState([])
-  const [leaves, setLeaves] = useState([])
-  const [selectedId, setSelectedId] = useState(null)
-  const [search, setSearch] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [uploadingFor, setUploadingFor] = useState(null)
-  const avatarInputRef = useRef(null)
-  const [editingIc, setEditingIc] = useState(false)
-  const [icValue, setIcValue] = useState('')
-  const [savingIc, setSavingIc] = useState(false)
-  const [editingLegal, setEditingLegal] = useState(false)
-  const [legalValue, setLegalValue] = useState('')
-  const [savingLegal, setSavingLegal] = useState(false)
+  const [params, setParams] = useSearchParams()
+  const view = VIEWS.some(v => v.key === params.get('view')) ? params.get('view') : 'roster'
+  const setView = key => setParams(key === 'roster' ? {} : { view: key }, { replace: true })
 
-  function triggerAvatarUpload(memberId) {
-    setUploadingFor(memberId)
-    avatarInputRef.current?.click()
-  }
+  const [rawMembers, setRawMembers] = useState([])
+  const [sites, setSites]           = useState([])
+  const [leaves, setLeaves]         = useState([])
+  const [loading, setLoading]       = useState(true)
+  const [openId, setOpenId]         = useState(null)
 
-  async function handleAvatarFileChange(e) {
-    const file = e.target.files[0]
-    // Capture memberId immediately — uploadingFor may become stale during await
-    const memberId = uploadingFor
-    if (!file || !memberId) return
+  const today = isoOf(new Date())
+  const thisWeek = mondayOf(today)
+  const [weekStart, setWeekStart] = useState(thisWeek)
 
-    try {
-      if (!file.type.startsWith('image/')) {
-        alert('Please select an image file')
-        setUploadingFor(null)
-        return
-      }
-
-      // Unique filename per upload avoids CDN serving the cached old file
-      const ext = file.name.split('.').pop()
-      const fileName = `${memberId}_${Date.now()}.${ext}`
-
-      const { error: uploadError } = await supabase.storage
-        .from('team-avatars')
-        .upload(fileName, file)
-
-      if (uploadError) {
-        alert('Failed to upload avatar: ' + uploadError.message)
-        setUploadingFor(null)
-        return
-      }
-
-      const { data: urlData } = supabase.storage
-        .from('team-avatars')
-        .getPublicUrl(fileName)
-
-      if (!urlData?.publicUrl) {
-        setUploadingFor(null)
-        return
-      }
-
-      const avatarUrl = urlData.publicUrl
-
-      const { error: updateError } = await supabase
-        .from('team_members')
-        .update({ avatar_url: avatarUrl })
-        .eq('id', memberId)
-
-      if (updateError) {
-        alert('Failed to save avatar: ' + updateError.message)
-        setUploadingFor(null)
-        return
-      }
-
-      setMembers(prev => prev.map(m =>
-        m.id === memberId ? { ...m, avatar_url: avatarUrl } : m
-      ))
-
-      setUploadingFor(null)
-      e.target.value = ''
-
-    } catch (err) {
-      alert('An unexpected error occurred: ' + err.message)
-      setUploadingFor(null)
-    }
-  }
-
-  async function saveIcNumber(memberId) {
-    setSavingIc(true)
-    const { error } = await supabase
-      .from('team_members')
-      .update({ ic_number: icValue.trim() || null })
-      .eq('id', memberId)
-    if (!error) {
-      setMembers(prev => prev.map(m => m.id === memberId ? { ...m, ic_number: icValue.trim() || null } : m))
-    }
-    setSavingIc(false)
-    setEditingIc(false)
-  }
-
-  async function saveLegalName(memberId) {
-    setSavingLegal(true)
-    const { error } = await supabase
-      .from('team_members')
-      .update({ legal_name: legalValue.trim() || null })
-      .eq('id', memberId)
-    if (!error) {
-      setMembers(prev => prev.map(m => m.id === memberId ? { ...m, legal_name: legalValue.trim() || null } : m))
-    }
-    setSavingLegal(false)
-    setEditingLegal(false)
+  async function fetchAll() {
+    const [{ data: memberData }, { data: siteData }, leaveData] = await Promise.all([
+      supabase.from('team_members').select('*').order('full_name'),
+      supabase
+        .from('sites')
+        .select('id, site_name, location, scheduled_date, end_date, site_status, report_status, site_type, site_session, site_assignments(member_id, assignment_role, work_date)')
+        .order('scheduled_date', { ascending: true }),
+      fetchTeamLeaves().catch(() => []),
+    ])
+    setRawMembers(memberData || [])
+    setSites(siteData || [])
+    setLeaves(leaveData || [])
+    setLoading(false)
   }
 
   useEffect(() => {
     fetchAll()
+    const refresh = () => fetchAll()
+    window.addEventListener('xyte:leaves-updated', refresh)
+    window.addEventListener('xyte:site-saved', refresh)
+    return () => {
+      window.removeEventListener('xyte:leaves-updated', refresh)
+      window.removeEventListener('xyte:site-saved', refresh)
+    }
   }, [])
 
-  useEffect(() => {
-    const refreshLeaves = () => fetchAll()
-    window.addEventListener('xyte:leaves-updated', refreshLeaves)
-    return () => window.removeEventListener('xyte:leaves-updated', refreshLeaves)
-  }, [])
+  // memberId|date → [{ site, role }]
+  const jobIndex = useMemo(() => {
+    const index = new Map()
+    for (const site of sites) {
+      if (INACTIVE_SITE.includes(String(site.site_status || '').toLowerCase())) continue
+      for (const id of siteMemberIds(site)) {
+        for (const date of memberDatesOnSite(site, id)) {
+          const role = assignmentsForDate(site.site_assignments, date).some(a => assignmentMemberId(a) === id && isPic(a)) ? 'PIC' : 'crew'
+          const key = `${id}|${date}`
+          if (!index.has(key)) index.set(key, [])
+          index.get(key).push({ site, role })
+        }
+      }
+    }
+    return index
+  }, [sites])
 
-  async function fetchAll() {
-    setLoading(true)
+  // What a member is doing on a date: on site, on leave, rostered off, holiday, store (Sat) or available.
+  function dayStatus(memberId, date) {
+    const jobs = jobIndex.get(`${memberId}|${date}`)
+    if (jobs?.length) return { kind: 'site', jobs }
+    const leave = getMemberLeaveOnDate(leaves, memberId, date)
+    if (leave) return isOffDay(leave) ? { kind: 'off', label: 'Off' } : { kind: 'leave', label: titleCase(leave.leave_type) }
+    const dow = new Date(`${date}T00:00:00`).getDay()
+    if (dow === 0) return { kind: 'off', label: 'Off' }
+    const holiday = publicHolidayName(date)
+    if (holiday) return { kind: 'holiday', label: holiday }
+    if (dow === 6) return { kind: 'store', label: 'Store' }
+    return { kind: 'free', label: 'Available' }
+  }
 
-    const [
-      { data: memberData },
-      { data: siteData },
-      leaveData,
-    ] = await Promise.all([
-      supabase
-        .from('team_members')
-        .select('*')
-        .order('full_name'),
-      supabase
-        .from('sites')
-        .select('*, site_assignments(assignment_role, work_date, member_id, team_members(full_name))')
-        .order('scheduled_date', { ascending: true }),
-      fetchTeamLeaves().catch(() => []),
-    ])
+  const weekDates     = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart])
+  const thisWeekDates = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(thisWeek, i)), [thisWeek])
 
-    const sites = siteData || []
-    const teamLeaves = leaveData || []
-    const memberRecords = (memberData || []).map(member => buildMemberRecord(member, sites, teamLeaves))
+  // Distinct colours for the sites on screen, in date order
+  const siteColor = useMemo(() => {
+    const first = thisWeekDates[0] < weekDates[0] ? thisWeekDates[0] : weekDates[0]
+    const last  = thisWeekDates[6] > weekDates[6] ? thisWeekDates[6] : weekDates[6]
+    const map = new Map()
+    sites
+      .filter(s => !INACTIVE_SITE.includes(String(s.site_status || '').toLowerCase()))
+      .filter(s => getSiteDates(s).some(d => d >= first && d <= last))
+      .forEach((s, i) => map.set(s.id, SITE_COLORS[i % SITE_COLORS.length]))
+    return id => map.get(id) || '#64748b'
+  }, [sites, thisWeekDates, weekDates])
 
-    setMembers(memberRecords)
-    setAllSites(sites)
-    setLeaves(teamLeaves)
-    setSelectedId(currentId => {
-      if (memberRecords.some(member => member.id === currentId)) return currentId
-      return memberRecords[0]?.id || null
+  function weekLoad(memberId, dates) {
+    let work = 0, onSite = 0
+    dates.slice(0, 5).forEach(d => {
+      const s = dayStatus(memberId, d)
+      if (s.kind === 'site') { work++; onSite++ }
+      else if (s.kind === 'free') work++
     })
-    setLoading(false)
+    return { onSite, work, pct: work ? Math.round(onSite / work * 100) : 0 }
   }
 
-  const filteredMembers = useMemo(
-    () => members.filter(member => !search || member.full_name.toLowerCase().includes(search.toLowerCase())),
-    [members, search]
-  )
+  const members = useMemo(() => {
+    const year = today.slice(0, 4)
+    const newSince = addDays(today, -NEW_MEMBER_DAYS)
+    const yearSites = sites.filter(s => String(s.scheduled_date || '').startsWith(year) && !INACTIVE_SITE.includes(String(s.site_status || '').toLowerCase()))
+    return rawMembers
+      .map((m, i) => {
+        const mine = yearSites.filter(s => siteMemberIds(s).includes(m.id))
+        const picSites = mine.filter(s => memberRoleOnSite(s, m.id) === 'PIC')
+        return {
+          ...m,
+          color: AVATAR_COLORS[i % AVATAR_COLORS.length],
+          isLead: /lead/i.test(m.role || ''),
+          isNew: !!m.created_at && m.created_at.slice(0, 10) >= newSince,
+          sites: mine.length,
+          pic: picSites.length,
+          scans: mine.filter(s => s.site_type === 'site_scanning').length,
+          open: picSites.filter(s => s.site_type === 'site_scanning' && OPEN_REPORT.includes(String(s.report_status || '').toLowerCase())).length,
+        }
+      })
+      .sort((a, b) => (b.isLead - a.isLead) || (b.sites - a.sites) || a.full_name.localeCompare(b.full_name))
+  }, [rawMembers, sites, today])
 
-  const selected = useMemo(
-    () =>
-      filteredMembers.find(member => member.id === selectedId) ||
-      members.find(member => member.id === selectedId) ||
-      filteredMembers[0] ||
-      members[0] ||
-      null,
-    [filteredMembers, members, selectedId]
-  )
-
-  const selectedIndex = members.findIndex(member => member.id === selected?.id)
-
-  const selectedSites = useMemo(
-    () => (
-      selected
-        ? allSites.filter(site => site.site_assignments?.some(assignment => assignment.member_id === selected.id))
-        : []
-    ),
-    [allSites, selected]
-  )
-
-  const activeSites = useMemo(
-    () => selectedSites.filter(site =>
-      String(site.site_status || '').toLowerCase() === 'ongoing' ||
-      ['pending', 'in_progress', 'submitted'].includes(String(site.report_status || '').toLowerCase())
-    ),
-    [selectedSites]
-  )
-
-  const assignmentBoardSites = useMemo(() => {
-    return selectedSites.filter(site => {
-      const status = String(site.site_status || '').toLowerCase()
-      const report = String(site.report_status || '').toLowerCase()
-      const hasActiveWork = ['upcoming', 'ongoing'].includes(status)
-      const hasOpenReport = ['pending', 'in_progress', 'submitted'].includes(report)
-      return hasActiveWork || hasOpenReport
-    }).sort((a, b) => new Date(a.scheduled_date) - new Date(b.scheduled_date))
-  }, [selectedSites])
-
-  const completedSites = selectedSites.filter(site => String(site.site_status || '').toLowerCase() === 'completed')
-  const reportQueue = selectedSites.filter(site => ['pending', 'in_progress', 'submitted'].includes(String(site.report_status || '').toLowerCase()))
-
-  const workloadStatus = selected?.workload?.status_colors
-  const progressBarWidth = selected ? Math.min(selected.workload.workload_percentage, 100) : 0
-  const now = new Date()
-  const todayStr = now.toISOString().split('T')[0]
-  const leaveLimitDate = new Date(now)
-  leaveLimitDate.setDate(leaveLimitDate.getDate() + 14)
-  const upcomingLeaveLimit = leaveLimitDate.toISOString().split('T')[0]
-  const membersOnLeaveToday = useMemo(
-    () => getMembersOnLeave(leaves, members, todayStr),
-    [leaves, members, todayStr]
-  )
-  const upcomingLeaves = useMemo(
-    () => leaves
-      .map(leave => ({
-        leave,
-        member: members.find(member => member.id === leave.member_id),
-      }))
-      .filter(item => item.member && String(item.leave.start_date || '') >= todayStr && String(item.leave.start_date || '') <= upcomingLeaveLimit)
-      .sort((a, b) => String(a.leave.start_date || '').localeCompare(String(b.leave.start_date || '')))
-      .slice(0, 6),
-    [leaves, members, todayStr, upcomingLeaveLimit]
-  )
-  const selectedLeaveToday = selected ? getMemberLeaveOnDate(leaves, selected.id, todayStr) : null
-  const selectedUpcomingLeave = useMemo(
-    () => {
-      if (!selected) return null
-      return leaves.find(leave =>
-        leave.member_id === selected.id &&
-        String(leave.end_date || leave.start_date || '') >= todayStr
-      ) || null
-    },
-    [leaves, selected, todayStr]
-  )
-
-  const avgWorkload = members.length > 0
-    ? Math.round(members.reduce((sum, member) => sum + member.workload.workload_percentage, 0) / members.length)
-    : 0
-  const availableCount = members.filter(member => member.workload.status === 'Available').length
-  const busyCount = members.filter(member => ['Busy', 'Overloaded'].includes(member.workload.status)).length
-  const picLeads = members.filter(member => member.pic_count > 0).length
-  const rankingGroups = useMemo(() => ([
-    {
-      key: 'pic_count',
-      title: 'PIC Ranking',
-      subtitle: 'Most times leading a site',
-      accent: '#38bdf8',
-      emptyLabel: 'No PIC assignments yet.',
-    },
-    {
-      key: 'crew_count',
-      title: 'Crew Ranking',
-      subtitle: 'Most times serving as crew',
-      accent: '#22c55e',
-      emptyLabel: 'No crew assignments yet.',
-    },
-    {
-      key: 'report_involved_count',
-      title: 'Report Ranking',
-      subtitle: 'Most report-involved jobs',
-      accent: '#f59e0b',
-      emptyLabel: 'No report work yet.',
-    },
-  ].map(group => ({
-    ...group,
-    rows: getRanking(members, group.key).filter(member => member.value > 0).slice(0, 5),
-    selectedEntry: selected ? getRanking(members, group.key).find(member => member.id === selected.id) : null,
-  }))), [members, selected])
-
-  const topLoadMembers = [...members]
-    .sort((a, b) => b.workload.workload_percentage - a.workload.workload_percentage)
-    .slice(0, 4)
-
-  const teamRadar = members
-    .filter(member => member.assignments.length > 0)
-    .slice(0, 6)
-
-  const activity = selected
-    ? selectedSites.slice(0, 4).map((site, index) => ({
-        ...ACTIVITY_TEMPLATES[index % ACTIVITY_TEMPLATES.length],
-        site: site.site_name,
-        time: timeAgo(index),
-      }))
-    : []
-
-  // Smart insight derived from live data
-  const overloaded = members.filter(m => m.workload.status === 'Overloaded')
-  const busy = members.filter(m => m.workload.status === 'Busy')
-  const topLoader = topLoadMembers[0]
-  const pendingReports = allSites.filter(s => ['pending','in_progress'].includes(s.report_status))
-  const submittedReports = allSites.filter(s => s.report_status === 'submitted')
-  const ongoingSites = allSites.filter(s => s.site_status === 'ongoing')
-  const upcomingSitesList = allSites.filter(s => s.site_status === 'upcoming')
-  const unassigned = allSites.filter(s => !s.site_assignments || s.site_assignments.length === 0)
-
-  function getInsight() {
-    if (overloaded.length > 0) {
-      const names = overloaded.map(m => m.full_name.split(' ')[0]).join(' and ')
-      return {
-        label: 'Staffing Risk',
-        color: '#ef4444',
-        dot: '#ef4444',
-        headline: `${names} ${overloaded.length === 1 ? 'is' : 'are'} overloaded right now.`,
-        body: `With ${overloaded.length} member${overloaded.length > 1 ? 's' : ''} above capacity, new site assignments should be redistributed to avoid delivery slippage. ${availableCount} member${availableCount !== 1 ? 's are' : ' is'} available to absorb the load.`,
-      }
-    }
-    if (submittedReports.length > 0) {
-      return {
-        label: 'Pending Review',
-        color: '#f59e0b',
-        dot: '#f59e0b',
-        headline: `${submittedReports.length} report${submittedReports.length > 1 ? 's have' : ' has'} been submitted and awaiting approval.`,
-        body: `${submittedReports.map(s => s.site_name).slice(0,2).join(' and ')}${submittedReports.length > 2 ? ` and ${submittedReports.length - 2} more` : ''} — review and approve to keep the pipeline moving.`,
-      }
-    }
-    if (busy.length >= 2) {
-      return {
-        label: 'High Load',
-        color: '#f97316',
-        dot: '#f97316',
-        headline: `${busy.length} members are running at high capacity.`,
-        body: `Average team workload is at ${avgWorkload}%. ${topLoader ? `${topLoader.full_name.split(' ')[0]} leads at ${topLoader.workload.workload_percentage}%.` : ''} Monitor closely before adding new assignments this week.`,
-      }
-    }
-    if (pendingReports.length > 0) {
-      return {
-        label: 'Report Pressure',
-        color: '#a855f7',
-        dot: '#a855f7',
-        headline: `${pendingReports.length} site report${pendingReports.length > 1 ? 's are' : ' is'} still in progress or pending.`,
-        body: `Ongoing field work is generating report backlog. ${ongoingSites.length > 0 ? `${ongoingSites.length} site${ongoingSites.length > 1 ? 's are' : ' is'} still active in the field.` : ''} Prioritise submission before new sites begin.`,
-      }
-    }
-    if (unassigned.length > 0) {
-      return {
-        label: 'Unassigned Sites',
-        color: '#38bdf8',
-        dot: '#38bdf8',
-        headline: `${unassigned.length} site${unassigned.length > 1 ? 's have' : ' has'} no team assigned yet.`,
-        body: `Assign a PIC and crew before the scheduled date to avoid last-minute gaps. ${availableCount} member${availableCount !== 1 ? 's are' : ' is'} currently available.`,
-      }
-    }
-    if (upcomingSitesList.length > 0) {
-      return {
-        label: 'On Track',
-        color: '#22c55e',
-        dot: '#22c55e',
-        headline: `Team is healthy — ${upcomingSitesList.length} upcoming site${upcomingSitesList.length > 1 ? 's' : ''} ahead.`,
-        body: `All ${members.length} members are within normal capacity at ${avgWorkload}% average workload. ${availableCount} ${availableCount === 1 ? 'person is' : 'people are'} fully available for new assignments.`,
-      }
-    }
-    return {
-      label: 'All Clear',
-      color: '#22c55e',
-      dot: '#22c55e',
-      headline: `No active pressure detected across the team.`,
-      body: `All ${members.length} members are within healthy workload limits. Average capacity sits at ${avgWorkload}%. Good time to plan ahead for upcoming site cycles.`,
-    }
+  // ── avatar upload (admin) ──
+  const avatarInput = useRef(null)
+  const uploadFor = useRef(null)
+  const startUpload = isZairul ? id => { uploadFor.current = id; avatarInput.current?.click() } : null
+  async function handleAvatar(e) {
+    const file = e.target.files?.[0]
+    const memberId = uploadFor.current
+    e.target.value = ''
+    if (!file || !memberId) return
+    if (!file.type.startsWith('image/')) { alert('Please select an image file'); return }
+    // Unique filename per upload avoids the CDN serving the cached old file
+    const fileName = `${memberId}_${Date.now()}.${file.name.split('.').pop()}`
+    const { error: upErr } = await supabase.storage.from('team-avatars').upload(fileName, file)
+    if (upErr) { alert('Failed to upload photo: ' + upErr.message); return }
+    const avatarUrl = supabase.storage.from('team-avatars').getPublicUrl(fileName).data?.publicUrl
+    const { error } = await supabase.from('team_members').update({ avatar_url: avatarUrl }).eq('id', memberId)
+    if (error) { alert('Failed to save photo: ' + error.message); return }
+    setRawMembers(prev => prev.map(m => m.id === memberId ? { ...m, avatar_url: avatarUrl } : m))
   }
 
-  const insight = getInsight()
-
-  function getMemberLeaveMeta(member) {
-    const leaveToday = getMemberLeaveOnDate(leaves, member?.id, todayStr)
-    if (leaveToday) {
-      return {
-        label: 'On Leave',
-        summary: getLeaveSummary(leaveToday),
-        bg: 'rgba(239, 68, 68, 0.14)',
-        text: '#fca5a5',
-        border: 'rgba(248, 113, 113, 0.28)',
-      }
-    }
-
-    const upcomingLeave = leaves.find(leave =>
-      leave.member_id === member?.id &&
-      String(leave.start_date || '') > todayStr
-    )
-
-    if (upcomingLeave) {
-      return {
-        label: 'Leave Soon',
-        summary: getLeaveSummary(upcomingLeave),
-        bg: 'rgba(59, 130, 246, 0.14)',
-        text: '#93c5fd',
-        border: 'rgba(96, 165, 250, 0.28)',
-      }
-    }
-
-    return null
+  async function saveField(memberId, field, value) {
+    const clean = value.trim() || null
+    const { error } = await supabase.from('team_members').update({ [field]: clean }).eq('id', memberId)
+    if (error) { alert('Failed to save: ' + error.message); return false }
+    setRawMembers(prev => prev.map(m => m.id === memberId ? { ...m, [field]: clean } : m))
+    return true
   }
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#08111f' }}>
-        <div style={{ color: '#94a3b8' }}>Loading team...</div>
-      </div>
-    )
-  }
-
-  if (isMobile) {
-    return (
-      <div style={{ minHeight: '100vh', background: 'radial-gradient(circle at top left, #13315c 0%, #0b1220 38%, #060912 100%)' }}>
-        <input ref={avatarInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarFileChange} />
-        <div style={{ padding: '16px 14px 28px', display: 'grid', gap: '14px' }}>
-          <div style={{ background: 'linear-gradient(135deg, rgba(15,23,42,0.96) 0%, rgba(15,23,42,0.88) 44%, rgba(37,99,235,0.26) 100%)', borderRadius: '22px', border: '1px solid rgba(148,163,184,0.16)', padding: '18px 16px' }}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 10px', borderRadius: '999px', background: `${insight.color}18`, border: `1px solid ${insight.color}44`, fontSize: '10px', fontWeight: '700', color: insight.color }}>
-              <div style={{ width: 7, height: 7, borderRadius: '50%', background: insight.color }} />
-              {insight.label}
-            </div>
-            <h1 style={{ marginTop: '12px', color: 'white', fontSize: '20px', lineHeight: 1.25, fontWeight: '700' }}>Team</h1>
-            <p style={{ marginTop: '6px', color: '#cbd5e1', fontSize: '12px', lineHeight: 1.6 }}>{insight.body}</p>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '10px', marginTop: '16px' }}>
-              {[
-                { label: 'Members', value: members.length },
-                { label: 'Available', value: availableCount },
-                { label: 'Avg Load', value: `${avgWorkload}%` },
-              ].map(item => (
-                <div key={item.label} style={{ background: 'rgba(15,23,42,0.62)', border: '1px solid rgba(148,163,184,0.14)', borderRadius: '16px', padding: '12px' }}>
-                  <p style={{ color: 'white', fontSize: '18px', fontWeight: '800', lineHeight: 1 }}>{item.value}</p>
-                  <p style={{ color: '#94a3b8', fontSize: '10px', marginTop: '6px', textTransform: 'uppercase', letterSpacing: '.06em' }}>{item.label}</p>
-                </div>
-              ))}
-            </div>
-
-            {(membersOnLeaveToday.length > 0 || upcomingLeaves.length > 0) && (
-              <div style={{ display: 'grid', gap: '10px', marginTop: '16px' }}>
-                {membersOnLeaveToday.length > 0 && (
-                  <div style={{ padding: '12px', borderRadius: '16px', background: 'rgba(15,23,42,0.62)', border: '1px solid rgba(96,165,250,0.18)' }}>
-                    <p style={{ color: '#93c5fd', fontSize: '10px', fontWeight: '800', letterSpacing: '.08em', textTransform: 'uppercase' }}>On Leave Today</p>
-                    <div style={{ display: 'grid', gap: '6px', marginTop: '8px' }}>
-                      {membersOnLeaveToday.slice(0, 3).map(({ member, leave }) => (
-                        <div key={member.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-                          <span style={{ color: '#f8fafc', fontSize: '12px', fontWeight: '700' }}>{member.full_name}</span>
-                          <span style={{ color: '#93c5fd', fontSize: '10px', fontWeight: '700' }}>{getLeaveSummary(leave)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {upcomingLeaves.length > 0 && (
-                  <div style={{ padding: '12px', borderRadius: '16px', background: 'rgba(15,23,42,0.62)', border: '1px solid rgba(148,163,184,0.14)' }}>
-                    <p style={{ color: '#cbd5e1', fontSize: '10px', fontWeight: '800', letterSpacing: '.08em', textTransform: 'uppercase' }}>Taking Leave Soon</p>
-                    <div style={{ display: 'grid', gap: '6px', marginTop: '8px' }}>
-                      {upcomingLeaves.slice(0, 3).map(({ member, leave }) => (
-                        <div key={leave.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-                          <span style={{ color: '#f8fafc', fontSize: '12px', fontWeight: '700' }}>{member.full_name}</span>
-                          <span style={{ color: '#cbd5e1', fontSize: '10px', fontWeight: '700' }}>{getLeaveSummary(leave)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div style={{ background: 'rgba(8, 15, 28, 0.92)', borderRadius: '20px', border: '1px solid rgba(148,163,184,0.12)', padding: '14px' }}>
-            <div style={{ position: 'relative' }}>
-              <Search size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
-              <input
-                placeholder="Search member..."
-                value={search}
-                onChange={event => setSearch(event.target.value)}
-                style={{ width: '100%', padding: '10px 12px 10px 36px', borderRadius: '12px', border: '1px solid rgba(148,163,184,0.14)', fontSize: '13px', outline: 'none', color: '#e2e8f0', background: 'rgba(15,23,42,0.86)', boxSizing: 'border-box' }}
-              />
-            </div>
-          </div>
-
-          {selected && (
-            <div style={{ background: 'rgba(8, 15, 28, 0.92)', borderRadius: '20px', border: '1px solid rgba(148,163,184,0.12)', padding: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <Avatar name={selected.full_name} size={54} index={selectedIndex} avatarUrl={selected.avatar_url} onUpload={isZairul ? () => triggerAvatarUpload(selected.id) : null} />
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ color: 'white', fontSize: '16px', fontWeight: '800' }}>{selected.full_name}</p>
-                  <p style={{ color: '#94a3b8', fontSize: '12px', marginTop: '2px' }}>{selected.role}</p>
-                  <p style={{ color: workloadStatus.text, fontSize: '12px', marginTop: '6px', fontWeight: '700' }}>{selected.workload.workload_percentage}% load</p>
-                  {selectedUpcomingLeave && (
-                    <div style={{ marginTop: '8px', display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 9px', borderRadius: '999px', background: selectedLeaveToday ? 'rgba(239,68,68,0.16)' : 'rgba(59,130,246,0.16)', border: `1px solid ${selectedLeaveToday ? 'rgba(248,113,113,0.28)' : 'rgba(96,165,250,0.28)'}`, color: selectedLeaveToday ? '#fca5a5' : '#93c5fd', fontSize: '10px', fontWeight: '800' }}>
-                      {selectedLeaveToday ? 'On leave now' : 'Taking leave soon'}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div style={{ height: '10px', background: 'rgba(148,163,184,0.12)', borderRadius: '999px', overflow: 'hidden', marginTop: '14px' }}>
-                <div style={{ height: '100%', width: `${progressBarWidth}%`, background: workloadStatus.bar, borderRadius: '999px' }} />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '10px', marginTop: '14px' }}>
-                {[
-                  { label: 'PIC', value: selected.pic_count },
-                  { label: 'Crew', value: selected.crew_count },
-                  { label: 'Reports', value: reportQueue.length },
-                ].map(item => (
-                  <div key={item.label} style={{ background: 'rgba(15,23,42,0.72)', border: '1px solid rgba(148,163,184,0.08)', borderRadius: '14px', padding: '10px' }}>
-                    <p style={{ color: 'white', fontSize: '16px', fontWeight: '800' }}>{item.value}</p>
-                    <p style={{ color: '#94a3b8', fontSize: '10px', marginTop: '4px' }}>{item.label}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div style={{ display: 'grid', gap: '10px' }}>
-            {filteredMembers.map((member, index) => {
-              const isSelected = selected?.id === member.id
-              const colors = member.workload.status_colors
-              const leaveMeta = getMemberLeaveMeta(member)
-
-              return (
-                <button
-                  key={member.id}
-                  onClick={() => { setSelectedId(member.id); setEditingIc(false); setEditingLegal(false) }}
-                  style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '12px', padding: '13px', cursor: 'pointer', borderRadius: '18px', background: isSelected ? 'linear-gradient(135deg, rgba(30,64,175,0.34), rgba(15,23,42,0.92))' : 'rgba(15,23,42,0.72)', border: `1px solid ${isSelected ? 'rgba(96,165,250,0.42)' : 'rgba(148,163,184,0.08)'}` }}
-                >
-                  <Avatar name={member.full_name} size={42} index={index} avatarUrl={member.avatar_url} onUpload={isZairul ? () => triggerAvatarUpload(member.id) : null} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontWeight: '700', fontSize: '13px', color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{member.full_name}</p>
-                    <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{member.role}</p>
-                    {leaveMeta && (
-                      <p style={{ fontSize: '10px', color: leaveMeta.text, marginTop: '6px', fontWeight: '800', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {leaveMeta.label}: {leaveMeta.summary}
-                      </p>
-                    )}
-                    <div style={{ height: '6px', background: 'rgba(148,163,184,0.14)', borderRadius: '999px', overflow: 'hidden', marginTop: '10px' }}>
-                      <div style={{ height: '100%', width: `${Math.min(member.workload.workload_percentage, 100)}%`, background: colors.bar, borderRadius: '999px' }} />
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <p style={{ fontSize: '12px', color: '#e2e8f0', fontWeight: '800' }}>{member.workload.workload_percentage}%</p>
-                    <p style={{ fontSize: '10px', color: colors.text, marginTop: '4px', fontWeight: '700' }}>{member.workload.status}</p>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div style={{ minHeight: '100vh', background: 'radial-gradient(circle at top left, #13315c 0%, #0b1220 38%, #060912 100%)' }}>
-      <input ref={avatarInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarFileChange} />
-      <div style={{ maxWidth: '1540px', margin: '0 auto', padding: isMobile ? '16px 14px 28px' : isTablet ? '20px 18px 32px' : '26px 30px 36px' }}>
-        <div
-          style={{
-            position: 'relative',
-            overflow: 'hidden',
-            borderRadius: '28px',
-            padding: '24px 26px',
-            marginBottom: '24px',
-            background: 'linear-gradient(135deg, rgba(15,23,42,0.96) 0%, rgba(15,23,42,0.88) 44%, rgba(37,99,235,0.26) 100%)',
-            border: '1px solid rgba(148,163,184,0.16)',
-            boxShadow: '0 24px 60px rgba(2, 6, 23, 0.45)',
-          }}
-        >
-          <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 85% 18%, rgba(56,189,248,0.22), transparent 26%), radial-gradient(circle at 70% 100%, rgba(37,99,235,0.20), transparent 35%)' }} />
-
-          <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: isTablet ? '1fr' : 'minmax(0, 1fr) 500px', gap: '24px', alignItems: 'center' }}>
-            <div style={{ padding: '4px 0' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '7px 12px', borderRadius: '999px', background: 'rgba(15, 23, 42, 0.58)', border: '1px solid rgba(148,163,184,0.18)', color: '#93c5fd', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '.08em' }}>
-                  <Radar size={14} />
-                  Team Operations
-                </div>
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 12px', borderRadius: '999px', background: `${insight.color}18`, border: `1px solid ${insight.color}44`, fontSize: '11px', fontWeight: '700', color: insight.color }}>
-                  <div style={{ width: 7, height: 7, borderRadius: '50%', background: insight.color }} />
-                  {insight.label}
-                </div>
-              </div>
-              <h1 style={{ marginTop: '14px', color: 'white', fontSize: '24px', lineHeight: 1.2, maxWidth: '700px', fontWeight: '700' }}>
-                {insight.headline}
-              </h1>
-              <p style={{ marginTop: '8px', color: '#94a3b8', fontSize: '14px', maxWidth: '660px', lineHeight: 1.6 }}>
-                {insight.body}
-              </p>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: '12px' }}>
-              {[
-                { label: 'Team Size', sub: 'Active members', value: members.length, icon: Users, accent: '#38bdf8' },
-                { label: 'Available', sub: 'Ready for assignment', value: availableCount, icon: Activity, accent: '#22c55e' },
-                { label: 'At Risk', sub: 'Busy or overloaded', value: busyCount, icon: Briefcase, accent: '#f97316' },
-                { label: 'Lead PICs', sub: 'Members owning sites', value: picLeads, icon: TrendingUp, accent: '#a855f7' },
-              ].map(({ label, sub, value, icon: Icon, accent }) => (
-                <div
-                  key={label}
-                  style={{
-                    padding: '15px 16px',
-                    borderRadius: '20px',
-                    background: 'rgba(15, 23, 42, 0.62)',
-                    border: '1px solid rgba(148,163,184,0.14)',
-                    backdropFilter: 'blur(10px)',
-                    minHeight: '112px',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '12px' }}>
-                    <div>
-                      <p style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: '700' }}>{label}</p>
-                      <p style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>{sub}</p>
-                    </div>
-                    <div style={{ width: '42px', height: '42px', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: `${accent}22`, border: `1px solid ${accent}44` }}>
-                      <Icon size={18} color={accent} />
-                    </div>
-                  </div>
-                  <p style={{ color: 'white', fontSize: '27px', fontWeight: '800', lineHeight: 1 }}>{value}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : '300px minmax(0, 1fr) 280px', gap: '16px', alignItems: 'start' }}>
-          <div
-            style={{
-              position: 'sticky',
-              top: '18px',
-              background: 'rgba(8, 15, 28, 0.88)',
-              borderRadius: '24px',
-              border: '1px solid rgba(148,163,184,0.12)',
-              overflow: 'hidden',
-              boxShadow: '0 18px 40px rgba(2, 6, 23, 0.26)',
-            }}
-          >
-              <div style={{ padding: '16px 16px 14px', borderBottom: '1px solid rgba(148,163,184,0.08)' }}>
-                <p style={{ fontSize: '12px', color: '#e2e8f0', fontWeight: '700' }}>Team Members</p>
-                <p style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Search and switch between individual workload views.</p>
-                <div style={{ position: 'relative', marginTop: '14px' }}>
-                <Search size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
-                <input
-                  placeholder="Search member..."
-                  value={search}
-                  onChange={event => setSearch(event.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px 10px 36px',
-                    borderRadius: '12px',
-                    border: '1px solid rgba(148,163,184,0.14)',
-                    fontSize: '13px',
-                    outline: 'none',
-                    color: '#e2e8f0',
-                    background: 'rgba(15,23,42,0.86)',
-                    boxSizing: 'border-box',
-                  }}
-                />
-              </div>
-            </div>
-
-            <div style={{ maxHeight: '72vh', overflowY: 'auto', padding: '10px' }}>
-              {filteredMembers.map((member, index) => {
-                const isSelected = selected?.id === member.id
-                const colors = member.workload.status_colors
-                const leaveMeta = getMemberLeaveMeta(member)
-
-                return (
-                  <div
-                    key={member.id}
-                    onClick={() => { setSelectedId(member.id); setEditingIc(false); setEditingLegal(false) }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      padding: '13px',
-                      cursor: 'pointer',
-                      borderRadius: '18px',
-                      marginBottom: '8px',
-                      background: isSelected ? 'linear-gradient(135deg, rgba(30,64,175,0.34), rgba(15,23,42,0.92))' : 'rgba(15,23,42,0.72)',
-                      border: `1px solid ${isSelected ? 'rgba(96,165,250,0.42)' : 'rgba(148,163,184,0.08)'}`,
-                      boxShadow: isSelected ? '0 16px 36px rgba(37, 99, 235, 0.18)' : 'none',
-                    }}
-                  >
-                    <Avatar name={member.full_name} size={42} index={index} avatarUrl={member.avatar_url} onUpload={isZairul ? () => triggerAvatarUpload(member.id) : null} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontWeight: '600', fontSize: '13px', color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{member.full_name}</p>
-                      <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{member.role}</p>
-                      {leaveMeta && (
-                        <p style={{ fontSize: '10px', color: leaveMeta.text, marginTop: '6px', fontWeight: '800', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {leaveMeta.label}: {leaveMeta.summary}
-                        </p>
-                      )}
-                      <div style={{ height: '6px', background: 'rgba(148,163,184,0.14)', borderRadius: '999px', overflow: 'hidden', marginTop: '10px' }}>
-                        <div style={{ height: '100%', width: `${Math.min(member.workload.workload_percentage, 100)}%`, background: colors.bar, borderRadius: '999px' }} />
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
-                      <span style={{ background: colors.bg, color: colors.text, border: `1px solid ${colors.border}`, padding: '2px 8px', borderRadius: '999px', fontSize: '10px', fontWeight: '700', whiteSpace: 'nowrap' }}>{member.workload.status}</span>
-                      <span style={{ fontSize: '11px', color: '#cbd5e1', fontWeight: '700' }}>{member.workload.workload_percentage}%</span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-
-            <div style={{ padding: '12px 16px 15px', borderTop: '1px solid rgba(148,163,184,0.08)' }}>
-              <p style={{ fontSize: '11px', color: '#64748b' }}>Showing {filteredMembers.length} of {members.length} members</p>
-            </div>
-          </div>
-
-          {selected && (
-            <div style={{ display: 'grid', gap: '16px', minWidth: 0 }}>
-              <div
-                style={{
-                  background: 'linear-gradient(180deg, rgba(15,23,42,0.96) 0%, rgba(8,15,28,0.94) 100%)',
-                  borderRadius: '28px',
-                  border: '1px solid rgba(148,163,184,0.12)',
-                  padding: '22px',
-                  boxShadow: '0 20px 44px rgba(2, 6, 23, 0.3)',
-                }}
-              >
-                <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : 'minmax(0, 1.08fr) minmax(240px, 0.92fr)', gap: '16px', alignItems: 'stretch' }}>
-                  <div
-                    style={{
-                      padding: '20px',
-                      borderRadius: '24px',
-                      background: 'linear-gradient(135deg, rgba(30,64,175,0.28) 0%, rgba(15,23,42,0.78) 72%)',
-                      border: '1px solid rgba(96,165,250,0.18)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px' }}>
-                      <div style={{ display: 'flex', gap: '16px' }}>
-                        <Avatar name={selected.full_name} size={68} index={selectedIndex} avatarUrl={selected.avatar_url} onUpload={isZairul ? () => triggerAvatarUpload(selected.id) : null} />
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px', flexWrap: 'wrap' }}>
-                            <h2 style={{ fontSize: '23px', fontWeight: '800', color: 'white' }}>{selected.full_name}</h2>
-                            <span style={{ background: workloadStatus.bg, color: workloadStatus.text, border: `1px solid ${workloadStatus.border}`, padding: '4px 10px', borderRadius: '999px', fontSize: '11px', fontWeight: '700' }}>{selected.workload.status}</span>
-                            {selectedUpcomingLeave && (
-                              <span style={{ background: selectedLeaveToday ? 'rgba(239,68,68,0.16)' : 'rgba(59,130,246,0.16)', color: selectedLeaveToday ? '#fca5a5' : '#93c5fd', border: `1px solid ${selectedLeaveToday ? 'rgba(248,113,113,0.28)' : 'rgba(96,165,250,0.28)'}`, padding: '4px 10px', borderRadius: '999px', fontSize: '11px', fontWeight: '800' }}>
-                                {selectedLeaveToday ? 'On Leave' : 'Taking Leave Soon'}
-                              </span>
-                            )}
-                          </div>
-                          <p style={{ color: '#cbd5e1', fontSize: '14px' }}>{selected.role}</p>
-                          <p style={{ color: '#94a3b8', fontSize: '12px', marginTop: '4px' }}>
-                            {selected.full_name.toLowerCase().replace(/\s+/g, '.')}@xyte.com
-                          </p>
-                          {/* IC Number */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
-                            {editingIc ? (
-                              <>
-                                <input
-                                  autoFocus
-                                  value={icValue}
-                                  onChange={e => setIcValue(e.target.value)}
-                                  onKeyDown={e => { if (e.key === 'Enter') saveIcNumber(selected.id); if (e.key === 'Escape') setEditingIc(false) }}
-                                  placeholder="e.g. 900101-14-1234"
-                                  style={{ padding: '4px 10px', borderRadius: '7px', border: '1px solid #3b82f6', fontSize: '12px', background: 'rgba(255,255,255,0.08)', color: 'white', outline: 'none', width: '160px' }}
-                                />
-                                <button onClick={() => saveIcNumber(selected.id)} disabled={savingIc} style={{ padding: '4px 10px', borderRadius: '7px', background: '#2563eb', border: 'none', color: 'white', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}>
-                                  {savingIc ? '…' : 'Save'}
-                                </button>
-                                <button onClick={() => setEditingIc(false)} style={{ padding: '4px 8px', borderRadius: '7px', background: 'rgba(255,255,255,0.08)', border: 'none', color: '#94a3b8', fontSize: '11px', cursor: 'pointer' }}>Cancel</button>
-                              </>
-                            ) : (
-                              <>
-                                <span style={{ fontSize: '12px', color: selected.ic_number ? '#94a3b8' : '#475569' }}>
-                                  IC: {selected.ic_number || '—'}
-                                </span>
-                                {isZairul && (
-                                  <button onClick={() => { setIcValue(selected.ic_number || ''); setEditingIc(true) }} style={{ padding: '2px 8px', borderRadius: '6px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#94a3b8', fontSize: '10px', fontWeight: '600', cursor: 'pointer' }}>Edit</button>
-                                )}
-                              </>
-                            )}
-                          </div>
-                          {/* Legal Name */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '5px' }}>
-                            {editingLegal ? (
-                              <>
-                                <input
-                                  autoFocus
-                                  value={legalValue}
-                                  onChange={e => setLegalValue(e.target.value)}
-                                  onKeyDown={e => { if (e.key === 'Enter') saveLegalName(selected.id); if (e.key === 'Escape') setEditingLegal(false) }}
-                                  placeholder="Full legal name as per IC"
-                                  style={{ padding: '4px 10px', borderRadius: '7px', border: '1px solid #3b82f6', fontSize: '12px', background: 'rgba(255,255,255,0.08)', color: 'white', outline: 'none', width: '220px' }}
-                                />
-                                <button onClick={() => saveLegalName(selected.id)} disabled={savingLegal} style={{ padding: '4px 10px', borderRadius: '7px', background: '#2563eb', border: 'none', color: 'white', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}>
-                                  {savingLegal ? '…' : 'Save'}
-                                </button>
-                                <button onClick={() => setEditingLegal(false)} style={{ padding: '4px 8px', borderRadius: '7px', background: 'rgba(255,255,255,0.08)', border: 'none', color: '#94a3b8', fontSize: '11px', cursor: 'pointer' }}>Cancel</button>
-                              </>
-                            ) : (
-                              <>
-                                <span style={{ fontSize: '12px', color: selected.legal_name ? '#94a3b8' : '#475569' }}>
-                                  Full name: {selected.legal_name || '—'}
-                                </span>
-                                {isZairul && (
-                                  <button onClick={() => { setLegalValue(selected.legal_name || ''); setEditingLegal(true) }} style={{ padding: '2px 8px', borderRadius: '6px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#94a3b8', fontSize: '10px', fontWeight: '600', cursor: 'pointer' }}>Edit</button>
-                                )}
-                              </>
-                            )}
-                          </div>
-                          {selectedUpcomingLeave && (
-                            <p style={{ color: selectedLeaveToday ? '#fca5a5' : '#93c5fd', fontSize: '12px', marginTop: '8px', fontWeight: '700' }}>
-                              {getLeaveSummary(selectedUpcomingLeave)}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: '12px', marginTop: '20px' }}>
-                      {[
-                        { label: 'PIC Lead', sub: 'Sites owned', value: selected.pic_count, color: '#60a5fa', bg: 'rgba(37,99,235,0.18)' },
-                        { label: 'Crew', sub: 'Supporting assignments', value: selected.crew_count, color: '#c084fc', bg: 'rgba(168,85,247,0.16)' },
-                        { label: 'Reports', sub: 'Pending or in flow', value: reportQueue.length, color: '#34d399', bg: 'rgba(16,185,129,0.16)' },
-                      ].map(({ label, sub, value, color, bg }) => (
-                        <div key={label} style={{ background: bg, border: `1px solid ${color}22`, borderRadius: '20px', padding: '15px' }}>
-                          <p style={{ color, fontSize: '27px', fontWeight: '800', lineHeight: 1 }}>{value}</p>
-                          <p style={{ color: 'white', fontSize: '13px', fontWeight: '700', marginTop: '8px' }}>{label}</p>
-                          <p style={{ color: '#94a3b8', fontSize: '11px', marginTop: '4px' }}>{sub}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      padding: '20px',
-                      borderRadius: '24px',
-                      background: 'rgba(15,23,42,0.78)',
-                      border: '1px solid rgba(148,163,184,0.12)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-                      <p style={{ color: 'white', fontSize: '14px', fontWeight: '700' }}>Capacity Meter</p>
-                      <span style={{ color: '#e2e8f0', fontSize: '26px', fontWeight: '800', lineHeight: 1 }}>{selected.workload.workload_percentage}%</span>
-                    </div>
-
-                    <div style={{ height: '14px', background: 'rgba(148,163,184,0.12)', borderRadius: '999px', overflow: 'hidden', marginBottom: '10px' }}>
-                      <div style={{ height: '100%', width: `${progressBarWidth}%`, background: workloadStatus.bar, borderRadius: '999px', transition: 'width 0.5s ease' }} />
-                    </div>
-
-                    <p style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.6 }}>
-                      {selected.workload.workload_percentage}% of weekly capacity is already committed across live site work and report delivery.
-                    </p>
-
-                    <div style={{ marginTop: '16px', display: 'grid', gap: '10px' }}>
-                      {[
-                        { dot: '#22c55e', label: 'Available', desc: '0-50% weekly allocation' },
-                        { dot: '#eab308', label: 'Normal', desc: '51-80% active load' },
-                        { dot: '#f97316', label: 'Busy', desc: '81-100% close to limit' },
-                        { dot: '#ef4444', label: 'Overloaded', desc: 'Above 100% needs rebalance' },
-                      ].map(({ dot, label, desc }) => (
-                        <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: dot, flexShrink: 0 }} />
-                          <div>
-                            <p style={{ color: '#e2e8f0', fontSize: '12px', fontWeight: '600' }}>{label}</p>
-                            <p style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>{desc}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : 'minmax(0, 1.05fr) minmax(240px, 0.95fr)', gap: '16px' }}>
-                <div
-                  style={{
-                    background: 'rgba(8, 15, 28, 0.92)',
-                    borderRadius: '24px',
-                    border: '1px solid rgba(148,163,184,0.12)',
-                    overflow: 'hidden',
-                  }}
-                >
-                  <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(148,163,184,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-                    <div>
-                      <p style={{ color: 'white', fontSize: '14px', fontWeight: '700' }}>Assignment Board</p>
-                      <p style={{ color: '#64748b', fontSize: '11px', marginTop: '4px' }}>Active sites and open reports for this member.</p>
-                    </div>
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#93c5fd', fontSize: '11px', fontWeight: '700', padding: '6px 10px', borderRadius: '999px', background: 'rgba(37,99,235,0.14)', border: '1px solid rgba(96,165,250,0.22)' }}>
-                      <Clock size={13} />
-                      {assignmentBoardSites.length} active
-                    </div>
-                  </div>
-
-                  <div style={{ padding: '14px', maxHeight: '420px', overflowY: 'auto' }}>
-                    {assignmentBoardSites.length === 0 ? (
-                      <p style={{ padding: '24px', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>No active assignments or open reports.</p>
-                    ) : assignmentBoardSites.map(site => {
-                      const role = getMemberRole(selected.id, site.site_assignments)
-                      const roleTone = getRoleTone(role)
-                      const typeTone = getSiteTypeTone(site.site_type)
-                      const siteStatus = String(site.site_status || '').toLowerCase()
-                      const reportStatus = String(site.report_status || '').toLowerCase()
-                      const hasOpenReport = ['pending', 'in_progress', 'submitted'].includes(reportStatus)
-                      const isActive = ['upcoming', 'ongoing'].includes(siteStatus)
-
-                      const REPORT_COLORS = {
-                        pending:     { bg: 'rgba(239,68,68,0.16)',  text: '#fca5a5', border: 'rgba(239,68,68,0.3)'  },
-                        in_progress: { bg: 'rgba(245,158,11,0.16)', text: '#fcd34d', border: 'rgba(245,158,11,0.3)' },
-                        submitted:   { bg: 'rgba(168,85,247,0.16)', text: '#d8b4fe', border: 'rgba(168,85,247,0.3)' },
-                      }
-                      const SITE_STATUS_COLORS = {
-                        upcoming: { bg: 'rgba(56,189,248,0.14)', text: '#7dd3fc', border: 'rgba(56,189,248,0.28)' },
-                        ongoing:  { bg: 'rgba(34,197,94,0.14)',  text: '#86efac', border: 'rgba(34,197,94,0.28)'  },
-                      }
-                      const statusChip = SITE_STATUS_COLORS[siteStatus]
-                      const reportChip = REPORT_COLORS[reportStatus]
-
-                      return (
-                        <div
-                          key={site.id}
-                          style={{
-                            padding: '13px',
-                            borderRadius: '18px',
-                            background: 'linear-gradient(135deg, rgba(15,23,42,0.84), rgba(15,23,42,0.64))',
-                            border: '1px solid rgba(148,163,184,0.10)',
-                            marginBottom: '10px',
-                          }}
-                        >
-                          {/* Top row: name + type + role */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
-                            <p style={{ color: 'white', fontSize: '13px', fontWeight: '700', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{site.site_name}</p>
-                            <span style={{ background: typeTone.bg, color: typeTone.text, border: `1px solid ${typeTone.border}`, borderRadius: '999px', padding: '2px 8px', fontSize: '10px', fontWeight: '700', flexShrink: 0 }}>
-                              {SITE_TYPE_LABELS[String(site.site_type || '').toLowerCase()] || 'Site'}
-                            </span>
-                            <span style={{ background: roleTone.bg, color: roleTone.text, border: `1px solid ${roleTone.border}`, padding: '2px 8px', borderRadius: '999px', fontSize: '10px', fontWeight: '700', flexShrink: 0 }}>{role}</span>
-                          </div>
-
-                          {/* Location + date */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '10px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', minWidth: 0, flex: 1 }}>
-                              <MapPin size={11} color="#64748b" style={{ flexShrink: 0 }} />
-                              <span style={{ fontSize: '11px', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{site.location || '—'}</span>
-                            </div>
-                            <span style={{ fontSize: '11px', color: '#475569', flexShrink: 0 }}>{formatDate(site.scheduled_date)}</span>
-                          </div>
-
-                          {/* Rotating crew — only the days this person is actually on */}
-                          {hasDailyCrew(site.site_assignments || []) && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                              <span style={{ fontSize: '10px', fontWeight: '800', color: '#64748b', letterSpacing: '.05em' }}>YOUR DAYS</span>
-                              {memberDatesOnSite(site, selected.id).map(date => (
-                                <span key={date} style={{ background: 'rgba(37,99,235,0.16)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.28)', padding: '2px 8px', borderRadius: '999px', fontSize: '10px', fontWeight: '700' }}>
-                                  {formatDayLabel(date)}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-
-                          {/* Status chips */}
-                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                            {statusChip && (
-                              <span style={{ background: statusChip.bg, color: statusChip.text, border: `1px solid ${statusChip.border}`, padding: '2px 9px', borderRadius: '999px', fontSize: '10px', fontWeight: '700', textTransform: 'capitalize' }}>
-                                {siteStatus}
-                              </span>
-                            )}
-                            {hasOpenReport && reportChip && (
-                              <span style={{ background: reportChip.bg, color: reportChip.text, border: `1px solid ${reportChip.border}`, padding: '2px 9px', borderRadius: '999px', fontSize: '10px', fontWeight: '700', textTransform: 'capitalize' }}>
-                                Report: {reportStatus.replace('_', ' ')}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gap: '16px' }}>
-                  <div
-                    style={{
-                      background: 'rgba(8, 15, 28, 0.92)',
-                      borderRadius: '24px',
-                      border: '1px solid rgba(148,163,184,0.12)',
-                      overflow: 'hidden',
-                    }}
-                  >
-                    <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(148,163,184,0.08)' }}>
-                      <p style={{ color: 'white', fontSize: '14px', fontWeight: '700' }}>Recent Activity</p>
-                    </div>
-                    <div style={{ padding: '16px 18px' }}>
-                      {activity.length === 0 ? (
-                        <p style={{ padding: '12px 0', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>No recent activity.</p>
-                      ) : activity.map((item, index) => (
-                        <div key={index} style={{ display: 'flex', gap: '12px', marginBottom: index === activity.length - 1 ? '0' : '16px' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                            <div style={{ width: '9px', height: '9px', borderRadius: '50%', background: item.color, marginTop: '4px' }} />
-                            {index < activity.length - 1 && <div style={{ width: '1px', flex: 1, background: 'rgba(148,163,184,0.16)', marginTop: '5px' }} />}
-                          </div>
-                          <div>
-                            <p style={{ color: '#e2e8f0', fontSize: '12px', fontWeight: '700' }}>{item.action}</p>
-                            <p style={{ color: '#94a3b8', fontSize: '11px', marginTop: '2px' }}>{item.site}</p>
-                            <p style={{ color: '#64748b', fontSize: '10px', marginTop: '3px' }}>{item.time}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      background: 'rgba(8, 15, 28, 0.92)',
-                      borderRadius: '24px',
-                      border: '1px solid rgba(148,163,184,0.12)',
-                      overflow: 'hidden',
-                    }}
-                  >
-                    <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(148,163,184,0.08)' }}>
-                      <p style={{ color: 'white', fontSize: '14px', fontWeight: '700' }}>Delivery Snapshot</p>
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: '12px', padding: '16px 18px' }}>
-                      {[
-                        { label: 'Active', value: activeSites.length, icon: Activity, color: '#38bdf8' },
-                        { label: 'Completed', value: completedSites.length, icon: Briefcase, color: '#22c55e' },
-                        { label: 'Reports', value: reportQueue.length, icon: FileText, color: '#f59e0b' },
-                        { label: 'Coverage', value: `${selectedSites.length} sites`, icon: MapPin, color: '#a855f7' },
-                      ].map(({ label, value, icon: Icon, color }) => (
-                        <div key={label} style={{ borderRadius: '18px', padding: '13px', background: 'rgba(15,23,42,0.72)', border: '1px solid rgba(148,163,184,0.08)' }}>
-                          <div style={{ width: '38px', height: '38px', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: `${color}22`, border: `1px solid ${color}33` }}>
-                            <Icon size={16} color={color} />
-                          </div>
-                          <p style={{ color: 'white', fontSize: '22px', fontWeight: '800', marginTop: '14px', lineHeight: 1 }}>{value}</p>
-                          <p style={{ color: '#94a3b8', fontSize: '11px', marginTop: '5px' }}>{label}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: isTablet ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: '16px', alignItems: 'start' }}>
-                <div
-                  style={{
-                    background: 'rgba(8, 15, 28, 0.92)',
-                    borderRadius: '24px',
-                    border: '1px solid rgba(148,163,184,0.12)',
-                    overflow: 'hidden',
-                    minWidth: 0,
-                  }}
-                >
-                  <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(148,163,184,0.08)' }}>
-                    <p style={{ color: 'white', fontSize: '14px', fontWeight: '700' }}>Team Pulse</p>
-                    <p style={{ color: '#64748b', fontSize: '11px', marginTop: '4px' }}>Fast view of who needs capacity attention.</p>
-                  </div>
-
-                  <div style={{ padding: '14px' }}>
-                    {topLoadMembers.map((member, index) => {
-                      const colors = member.workload.status_colors
-                      const leaveMeta = getMemberLeaveMeta(member)
-
-                      return (
-                        <div key={member.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '11px 12px', marginBottom: '8px', borderRadius: '18px', background: 'rgba(15,23,42,0.72)', border: '1px solid rgba(148,163,184,0.08)' }}>
-                          <Avatar name={member.full_name} size={38} index={index} avatarUrl={member.avatar_url} onUpload={isZairul ? () => triggerAvatarUpload(member.id) : null} />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <p style={{ color: '#e2e8f0', fontSize: '12px', fontWeight: '700', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.full_name}</p>
-                            {leaveMeta && (
-                              <p style={{ color: leaveMeta.text, fontSize: '10px', marginTop: '4px', fontWeight: '800', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {leaveMeta.summary}
-                              </p>
-                            )}
-                            <div style={{ height: '6px', background: 'rgba(148,163,184,0.12)', borderRadius: '999px', overflow: 'hidden', marginTop: '8px' }}>
-                              <div style={{ width: `${Math.min(member.workload.workload_percentage, 100)}%`, height: '100%', background: colors.bar, borderRadius: '999px' }} />
-                            </div>
-                          </div>
-                          <div style={{ textAlign: 'right' }}>
-                            <p style={{ color: 'white', fontSize: '12px', fontWeight: '800' }}>{member.workload.workload_percentage}%</p>
-                            <p style={{ color: '#64748b', fontSize: '10px', marginTop: '3px' }}>{member.workload.status}</p>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    background: 'rgba(8, 15, 28, 0.92)',
-                    borderRadius: '24px',
-                    border: '1px solid rgba(148,163,184,0.12)',
-                    overflow: 'hidden',
-                    minWidth: 0,
-                  }}
-                >
-                  <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(148,163,184,0.08)' }}>
-                    <p style={{ color: 'white', fontSize: '14px', fontWeight: '700' }}>Capacity Radar</p>
-                  </div>
-
-                  <div style={{ padding: '16px 18px' }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '10px', minHeight: '120px' }}>
-                      {teamRadar.length === 0 ? (
-                        <p style={{ color: '#64748b', fontSize: '13px', width: '100%', textAlign: 'center' }}>No assignments yet.</p>
-                      ) : teamRadar.map((member, index) => (
-                        <div key={member.id} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                          <div style={{ height: '98px', display: 'flex', alignItems: 'flex-end' }}>
-                            <div
-                              style={{
-                                width: '22px',
-                                height: `${Math.max(18, Math.min(member.workload.workload_percentage, 100))}%`,
-                                minHeight: '18px',
-                                borderRadius: '999px',
-                                background: member.workload.status_colors.bar,
-                                boxShadow: `0 10px 24px ${member.workload.status_colors.bar}33`,
-                              }}
-                            />
-                          </div>
-                          <div style={{ width: '100%' }}>
-                            <p style={{ color: '#e2e8f0', fontSize: '10px', fontWeight: '700', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {member.full_name.split(' ')[0]}
-                            </p>
-                            <p style={{ color: '#64748b', fontSize: '10px', textAlign: 'center', marginTop: '3px' }}>{member.workload.workload_percentage}%</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid rgba(148,163,184,0.08)' }}>
-                      <p style={{ color: 'white', fontSize: '22px', fontWeight: '800', lineHeight: 1 }}>{avgWorkload}%</p>
-                      <p style={{ color: '#94a3b8', fontSize: '11px', marginTop: '6px' }}>Average workload across the team right now.</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    background: 'rgba(8, 15, 28, 0.92)',
-                    borderRadius: '24px',
-                    border: '1px solid rgba(148,163,184,0.12)',
-                    overflow: 'hidden',
-                    minWidth: 0,
-                  }}
-                >
-                  <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(148,163,184,0.08)' }}>
-                    <p style={{ color: 'white', fontSize: '14px', fontWeight: '700' }}>Leave Watch</p>
-                  </div>
-                  <div style={{ padding: '16px 18px', display: 'grid', gap: '12px' }}>
-                    {membersOnLeaveToday.length === 0 && upcomingLeaves.length === 0 ? (
-                      [
-                        `${availableCount} members are currently available for new assignments.`,
-                        `${busyCount} members are close to or above their weekly limit.`,
-                        `${picLeads} people are acting as PIC across current site coverage.`,
-                      ].map(note => (
-                        <div key={note} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                          <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#38bdf8', marginTop: '6px', flexShrink: 0 }} />
-                          <p style={{ color: '#94a3b8', fontSize: '12px', lineHeight: 1.6 }}>{note}</p>
-                        </div>
-                      ))
-                    ) : (
-                      <>
-                        {membersOnLeaveToday.slice(0, 3).map(({ member, leave }) => (
-                          <div key={member.id} style={{ padding: '12px', borderRadius: '16px', background: 'rgba(15,23,42,0.72)', border: '1px solid rgba(96,165,250,0.16)' }}>
-                            <p style={{ color: '#f8fafc', fontSize: '12px', fontWeight: '700' }}>{member.full_name}</p>
-                            <p style={{ color: '#93c5fd', fontSize: '11px', marginTop: '4px', fontWeight: '700', lineHeight: 1.5 }}>{getLeaveSummary(leave)}</p>
-                          </div>
-                        ))}
-                        {upcomingLeaves.slice(0, 3).map(({ member, leave }) => (
-                          <div key={leave.id} style={{ padding: '12px', borderRadius: '16px', background: 'rgba(15,23,42,0.72)', border: '1px solid rgba(148,163,184,0.12)' }}>
-                            <p style={{ color: '#f8fafc', fontSize: '12px', fontWeight: '700' }}>{member.full_name}</p>
-                            <p style={{ color: '#cbd5e1', fontSize: '11px', marginTop: '4px', fontWeight: '700', lineHeight: 1.5 }}>{getLeaveSummary(leave)}</p>
-                          </div>
-                        ))}
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div style={{ display: 'grid', gap: '16px' }}>
-            <div
-              style={{
-                background: 'rgba(8, 15, 28, 0.92)',
-                borderRadius: '24px',
-                border: '1px solid rgba(148,163,184,0.12)',
-                overflow: 'hidden',
-              }}
-            >
-              <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(148,163,184,0.08)' }}>
-                <p style={{ color: 'white', fontSize: '14px', fontWeight: '700' }}>Ranking Board</p>
-                <p style={{ color: '#64748b', fontSize: '11px', marginTop: '4px' }}>PIC, crew, and report involvement across the team.</p>
-              </div>
-
-              <div style={{ padding: '14px', display: 'grid', gap: '12px' }}>
-                {rankingGroups.map(group => (
-                  <div key={group.key} style={{ borderRadius: '18px', padding: '13px', background: 'rgba(15,23,42,0.72)', border: '1px solid rgba(148,163,184,0.08)' }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px', marginBottom: '10px' }}>
-                      <div>
-                        <p style={{ color: 'white', fontSize: '12px', fontWeight: '700' }}>{group.title}</p>
-                        <p style={{ color: '#64748b', fontSize: '10px', marginTop: '3px' }}>{group.subtitle}</p>
-                      </div>
-                      <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: group.accent, flexShrink: 0, marginTop: '4px' }} />
-                    </div>
-
-                    {group.rows.length === 0 ? (
-                      <p style={{ color: '#64748b', fontSize: '12px', padding: '6px 0' }}>{group.emptyLabel}</p>
-                    ) : (
-                      <div style={{ display: 'grid', gap: '8px' }}>
-                        {group.rows.map((member, index) => (
-                          <div key={member.id} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <div style={{ width: '22px', height: '22px', borderRadius: '999px', background: `${group.accent}22`, border: `1px solid ${group.accent}33`, color: group.accent, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: '800', flexShrink: 0 }}>
-                              {index + 1}
-                            </div>
-                            <Avatar name={member.full_name} size={30} index={index} avatarUrl={member.avatar_url} onUpload={isZairul ? () => triggerAvatarUpload(member.id) : null} />
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <p style={{ color: '#e2e8f0', fontSize: '12px', fontWeight: '700', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.full_name}</p>
-                              <p style={{ color: '#64748b', fontSize: '10px', marginTop: '3px' }}>{member.value} time{member.value === 1 ? '' : 's'}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {group.selectedEntry && (
-                      <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid rgba(148,163,184,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-                        <span style={{ color: '#94a3b8', fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '.08em' }}>Selected member</span>
-                        <span style={{ color: '#e2e8f0', fontSize: '11px', fontWeight: '700' }}>#{group.selectedEntry.rank} • {group.selectedEntry.value} time{group.selectedEntry.value === 1 ? '' : 's'}</span>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-          </div>
-        </div>
+  if (loading) return (
+    <div className="tm" style={{ display: 'grid', placeItems: 'center' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#64748b', fontSize: 14, fontWeight: 600 }}>
+        <div className="w-4 h-4 rounded-full border-2 border-slate-300 border-t-blue-500 animate-spin" />
+        Loading team…
       </div>
     </div>
   )
+
+  const ctx = { members, today, thisWeekDates, weekDates, dayStatus, weekLoad, siteColor, open: setOpenId, startUpload }
+  const weekNav = (
+    <div className="tm-seg">
+      <button onClick={() => setWeekStart(addDays(weekStart, -7))}>‹ Prev</button>
+      <button className={weekStart === thisWeek ? 'on' : ''} onClick={() => setWeekStart(thisWeek)}>This week</button>
+      <button onClick={() => setWeekStart(addDays(weekStart, 7))}>Next ›</button>
+    </div>
+  )
+  const selected = members.find(m => m.id === openId)
+
+  return (
+    <div className="tm">
+      <div className="tm-wrap">
+        <div className="tm-top">
+          <div>
+            <h1>Team</h1>
+            <p>{fmtDay(today, { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })} · {members.length} members</p>
+          </div>
+          <div className="tm-tabs" role="tablist">
+            {VIEWS.map(v => (
+              <button key={v.key} role="tab" aria-selected={view === v.key} className={view === v.key ? 'on' : ''} onClick={() => setView(v.key)}>{v.label}</button>
+            ))}
+          </div>
+        </div>
+
+        {view === 'roster'  && <RosterView {...ctx} />}
+        {view === 'week'    && <WeekBoard {...ctx} weekNav={weekNav} />}
+        {view === 'where'   && <WhereView {...ctx} weekNav={weekNav} />}
+        {view === 'ranking' && <Leaderboard {...ctx} />}
+      </div>
+
+      {selected && (
+        <ProfileDrawer
+          m={selected}
+          {...ctx}
+          sites={sites}
+          leaves={leaves}
+          isAdmin={isZairul}
+          saveField={saveField}
+          onClose={() => setOpenId(null)}
+        />
+      )}
+      <input ref={avatarInput} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatar} />
+    </div>
+  )
+}
+
+// ── small shared renderers ──
+function statusTone(status, siteColor) {
+  if (status.kind === 'site') { const c = siteColor(status.jobs[0].site.id); return { c, bg: `${c}14` } }
+  if (status.kind === 'leave') return { c: '#991b1b', bg: '#fef2f2' }
+  if (status.kind === 'holiday') return { c: '#b45309', bg: '#fffbeb' }
+  return { c: '#475569', bg: '#f1f5f9' }
+}
+const statusText = s => s.kind === 'site' ? s.jobs.map(j => j.site.site_name).join(' + ') : s.label
+const isPicOn = s => s.kind === 'site' && s.jobs.some(j => j.role === 'PIC')
+const dotStyle = (s, siteColor) =>
+  s.kind === 'site' ? { background: siteColor(s.jobs[0].site.id) }
+    : s.kind === 'store' ? { background: '#94a3b8' }
+    : s.kind === 'leave' ? { background: '#fca5a5' }
+    : {}
+
+function WeekStrip({ m, dates, today, dayStatus, siteColor }) {
+  return (
+    <div className="tm-wk">
+      {dates.map((d, i) => (
+        <div key={d} className={d === today ? 'today' : ''} title={`${DAY_NAMES[i]} ${fmtDay(d)} · ${statusText(dayStatus(m.id, d))}`}>
+          {DAY_NAMES[i][0]}<span style={dotStyle(dayStatus(m.id, d), siteColor)} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function nextJobLabel(m, today, dayStatus) {
+  const now = dayStatus(m.id, today)
+  const nowIds = now.kind === 'site' ? now.jobs.map(j => j.site.id).join() : ''
+  for (let i = 1; i <= 14; i++) {
+    const d = addDays(today, i)
+    const s = dayStatus(m.id, d)
+    if (s.kind === 'site' && s.jobs.map(j => j.site.id).join() !== nowIds) {
+      return `${fmtDay(d, { weekday: 'short' })} ${dayNum(d)} · ${statusText(s)}${isPicOn(s) ? ' (PIC)' : ''}`
+    }
+  }
+  return 'Nothing booked in the next 2 weeks'
+}
+
+// ── 1. Roster ──
+function RosterView({ members, today, thisWeekDates, dayStatus, weekLoad, siteColor, open, startUpload }) {
+  const todays = members.map(m => dayStatus(m.id, today))
+  const onSite = todays.filter(s => s.kind === 'site').length
+  const locations = new Set(todays.filter(s => s.kind === 'site').flatMap(s => s.jobs.map(j => j.site.id))).size
+  const openReports = members.reduce((a, m) => a + m.open, 0)
+  return <>
+    <div className="tm-bar"><div><h2>Everyone at a glance</h2><p>Tap a card for the full profile and schedule</p></div></div>
+    <div className="tm-roster">
+      {members.map((m, i) => {
+        const s = todays[i]
+        const tone = statusTone(s, siteColor)
+        const load = weekLoad(m.id, thisWeekDates)
+        return (
+          <button key={m.id} className="tm-card tm-rc" onClick={() => open(m.id)}>
+            <div className="tm-rc-top">
+              <Avatar m={m} size={52} onUpload={startUpload && (() => startUpload(m.id))} />
+              <div><div className="tm-rc-name">{m.full_name}</div><div className="tm-rc-role">{m.role || 'Member'} <Tags m={m} /></div></div>
+            </div>
+            <div className="tm-rc-today" style={{ background: tone.bg, color: tone.c }}>
+              <small>Today</small><b>{statusText(s)}</b>{isPicOn(s) && <> <span className="tm-tag pic">PIC</span></>}
+            </div>
+            <div>
+              <WeekStrip m={m} dates={thisWeekDates} today={today} dayStatus={dayStatus} siteColor={siteColor} />
+              <div className="tm-rc-load"><span>This week</span><b style={{ color: loadColor(load.pct) }}>{load.onSite}/{load.work} days on site</b></div>
+              <div className="tm-progress"><i style={{ width: `${Math.min(load.pct, 100)}%`, background: loadColor(load.pct) }} /></div>
+            </div>
+            <div className="tm-rc-stats">
+              <div><b>{m.sites}</b><small>Sites</small></div>
+              <div><b>{m.pic}</b><small>As PIC</small></div>
+              <div><b style={{ color: m.open ? 'var(--amber)' : undefined }}>{m.open}</b><small>Open rpt</small></div>
+            </div>
+            <div className="tm-rc-next">Next: <b>{nextJobLabel(m, today, dayStatus)}</b></div>
+          </button>
+        )
+      })}
+      <div className="tm-card tm-rc summary">
+        <div>
+          <div className="tm-eyebrow">Today</div>
+          <div className="big">{onSite}/{members.length}</div>
+          <p>on site across {locations} location{locations === 1 ? '' : 's'}</p>
+        </div>
+        <p>{openReports} report{openReports === 1 ? '' : 's'} still open{members.some(m => m.isNew) ? ` · ${members.filter(m => m.isNew).length} new member${members.filter(m => m.isNew).length === 1 ? '' : 's'}` : ''}</p>
+      </div>
+    </div>
+  </>
+}
+
+// ── 2. Week board ──
+function WeekBoard({ members, today, weekDates, dayStatus, weekLoad, siteColor, open, weekNav }) {
+  const shownSites = new Map()
+  const cell = s => {
+    if (s.kind === 'site') return s.jobs.map(j => {
+      const c = siteColor(j.site.id)
+      shownSites.set(j.site.id, j.site)
+      return (
+        <Link key={j.site.id} to={`/sites/${j.site.id}`} className="tm-slot" style={{ background: `${c}14`, borderLeftColor: c, color: c }}>
+          {j.role === 'PIC' ? '★ ' : ''}{j.site.site_name}<small>{j.site.location}</small>
+        </Link>
+      )
+    })
+    if (s.kind === 'off') return null
+    return <div className={`tm-slot ${s.kind === 'leave' || s.kind === 'holiday' ? 'leave' : 'plain'}`}>{s.label}</div>
+  }
+  return <>
+    <div className="tm-bar">
+      <div><h2>Week board</h2><p>{fmtDay(weekDates[0])} – {fmtDay(weekDates[6], { day: 'numeric', month: 'short', year: 'numeric' })} · ★ = PIC</p></div>
+      {weekNav}
+    </div>
+    <div className="tm-card tm-board">
+      <table>
+        <thead><tr>
+          <th>Member</th>
+          {weekDates.map((d, i) => (
+            <th key={d} className={d === today ? 'today' : ''}>{DAY_NAMES[i]}<span className="n">{dayNum(d)}</span>{publicHolidayName(d) && <span className="hol">{publicHolidayName(d)}</span>}</th>
+          ))}
+        </tr></thead>
+        <tbody>
+          {members.map(m => {
+            const load = weekLoad(m.id, weekDates)
+            return (
+              <tr key={m.id}>
+                <td><button className="tm-who" onClick={() => open(m.id)}><Avatar m={m} size={36} /><div><b>{shortOf(m)} <Tags m={m} /></b><small>{load.onSite}/{load.work} days on site</small></div></button></td>
+                {weekDates.map((d, i) => <td key={d} className={`${d === today ? 'today' : ''} ${i >= 5 ? 'wkend' : ''}`}>{cell(dayStatus(m.id, d))}</td>)}
+              </tr>
+            )
+          })}
+        </tbody>
+        <tfoot><tr>
+          <td>On site</td>
+          {weekDates.map(d => <td key={d}>{members.filter(m => dayStatus(m.id, d).kind === 'site').length} / {members.length}</td>)}
+        </tr></tfoot>
+      </table>
+    </div>
+    <div className="tm-legend">
+      {[...shownSites.values()].map(s => <span key={s.id}><i className="tm-dot" style={{ background: siteColor(s.id) }} />{s.site_name}</span>)}
+      <span>★ PIC</span>
+    </div>
+  </>
+}
+
+// ── 3. Where's everyone ──
+function WhereView({ members, today, weekDates, dayStatus, weekLoad, siteColor, open, weekNav }) {
+  const [picked, setPicked] = useState(null)
+  const date = picked && weekDates.includes(picked) ? picked : weekDates.includes(today) ? today : weekDates[0]
+  const nextDate = addDays(date, new Date(`${date}T00:00:00`).getDay() === 6 ? 2 : 1)
+
+  const groupFor = d => {
+    const bySite = new Map(), other = {}
+    members.forEach(m => {
+      const s = dayStatus(m.id, d)
+      if (s.kind === 'site') s.jobs.forEach(j => {
+        if (!bySite.has(j.site.id)) bySite.set(j.site.id, { site: j.site, people: [] })
+        bySite.get(j.site.id).people.push({ m, role: j.role })
+      })
+      else (other[s.label] ||= []).push(m)
+    })
+    return { sites: [...bySite.values()].sort((a, b) => b.people.length - a.people.length), other }
+  }
+  const { sites: groups, other } = groupFor(date)
+  const next = groupFor(nextDate).sites
+
+  return <>
+    <div className="tm-bar">
+      <div><h2>Where's everyone</h2><p>{date === today ? 'Today · ' : ''}{fmtDay(date, { weekday: 'long', day: 'numeric', month: 'short' })}</p></div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="tm-seg">
+          {weekDates.slice(0, 6).map((d, i) => <button key={d} className={d === date ? 'on' : ''} onClick={() => setPicked(d)}>{d === today ? 'Today' : `${DAY_NAMES[i]} ${dayNum(d)}`}</button>)}
+        </div>
+        {weekNav}
+      </div>
+    </div>
+    <div className="tm-where">
+      <div>
+        {groups.length === 0 && <div className="tm-card tm-empty">No site work on this day.</div>}
+        {groups.map(({ site, people }) => {
+          const c = siteColor(site.id)
+          people.sort((a, b) => (b.role === 'PIC') - (a.role === 'PIC'))
+          return (
+            <div key={site.id} className="tm-card tm-loc" style={{ borderTop: `4px solid ${c}` }}>
+              <div className="tm-loc-head">
+                <div>
+                  <h3><span className="tm-dot" style={{ background: c, width: 10, height: 10 }} /><Link to={`/sites/${site.id}`}>{site.site_name}</Link></h3>
+                  <p>{site.location}{site.site_session ? ` · ${site.site_session}` : ''}</p>
+                </div>
+                <span className="tm-chip" style={{ background: `${c}14`, color: c }}>{people.length} on site</span>
+              </div>
+              <div className="tm-people">
+                {people.map(({ m, role }) => (
+                  <button key={m.id} className="tm-person" onClick={() => open(m.id)}>
+                    <Avatar m={m} size={34} /><div><b>{shortOf(m)}</b><small>{role === 'PIC' ? 'PIC' : 'Crew'}</small></div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <div className="tm-side">
+        <div className="tm-card">
+          <h4>Not on site</h4>
+          {Object.keys(other).length === 0
+            ? <p style={{ fontSize: 13, color: 'var(--muted)', marginTop: 8 }}>Everyone is out on site.</p>
+            : Object.entries(other).map(([label, ppl]) => (
+              <div key={label} className="tm-side-row">
+                <span>{label}</span>
+                <div className="tm-stack">{ppl.map(m => <span key={m.id} onClick={() => open(m.id)} style={{ cursor: 'pointer' }} title={m.full_name}><Avatar m={m} size={30} /></span>)}</div>
+              </div>
+            ))}
+        </div>
+        <div className="tm-card">
+          <h4>{fmtDay(nextDate, { weekday: 'short', day: 'numeric', month: 'short' })}</h4>
+          {next.length === 0 && <p style={{ fontSize: 13, color: 'var(--muted)', marginTop: 8 }}>No site work.</p>}
+          {next.map(({ site, people }) => (
+            <div key={site.id} className="tm-side-row" style={{ alignItems: 'flex-start' }}>
+              <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}><i className="tm-dot" style={{ background: siteColor(site.id) }} />{site.site_name}</span>
+              <div className="tm-stack">{people.map(({ m }) => <Avatar key={m.id} m={m} size={26} />)}</div>
+            </div>
+          ))}
+        </div>
+        <div className="tm-card">
+          <h4>This week</h4>
+          {members.map(m => {
+            const load = weekLoad(m.id, weekDates)
+            return (
+              <div key={m.id} style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 10 }}>
+                <Avatar m={m} size={24} />
+                <span style={{ fontSize: 12, fontWeight: 600, width: 64, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shortOf(m)}</span>
+                <div className="tm-progress" style={{ flex: 1 }}><i style={{ width: `${Math.min(load.pct, 100)}%`, background: loadColor(load.pct) }} /></div>
+                <span style={{ fontSize: 12, color: 'var(--muted)', width: 30, textAlign: 'right' }}>{load.onSite}/{load.work}</span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  </>
+}
+
+// ── 4. Leaderboard ──
+function Leaderboard({ members, today, thisWeekDates, dayStatus, weekLoad, siteColor, open }) {
+  const [sort, setSort] = useState({ key: 'sites', dir: -1 })
+  const rows = members
+    .map(m => { const w = weekLoad(m.id, thisWeekDates); return { ...m, load: w.onSite, week: w } })
+    .sort((a, b) => {
+      const x = a[sort.key], y = b[sort.key]
+      return (typeof x === 'string' ? x.localeCompare(y) : x - y) * sort.dir || a.full_name.localeCompare(b.full_name)
+    })
+  const best = key => [...members].sort((a, b) => b[key] - a[key])[0]
+  const podium = [['Most sites', 'sites', 'sites'], ['Most PIC', 'pic', 'as PIC'], ['Most scans', 'scans', 'scans']]
+  const cols = [['#'], ['Member', 'full_name'], ['Sites', 'sites'], ['As PIC', 'pic'], ['Scans', 'scans'], ['Open reports', 'open'], ['This week', 'load'], ['Mon – Sun']]
+  const clickSort = key => setSort(s => ({ key, dir: s.key === key ? -s.dir : key === 'full_name' ? 1 : -1 }))
+
+  return <>
+    <div className="tm-bar"><div><h2>Leaderboard</h2><p>Year to date · {today.slice(0, 4)} · click a column to sort</p></div></div>
+    {members.length > 0 && (
+      <div className="tm-podium">
+        {podium.map(([title, key, unit]) => { const m = best(key); return (
+          <button key={key} className="tm-card tm-pod" onClick={() => open(m.id)} style={{ textAlign: 'left' }}>
+            <Avatar m={m} size={44} /><div><span className="medal">{title}</span><b>{shortOf(m)}</b><small>{m[key]} {unit}</small></div>
+          </button>
+        ) })}
+      </div>
+    )}
+    <div className="tm-card tm-lb">
+      <table>
+        <thead><tr>
+          {cols.map(([label, key]) => (
+            <th key={label} className={`${key ? 's' : ''} ${key === sort.key ? 'sorted' : ''}`} onClick={key ? () => clickSort(key) : undefined}>
+              {label}{key === sort.key ? (sort.dir < 0 ? ' ↓' : ' ↑') : ''}
+            </th>
+          ))}
+        </tr></thead>
+        <tbody>
+          {rows.map((m, i) => (
+            <tr key={m.id} onClick={() => open(m.id)}>
+              <td className="rank">{i + 1}</td>
+              <td><div className="tm-who" style={{ minWidth: 0 }}><Avatar m={m} size={34} /><div><b>{m.full_name}</b><small>{m.role || 'Member'} <Tags m={m} /></small></div></div></td>
+              <td className="num">{m.sites}</td>
+              <td className="num">{m.pic}</td>
+              <td className="num">{m.scans}</td>
+              <td className="num" style={{ color: m.open ? 'var(--amber)' : 'var(--faint)' }}>{m.open || '—'}</td>
+              <td><div className="tm-wbar"><div className="tm-progress"><i style={{ width: `${Math.min(m.week.pct, 100)}%`, background: loadColor(m.week.pct) }} /></div><span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{m.week.onSite}/{m.week.work} days</span></div></td>
+              <td><div className="tm-minidots">{thisWeekDates.map(d => <i key={d} title={`${fmtDay(d)} · ${statusText(dayStatus(m.id, d))}`} style={dotStyle(dayStatus(m.id, d), siteColor)} />)}</div></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </>
+}
+
+// ── profile drawer ──
+function EditableField({ label, value, onSave }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(value || '')
+  const [saving, setSaving] = useState(false)
+  if (!editing) return (
+    <div className="tm-dl-row">
+      <span className="d">{label}</span><span style={{ flex: 1 }}>{value || <small>Not set</small>}</span>
+      <button className="tm-btn ghost" onClick={() => { setDraft(value || ''); setEditing(true) }}>Edit</button>
+    </div>
+  )
+  return (
+    <div className="tm-dl-row">
+      <span className="d">{label}</span>
+      <div className="tm-field" style={{ flex: 1 }}>
+        <input autoFocus value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => e.key === 'Escape' && setEditing(false)} />
+        <button className="tm-btn" disabled={saving} onClick={async () => { setSaving(true); if (await onSave(draft)) setEditing(false); setSaving(false) }}>{saving ? '…' : 'Save'}</button>
+      </div>
+    </div>
+  )
+}
+
+function ProfileDrawer({ m, today, thisWeekDates, dayStatus, siteColor, startUpload, sites, leaves, isAdmin, saveField, onClose }) {
+  useEffect(() => {
+    const onKey = e => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const upcoming = sites
+    .filter(s => !INACTIVE_SITE.includes(String(s.site_status || '').toLowerCase()) && siteMemberIds(s).includes(m.id))
+    .map(s => ({ s, dates: memberDatesOnSite(s, m.id).filter(d => d > thisWeekDates[6]) }))
+    .filter(x => x.dates.length)
+    .sort((a, b) => a.dates[0].localeCompare(b.dates[0]))
+    .slice(0, 5)
+  const nextLeave = leaves
+    .filter(l => l.member_id === m.id && !isOffDay(l) && (l.end_date || l.start_date) >= today)
+    .sort((a, b) => a.start_date.localeCompare(b.start_date))[0]
+  const waUrl = m.phone ? buildWhatsAppUrl(m.phone) : null
+
+  return <>
+    <div className="tm-drawer-bg" onClick={onClose} />
+    <aside className="tm-drawer" role="dialog" aria-label={m.full_name}>
+      <button className="x" onClick={onClose} aria-label="Close">×</button>
+      <div style={{ display: 'flex', gap: 14, alignItems: 'center', paddingRight: 36 }}>
+        <Avatar m={m} size={64} onUpload={startUpload && (() => startUpload(m.id))} />
+        <div><h2>{m.full_name}</h2><div className="tm-rc-role">{m.role || 'Member'} <Tags m={m} /></div></div>
+      </div>
+      {nextLeave && (
+        <div className="tm-dl-row" style={{ marginTop: 16, borderColor: '#fecaca', background: '#fef2f2', color: '#991b1b' }}>
+          <span className="tm-tag leave">Leave</span>
+          {titleCase(nextLeave.leave_type)} · {fmtDay(nextLeave.start_date)}{nextLeave.end_date && nextLeave.end_date !== nextLeave.start_date ? ` – ${fmtDay(nextLeave.end_date)}` : ''}
+        </div>
+      )}
+      <div className="tm-kpis">
+        <div className="tm-card tm-kpi"><div className="v">{m.sites}</div><div className="l">Sites {today.slice(0, 4)}</div></div>
+        <div className="tm-card tm-kpi"><div className="v">{m.pic}</div><div className="l">As PIC</div></div>
+        <div className="tm-card tm-kpi"><div className="v" style={{ color: m.open ? 'var(--amber)' : undefined }}>{m.open}</div><div className="l">Open reports</div></div>
+      </div>
+
+      <h3>This week</h3>
+      <div className="tm-dl">
+        {thisWeekDates.map((d, i) => {
+          const s = dayStatus(m.id, d)
+          return (
+            <div key={d} className={`tm-dl-row${d === today ? ' today' : ''}`}>
+              <span className="d">{DAY_NAMES[i]} {dayNum(d)}</span>
+              <span className="tm-dot" style={{ background: dotStyle(s, siteColor).background || '#cbd5e1' }} />
+              <span style={{ flex: 1 }}>
+                {s.kind === 'site'
+                  ? s.jobs.map(j => <div key={j.site.id}><Link to={`/sites/${j.site.id}`} style={{ color: 'inherit', fontWeight: 700 }}>{j.site.site_name}</Link><br /><small>{j.site.location}</small></div>)
+                  : <b>{s.label}</b>}
+              </span>
+              {isPicOn(s) && <span className="tm-tag pic">PIC</span>}
+            </div>
+          )
+        })}
+      </div>
+
+      {upcoming.length > 0 && <>
+        <h3>Coming up</h3>
+        <div className="tm-dl">
+          {upcoming.map(({ s, dates }) => (
+            <Link key={s.id} to={`/sites/${s.id}`} className="tm-dl-row">
+              <span className="d">{fmtDay(dates[0])}{dates.length > 1 ? ` +${dates.length - 1}` : ''}</span>
+              <span style={{ flex: 1 }}><b>{s.site_name}</b><br /><small>{s.location}</small></span>
+              {memberRoleOnSite(s, m.id) === 'PIC' && <span className="tm-tag pic">PIC</span>}
+            </Link>
+          ))}
+        </div>
+      </>}
+
+      {m.phone && <>
+        <h3>Contact</h3>
+        <div className="tm-actions">
+          {waUrl && <a className="tm-btn" href={waUrl} target="_blank" rel="noopener noreferrer">WhatsApp {shortOf(m)}</a>}
+          <a className="tm-btn ghost" href={`tel:+${String(m.phone).replace(/\D/g, '')}`}>Call</a>
+        </div>
+      </>}
+
+      {isAdmin && <>
+        <h3>Admin</h3>
+        <div className="tm-dl">
+          <EditableField key={`legal-${m.id}`} label="Legal name" value={m.legal_name} onSave={v => saveField(m.id, 'legal_name', v)} />
+          <EditableField key={`ic-${m.id}`} label="IC number" value={m.ic_number} onSave={v => saveField(m.id, 'ic_number', v)} />
+        </div>
+      </>}
+    </aside>
+  </>
 }

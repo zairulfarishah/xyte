@@ -29,6 +29,7 @@ const Feed = lazy(() => import('./pages/Feed'))
 const NAV = [
   { to: '/', label: 'Dashboard', end: true },
   { to: '/sites', label: 'Sites', end: false },
+  { to: '/team', label: 'Team', end: false },
   { to: '/feed', label: 'Feed', end: false },
   {
     label: 'Field',
@@ -50,7 +51,6 @@ const NAV = [
   {
     label: 'Admin',
     items: [
-      { to: '/team', label: 'Team' },
       { to: '/statistics', label: 'Statistics' },
       { to: '/settings', label: 'Settings' },
     ],
