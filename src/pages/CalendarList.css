@@ -1,0 +1,87 @@
+/* Calendar → List view. Classes prefixed cl- so nothing leaks into other pages. */
+.cl { display: grid; gap: 14px; color: #0f172a; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+:where(.cl) button { font: inherit; cursor: pointer; border: 0; background: none; color: inherit; padding: 0; }
+
+.cl-scroll { background: #fff; border: 1px solid #cbd5e1; border-radius: 14px; overflow: auto; max-height: 72vh; }
+.cl table { border-collapse: separate; border-spacing: 0; width: max-content; }
+.cl th, .cl td { padding: 0; }
+
+/* ── header ── */
+.cl thead th { position: sticky; top: 0; z-index: 2; height: 48px; background: #1e3a5f; color: #93c5fd; border-bottom: 2px solid #16314f; border-right: 1px solid rgba(148,197,253,.18); }
+.cl thead th.pin { z-index: 4; padding: 0 12px; text-align: left; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.cl thead th.day { width: 84px; min-width: 84px; text-align: center; }
+.cl thead th small { display: block; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+.cl thead th b { display: block; width: 28px; margin: 2px auto 0; font-size: 15px; line-height: 22px; font-weight: 800; color: #fff; border-radius: 7px; }
+.cl thead th i { display: block; font-style: normal; font-size: 9px; font-weight: 800; color: #bfdbfe; }
+.cl thead th.sun { background: #0f172a; color: #64748b; }
+.cl thead th.sun b { color: #94a3b8; }
+.cl thead th.ph { background: #2563eb; color: #dbeafe; }
+.cl thead th.today { background: #2c4d7a; }
+.cl thead th.today b { background: #fff; color: #1e3a5f; }
+.cl thead th.mon { border-left: 2px solid rgba(148,197,253,.45); }
+
+/* ── frozen columns ── */
+.cl .pin { position: sticky; z-index: 1; background: #fff; text-align: left; vertical-align: middle; border-right: 1px solid #eef1f5; }
+.cl .pin.last { border-right: 1px solid #d7dee7; box-shadow: 6px 0 10px -6px rgba(15,23,42,.18); }
+.cl thead th.pin.last { border-right-color: #16314f; }
+.cl tbody td.pin { padding: 6px 12px; font-size: 12px; color: #475569; line-height: 1.4; }
+.cl td.pin.no, .cl td.pin.days { text-align: center; font-weight: 700; color: #0f172a; }
+.cl td.pin.no { color: #94a3b8; }
+.cl td.site-row { cursor: pointer; }
+
+.cl-site { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+/* project text stays on one line until "More" is pressed */
+.cl-name { font-size: 13px; font-weight: 700; color: #0f172a; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cl-clamp { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cl-row.open .cl-name, .cl-row.open .cl-clamp { white-space: pre-line; overflow: visible; }
+.cl-site { align-items: center; }
+.cl-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; vertical-align: 1px; flex-shrink: 0; }
+.cl-more { flex-shrink: 0; font-size: 10px !important; font-weight: 800 !important; color: #2563eb !important; padding: 2px 6px !important; border-radius: 6px; background: #eff6ff !important; margin-top: 1px; }
+.cl-more:hover { background: #dbeafe !important; }
+.cl-abbr { font-size: 10px; font-weight: 800; color: #dc2626; }
+.cl-hint { font-size: 11px; color: #94a3b8; font-style: italic; }
+.cl-empty { padding: 40px 20px; text-align: center; color: #94a3b8; font-size: 13px; }
+
+/* ── rows & day cells ── */
+.cl tbody td { border-bottom: 1px solid #e5eaf1; }
+.cl tbody td.day { width: 84px; min-width: 84px; height: 40px; padding: 4px 6px; vertical-align: middle; border-right: 1px solid #eef1f5; background: #fff; }
+.cl tbody tr.cl-row:nth-child(even) td.day:not(.on), .cl tbody tr.cl-row:nth-child(even) td.pin { background: #fafbfd; }
+.cl tbody td.day.mon { border-left: 2px solid #dbe3ec; }
+.cl tbody td.day.sun { background: #1e293b !important; border-right-color: #1e293b; }
+.cl tbody td.day.ph { background: #bfdbfe !important; }
+.cl tbody td.day.today { background: #eaf2ff !important; box-shadow: inset 2px 0 #60a5fa, inset -2px 0 #60a5fa; }
+.cl tbody td.day.on { background: var(--sc) !important; }
+.cl tbody tr.cl-row:hover td.pin { background: #eef4ff !important; }
+.cl tbody tr.cl-row:hover td.day:not(.on):not(.sun) { background: #f5f8fc; }
+
+/* names inside a cell, one per line */
+.cl-names { display: flex; flex-direction: column; gap: 1px; text-align: left; }
+.cl-names span { display: block; font-size: 11px; font-weight: 700; line-height: 1.25; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cl td.on .cl-names span:first-child { font-weight: 800; }
+.cl-nocrew { display: block; text-align: center; font-size: 10.5px; font-weight: 800; color: rgba(15,23,42,.55); }
+
+/* people rows */
+.cl tr.ppl td.day { height: 36px; }
+.cl tr.ppl td.day.edit { cursor: pointer; }
+.cl tr.ppl td.day.edit:hover { outline: 2px solid #93c5fd; outline-offset: -2px; }
+.cl-names.store span, .cl-names.off span, .cl-names.leave span { padding: 1px 5px; border-radius: 4px; }
+.cl-names.store span { background: #dbeafe; color: #1e40af; }
+.cl-names.off span { background: #e2e8f0; color: #475569; }
+.cl-names.leave span { background: #fecaca; color: #7f1d1d; }
+.cl tbody td.pin.store { background: #f8fbff !important; }
+.cl tbody td.pin.off { background: #f8fafc !important; }
+.cl tbody td.pin.leave { background: #fff7f7 !important; }
+
+/* section headers */
+.cl tr.cl-sec td { height: 34px; border-top: 2px solid #e5eaf1; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.cl tr.cl-sec td.pin { padding: 0 12px; }
+.cl tr.cl-sec.store td { background: #eff6ff; color: #1d4ed8; border-bottom: 1px solid #bfdbfe; }
+.cl tr.cl-sec.leave td { background: #fef2f2; color: #991b1b; border-bottom: 1px solid #fecaca; }
+
+/* ── legend ── */
+.cl-legend { display: grid; gap: 10px; padding: 12px 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; }
+.cl-legend > div { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.cl-legend > div + div { padding-top: 10px; border-top: 1px solid #e2e8f0; }
+.cl-legend span { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: #475569; }
+.cl-legend i { width: 13px; height: 13px; border-radius: 4px; border: 1px solid rgba(0,0,0,.12); }
+.cl-legend .cl-dot { margin-right: 0; }

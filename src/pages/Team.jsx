@@ -2,11 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
-import { fetchTeamLeaves, getMemberLeaveOnDate, isOffDay } from '../utils/teamLeaves'
+import { fetchTeamLeaves, isOffDay, leaveAbbr } from '../utils/teamLeaves'
 import { publicHolidayName } from '../utils/holidays'
-import {
-  assignmentMemberId, assignmentsForDate, getSiteDates, isPic, memberDatesOnSite, memberRoleOnSite, siteMemberIds,
-} from '../utils/siteDays'
+import { getSiteDates, memberDatesOnSite, memberRoleOnSite, siteMemberIds } from '../utils/siteDays'
+import { buildJobIndex, isActiveSite, memberDayStatus } from '../utils/memberDay'
 import { buildWhatsAppUrl } from '../utils/whatsapp'
 import './Team.css'
 
@@ -20,7 +19,6 @@ const AVATAR_COLORS = ['#2563eb', '#db2777', '#7c3aed', '#059669', '#d97706', '#
 const SITE_COLORS   = ['#2563eb', '#059669', '#d97706', '#7c3aed', '#db2777', '#0891b2', '#dc2626', '#65a30d', '#9333ea', '#ea580c']
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const OPEN_REPORT = ['pending', 'in_progress', 'submitted']
-const INACTIVE_SITE = ['cancelled', 'postponed']
 const NEW_MEMBER_DAYS = 45
 
 // ── dates (local, YYYY-MM-DD) ──
@@ -93,36 +91,8 @@ export default function Team() {
     }
   }, [])
 
-  // memberId|date → [{ site, role }]
-  const jobIndex = useMemo(() => {
-    const index = new Map()
-    for (const site of sites) {
-      if (INACTIVE_SITE.includes(String(site.site_status || '').toLowerCase())) continue
-      for (const id of siteMemberIds(site)) {
-        for (const date of memberDatesOnSite(site, id)) {
-          const role = assignmentsForDate(site.site_assignments, date).some(a => assignmentMemberId(a) === id && isPic(a)) ? 'PIC' : 'crew'
-          const key = `${id}|${date}`
-          if (!index.has(key)) index.set(key, [])
-          index.get(key).push({ site, role })
-        }
-      }
-    }
-    return index
-  }, [sites])
-
-  // What a member is doing on a date: on site, on leave, rostered off, holiday, store (Sat) or available.
-  function dayStatus(memberId, date) {
-    const jobs = jobIndex.get(`${memberId}|${date}`)
-    if (jobs?.length) return { kind: 'site', jobs }
-    const leave = getMemberLeaveOnDate(leaves, memberId, date)
-    if (leave) return isOffDay(leave) ? { kind: 'off', label: 'Off' } : { kind: 'leave', label: titleCase(leave.leave_type) }
-    const dow = new Date(`${date}T00:00:00`).getDay()
-    if (dow === 0) return { kind: 'off', label: 'Off' }
-    const holiday = publicHolidayName(date)
-    if (holiday) return { kind: 'holiday', label: holiday }
-    if (dow === 6) return { kind: 'store', label: 'Store' }
-    return { kind: 'free', label: 'Available' }
-  }
+  const jobIndex = useMemo(() => buildJobIndex(sites), [sites])
+  const dayStatus = (memberId, date) => memberDayStatus(jobIndex, leaves, memberId, date)
 
   const weekDates     = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart])
   const thisWeekDates = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(thisWeek, i)), [thisWeek])
@@ -133,7 +103,7 @@ export default function Team() {
     const last  = thisWeekDates[6] > weekDates[6] ? thisWeekDates[6] : weekDates[6]
     const map = new Map()
     sites
-      .filter(s => !INACTIVE_SITE.includes(String(s.site_status || '').toLowerCase()))
+      .filter(isActiveSite)
       .filter(s => getSiteDates(s).some(d => d >= first && d <= last))
       .forEach((s, i) => map.set(s.id, SITE_COLORS[i % SITE_COLORS.length]))
     return id => map.get(id) || '#64748b'
@@ -152,7 +122,7 @@ export default function Team() {
   const members = useMemo(() => {
     const year = today.slice(0, 4)
     const newSince = addDays(today, -NEW_MEMBER_DAYS)
-    const yearSites = sites.filter(s => String(s.scheduled_date || '').startsWith(year) && !INACTIVE_SITE.includes(String(s.site_status || '').toLowerCase()))
+    const yearSites = sites.filter(s => String(s.scheduled_date || '').startsWith(year) && isActiveSite(s))
     return rawMembers
       .map((m, i) => {
         const mine = yearSites.filter(s => siteMemberIds(s).includes(m.id))
@@ -324,8 +294,19 @@ function RosterView({ members, today, thisWeekDates, dayStatus, weekLoad, siteCo
   </>
 }
 
-// ── 2. Week board ──
-function WeekBoard({ members, today, weekDates, dayStatus, weekLoad, siteColor, open, weekNav }) {
+// ── 2. Week board (with a Month mode) ──
+function WeekBoard(props) {
+  const [mode, setMode] = useState('week')
+  const modeSeg = (
+    <div className="tm-seg">
+      <button className={mode === 'week' ? 'on' : ''} onClick={() => setMode('week')}>Week</button>
+      <button className={mode === 'month' ? 'on' : ''} onClick={() => setMode('month')}>Month</button>
+    </div>
+  )
+  return mode === 'month' ? <MonthBoard {...props} modeSeg={modeSeg} /> : <WeekGrid {...props} modeSeg={modeSeg} />
+}
+
+function WeekGrid({ members, today, weekDates, dayStatus, weekLoad, siteColor, open, weekNav, modeSeg }) {
   const shownSites = new Map()
   const cell = s => {
     if (s.kind === 'site') return s.jobs.map(j => {
@@ -343,7 +324,7 @@ function WeekBoard({ members, today, weekDates, dayStatus, weekLoad, siteColor, 
   return <>
     <div className="tm-bar">
       <div><h2>Week board</h2><p>{fmtDay(weekDates[0])} – {fmtDay(weekDates[6], { day: 'numeric', month: 'short', year: 'numeric' })} · ★ = PIC</p></div>
-      {weekNav}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{modeSeg}{weekNav}</div>
     </div>
     <div className="tm-card tm-board">
       <table>
@@ -373,6 +354,155 @@ function WeekBoard({ members, today, weekDates, dayStatus, weekLoad, siteColor, 
     <div className="tm-legend">
       {[...shownSites.values()].map(s => <span key={s.id}><i className="tm-dot" style={{ background: siteColor(s.id) }} />{s.site_name}</span>)}
       <span>★ PIC</span>
+    </div>
+  </>
+}
+
+// ── month helpers, shared by the Month board and the profile calendar ──
+const monthDates = ym => {
+  const [y, mo] = ym.split('-').map(Number)
+  return Array.from({ length: new Date(y, mo, 0).getDate() }, (_, i) => `${ym}-${String(i + 1).padStart(2, '0')}`)
+}
+const shiftMonth = (ym, n) => { const [y, mo] = ym.split('-').map(Number); return isoOf(new Date(y, mo - 1 + n, 1)).slice(0, 7) }
+const siteCode = s => (s.site_name || '?').replace(/\(.*\)/, '').split(/[\s-]+/).filter(w => /^[A-Za-z0-9]/.test(w)).slice(0, 2).map(w => w[0]).join('').toUpperCase()
+const leaveCode = s => {
+  const ses = s.leave?.leave_session
+  return `${leaveAbbr(s.leave?.leave_type)}${ses === 'AM_ONLY' ? ' AM' : ses === 'PM_ONLY' ? ' PM' : ''}`
+}
+// Colours for the sites in a set of day statuses, in the order they first appear
+function siteColorsFor(statuses) {
+  const map = new Map()
+  statuses.forEach(s => s.kind === 'site' && s.jobs.forEach(j => map.has(j.site.id) || map.set(j.site.id, { site: j.site, color: SITE_COLORS[map.size % SITE_COLORS.length] })))
+  return map
+}
+
+function MonthNav({ ym, setYm, today }) {
+  const thisMonth = today.slice(0, 7)
+  return (
+    <div className="tm-seg">
+      <button onClick={() => setYm(shiftMonth(ym, -1))}>‹ Prev</button>
+      <button className={ym === thisMonth ? 'on' : ''} onClick={() => setYm(thisMonth)}>This month</button>
+      <button onClick={() => setYm(shiftMonth(ym, 1))}>Next ›</button>
+    </div>
+  )
+}
+
+function MonthBoard({ members, today, dayStatus, open, modeSeg }) {
+  const [ym, setYm] = useState(today.slice(0, 7))
+  const dates = monthDates(ym)
+  const grid = members.map(m => dates.map(d => dayStatus(m.id, d)))
+  const colors = siteColorsFor(dates.flatMap((_, j) => grid.map(row => row[j])))
+  const dayClass = d => `${new Date(`${d}T00:00:00`).getDay() === 0 || publicHolidayName(d) ? 'we' : ''} ${d === today ? 'today' : ''}`
+
+  const cell = (s, d) => {
+    if (s.kind === 'site') {
+      const j = s.jobs[0]
+      return (
+        <Link to={`/sites/${j.site.id}`} className="blk" style={{ background: colors.get(j.site.id).color }}
+          title={s.jobs.map(x => `${x.site.site_name}${x.role === 'PIC' ? ' (PIC)' : ''}`).join(' + ')}>
+          {siteCode(j.site)}{s.jobs.length > 1 ? '+' : ''}<small>{j.role === 'PIC' ? 'PIC' : 'Crew'}</small>
+        </Link>
+      )
+    }
+    if (s.kind === 'leave') return <div className="blk leave" title={s.label}>{leaveCode(s)}</div>
+    if (s.kind === 'off') return <div className="blk off" title={s.sunday ? 'Sunday' : 'Off (rota)'}>{s.sunday ? '' : 'OFF'}</div>
+    if (s.kind === 'holiday') return <div className="blk off" title={s.label}>PH</div>
+    if (s.kind === 'store') return <div className="blk store" title="Store">Store</div>
+    return <div className="blk free" title={`Available · ${fmtDay(d)}`} />
+  }
+
+  return <>
+    <div className="tm-bar">
+      <div><h2>Month board</h2><p>{fmtDay(dates[0], { month: 'long', year: 'numeric' })} · everyone, every day · click a block to open the site</p></div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{modeSeg}<MonthNav ym={ym} setYm={setYm} today={today} /></div>
+    </div>
+    <div className="tm-card tm-mb">
+      <div className="tm-mb-scroll">
+        <table>
+          <thead><tr>
+            <th className="who">Member</th>
+            {dates.map(d => (
+              <th key={d} className={dayClass(d)} title={publicHolidayName(d) || undefined}>
+                {fmtDay(d, { weekday: 'narrow' })}<b>{dayNum(d)}</b>
+              </th>
+            ))}
+          </tr></thead>
+          <tbody>
+            {members.map((m, i) => {
+              const siteDays = grid[i].filter(s => s.kind === 'site').length
+              return (
+                <tr key={m.id}>
+                  <td className="who"><button className="tm-who" onClick={() => open(m.id)}><Avatar m={m} size={30} /><div><b>{shortOf(m)}</b><small>{siteDays} site day{siteDays === 1 ? '' : 's'}</small></div></button></td>
+                  {dates.map((d, j) => <td key={d} className={`d ${dayClass(d)}`}>{cell(grid[i][j], d)}</td>)}
+                </tr>
+              )
+            })}
+          </tbody>
+          <tfoot><tr>
+            <td className="who">On site</td>
+            {dates.map((d, j) => <td key={d}>{grid.filter(row => row[j].kind === 'site').length || ''}</td>)}
+          </tr></tfoot>
+        </table>
+      </div>
+      <div className="tm-mb-key">
+        {[...colors.values()].map(({ site, color }) => {
+          const sd = getSiteDates(site)
+          return (
+            <Link key={site.id} to={`/sites/${site.id}`}>
+              <i style={{ background: color }}>{siteCode(site)}</i>
+              <span><b>{site.site_name}</b><small>{sd.length > 1 ? `${fmtDay(sd[0])} – ${fmtDay(sd.at(-1))}` : fmtDay(sd[0])}{site.location ? ` · ${site.location.split(',').slice(-2).join(',').trim()}` : ''}</small></span>
+            </Link>
+          )
+        })}
+        <div><i className="free" /><span><b>Available</b><small>Free on a working day</small></span></div>
+        <div><i className="store">Store</i><span><b>Store</b><small>Saturday at the store</small></span></div>
+        <div><i className="leave">AL</i><span><b>Leave</b><small>AL annual · MC medical · AM/PM half day</small></span></div>
+        <div><i className="off">OFF</i><span><b>Off</b><small>Saturday rota · PH public holiday</small></span></div>
+      </div>
+    </div>
+  </>
+}
+
+// One member's month, inside the profile drawer
+function MonthCalendar({ m, today, dayStatus }) {
+  const [ym, setYm] = useState(today.slice(0, 7))
+  const days = monthDates(ym).map(d => ({ d, s: dayStatus(m.id, d) }))
+  const colors = siteColorsFor(days.map(x => x.s))
+  const onSite = days.filter(x => x.s.kind === 'site')
+  const pic = onSite.filter(x => isPicOn(x.s)).length
+  const sat = onSite.filter(x => new Date(`${x.d}T00:00:00`).getDay() === 6).length
+  const away = days.filter(x => x.s.kind === 'leave' || (x.s.kind === 'off' && !x.s.sunday)).length
+  const lead = (new Date(`${days[0].d}T00:00:00`).getDay() + 6) % 7
+
+  return <>
+    <div className="tm-pm-head">
+      <h3>{fmtDay(days[0].d, { month: 'long', year: 'numeric' })}</h3>
+      <MonthNav ym={ym} setYm={setYm} today={today} />
+    </div>
+    <div className="tm-pm-stats">
+      <div><b>{onSite.length}</b><small>Site days</small></div>
+      <div><b>{pic}</b><small>As PIC</small></div>
+      <div><b>{sat}</b><small>Saturdays</small></div>
+      <div><b>{away}</b><small>Off / leave</small></div>
+    </div>
+    <div className="tm-pm">
+      {DAY_NAMES.map(n => <div key={n} className="h">{n[0]}</div>)}
+      {Array.from({ length: lead }, (_, i) => <div key={`b${i}`} />)}
+      {days.map(({ d, s }) => {
+        const num = <span className={`n${d === today ? ' today' : ''}`}>{dayNum(d)}</span>
+        const past = d < today ? ' past' : ''
+        if (s.kind === 'site') {
+          const j = s.jobs[0]
+          return (
+            <Link key={d} to={`/sites/${j.site.id}`} className={`c site${past}`} style={{ background: colors.get(j.site.id).color }}
+              title={`${fmtDay(d)} · ${s.jobs.map(x => x.site.site_name).join(' + ')}${isPicOn(s) ? ' (PIC)' : ''}`}>
+              {num}<span className="l">{isPicOn(s) ? '★ ' : ''}{j.site.site_name}</span>
+            </Link>
+          )
+        }
+        const label = s.kind === 'leave' ? leaveCode(s) : s.kind === 'off' ? (s.sunday ? '' : 'Off') : s.kind === 'holiday' ? 'PH' : s.kind === 'store' ? 'Store' : ''
+        return <div key={d} className={`c ${s.kind}${past}`} title={`${fmtDay(d)} · ${s.label}`}>{num}<span className="l">{label}</span></div>
+      })}
     </div>
   </>
 }
@@ -558,7 +688,7 @@ function ProfileDrawer({ m, today, thisWeekDates, dayStatus, siteColor, sites, l
   }, [onClose])
 
   const upcoming = sites
-    .filter(s => !INACTIVE_SITE.includes(String(s.site_status || '').toLowerCase()) && siteMemberIds(s).includes(m.id))
+    .filter(s => isActiveSite(s) && siteMemberIds(s).includes(m.id))
     .map(s => ({ s, dates: memberDatesOnSite(s, m.id).filter(d => d > thisWeekDates[6]) }))
     .filter(x => x.dates.length)
     .sort((a, b) => a.dates[0].localeCompare(b.dates[0]))
@@ -606,6 +736,8 @@ function ProfileDrawer({ m, today, thisWeekDates, dayStatus, siteColor, sites, l
           )
         })}
       </div>
+
+      <MonthCalendar key={m.id} m={m} today={today} dayStatus={dayStatus} />
 
       {upcoming.length > 0 && <>
         <h3>Coming up</h3>

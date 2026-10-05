@@ -3,10 +3,10 @@ import { supabase } from '../supabase'
 import { ChevronLeft, ChevronRight, SlidersHorizontal } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useViewport } from '../utils/useViewport'
-import { fetchTeamLeaves, leaveAbbr, isOffDay, setOffDay, saveTeamLeaves } from '../utils/teamLeaves'
+import { fetchTeamLeaves, setOffDay, saveTeamLeaves } from '../utils/teamLeaves'
 import { useAuth } from '../context/AuthContext'
-import { publicHolidayName } from '../utils/holidays'
-import { CrewScheduleView, PersonView } from './CalendarPeople'
+import { assignmentsForDate } from '../utils/siteDays'
+import CalendarListView from './CalendarList'
 import { DEFAULT_CALENDAR_SETTINGS, fetchCalendarSettings, saveCalendarSettings } from '../utils/calendarSettings'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -14,8 +14,6 @@ const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const VIEWS = [
   { key: 'month',  label: 'Month' },
   { key: 'list',   label: 'List' },
-  { key: 'crew',   label: 'Crew' },
-  { key: 'person', label: 'Person' },
 ]
 
 const TYPE_COLORS = {
@@ -32,16 +30,6 @@ const STATUS_DOT = {
   postponed: '#94a3b8',
 }
 
-// Single-day site session — multi-day sites and same-day sites with no
-// session picked fall back to the default working-day green.
-const DEFAULT_SESSION_COLOR = '#86d387'
-const SESSION_COLORS = {
-  'Full Day':    '#86d387',
-  AM:            '#fbbf24',
-  PM:            '#fb923c',
-  'Night Work':  '#818cf8',
-}
-
 function Avatar({ name, size = 18 }) {
   const initials = (name || '?').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
   const colors   = ['#2563eb', '#7c3aed', '#db2777', '#059669', '#0891b2', '#d97706']
@@ -53,580 +41,15 @@ function Avatar({ name, size = 18 }) {
   )
 }
 
-const GANTT_COLS = [
-  { key: 'no',      label: 'No.',             width: 40 },
-  { key: 'site',    label: 'Site',            width: 210 },
-  { key: 'company', label: 'Company',         width: 160 },
-  { key: 'details', label: 'Project Details', width: 260 },
-  { key: 'days',    label: 'Days',            width: 60 },
-]
-const GANTT_DAY_WIDTH = 84
-
-function ganttColLeft(idx) {
-  return GANTT_COLS.slice(0, idx).reduce((sum, c) => sum + c.width, 0)
-}
-
-// A site's assignments are either day-specific (work_date set) or apply to every
-// day of the site (work_date null). Day-specific rows win for that date when present.
-function assignmentsForDate(assignments, dateStr) {
-  const daySpecific = (assignments || []).filter(a => a.work_date === dateStr)
-  return daySpecific.length > 0 ? daySpecific : (assignments || []).filter(a => !a.work_date)
-}
-
-function namesForDate(assignments, dateStr) {
-  const dayAssignments = assignmentsForDate(assignments, dateStr)
-  const pic  = dayAssignments.find(a => a.assignment_role === 'PIC')
-  const crew = dayAssignments.filter(a => a.assignment_role === 'crew')
-  return [pic, ...crew].map(a => a?.team_members?.short_name || a?.team_members?.full_name).filter(Boolean).join(', ')
-}
-
-function leaveTypeLabel(type) {
-  return (type || 'Other').toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
-}
-
-// Rough char-capacity per column at its fixed pixel width — used only to decide
-// whether to surface a "More" toggle, not for exact layout.
-const COL_CHAR_CAP = { site: 22, company: 20, details: 34 }
-const DAY_CHAR_CAP = 11
-function overflows(text, cap) {
-  return typeof text === 'string' && text.length > cap
-}
-
-const LEGEND_ITEMS = [
-  { label: 'Full Day', swatch: SESSION_COLORS['Full Day'] },
-  { label: 'AM', swatch: SESSION_COLORS.AM },
-  { label: 'PM', swatch: SESSION_COLORS.PM },
-  { label: 'Night Work', swatch: SESSION_COLORS['Night Work'] },
-  { label: 'Weekend', swatch: '#0f172a' },
-  { label: 'Public holiday', swatch: '#2563eb' },
-  { label: 'Off day', swatch: '#e2e8f0' },
-  { label: 'On leave (AL/MC/etc.)', swatch: '#fecaca' },
-]
-
-function GanttListView({ sitesSorted, year, month, navigate, leaves, members, canEditRota, onToggleOff }) {
-  const lastDay = new Date(year, month + 1, 0).getDate()
-  const dayNums = Array.from({ length: lastDay }, (_, i) => i + 1)
-
-  function dateStrOf(day) {
-    return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-  }
-
-  const memberById = useMemo(() => Object.fromEntries(members.map(m => [m.id, m])), [members])
-  const leavesThisMonth = useMemo(() => {
-    const from = dateStrOf(1)
-    const to   = dateStrOf(lastDay)
-    return leaves.filter(l => (l.start_date || '') <= to && (l.end_date || l.start_date || '') >= from)
-  }, [leaves, year, month])
-
-  const leavesByType = useMemo(() => {
-    const map = {}
-    for (const l of leavesThisMonth.filter(l => !isOffDay(l))) {
-      const key = l.leave_type || 'OTHER'
-      if (!map[key]) map[key] = []
-      map[key].push(l)
-    }
-    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b))
-  }, [leavesThisMonth])
-
-  const [expandedRows, setExpandedRows] = useState(new Set())
-  function toggleRow(key) {
-    setExpandedRows(prev => {
-      const next = new Set(prev)
-      next.has(key) ? next.delete(key) : next.add(key)
-      return next
-    })
-  }
-
-  // Member IDs tied to a site each day — whoever's left over is "at store".
-  const assignedMemberIdsByDate = useMemo(() => {
-    const map = {}
-    sitesSorted.forEach(site => {
-      const start = site.scheduled_date
-      const end   = site.end_date || site.scheduled_date
-      if (!start) return
-      dayNums.forEach(d => {
-        const dateStr = dateStrOf(d)
-        if (dateStr < start || dateStr > end) return
-        assignmentsForDate(site.site_assignments, dateStr).forEach(a => {
-          const id = a.team_members?.id
-          if (!id) return
-          if (!map[dateStr]) map[dateStr] = new Set()
-          map[dateStr].add(id)
-        })
-      })
-    })
-    return map
-  }, [sitesSorted, year, month])
-
-  const leaveMemberIdsByDate = useMemo(() => {
-    const map = {}
-    leavesThisMonth.forEach(leave => {
-      const lStart = leave.start_date
-      const lEnd   = leave.end_date || leave.start_date
-      dayNums.forEach(d => {
-        const dateStr = dateStrOf(d)
-        if (dateStr < lStart || dateStr > lEnd) return
-        if (!map[dateStr]) map[dateStr] = new Set()
-        map[dateStr].add(leave.member_id)
-      })
-    })
-    return map
-  }, [leavesThisMonth, year, month])
-
-  // Rostered off days (e.g. alternate Saturdays), by date.
-  const offMemberIdsByDate = useMemo(() => {
-    const map = {}
-    leavesThisMonth.filter(isOffDay).forEach(leave => {
-      dayNums.forEach(d => {
-        const dateStr = dateStrOf(d)
-        if (dateStr < leave.start_date || dateStr > (leave.end_date || leave.start_date)) return
-        if (!map[dateStr]) map[dateStr] = new Set()
-        map[dateStr].add(leave.member_id)
-      })
-    })
-    return map
-  }, [leavesThisMonth, year, month])
-
-  function offNamesForDate(dateStr) {
-    const off = offMemberIdsByDate[dateStr] || new Set()
-    return members.filter(m => off.has(m.id)).map(m => m.short_name || m.full_name).filter(Boolean).join(', ')
-  }
-
-  // Who can be switched between Store and Off on a date: not on a site and not on real leave.
-  function rotaCandidates(dateStr) {
-    const assigned = assignedMemberIdsByDate[dateStr] || new Set()
-    const realLeave = new Set(leavesThisMonth
-      .filter(l => !isOffDay(l) && dateStr >= l.start_date && dateStr <= (l.end_date || l.start_date))
-      .map(l => l.member_id))
-    const off = offMemberIdsByDate[dateStr] || new Set()
-    return members
-      .filter(m => !assigned.has(m.id) && !realLeave.has(m.id))
-      .map(m => ({ id: m.id, name: m.short_name || m.full_name, off: off.has(m.id) }))
-  }
-
-  const [rota, setRota] = useState(null) // { dateStr, rect }
-  function openRota(e, dateStr) {
-    if (!canEditRota) return
-    setRota({ dateStr, rect: e.currentTarget.getBoundingClientRect() })
-  }
-
-  function atStoreNamesForDate(dateStr) {
-    const assigned = assignedMemberIdsByDate[dateStr] || new Set()
-    const onLeave  = leaveMemberIdsByDate[dateStr] || new Set()
-    return members
-      .filter(m => !assigned.has(m.id) && !onLeave.has(m.id))
-      .map(m => m.short_name || m.full_name)
-      .filter(Boolean)
-      .join(', ')
-  }
-
-  const todayObj = new Date()
-  const todayStr = `${todayObj.getFullYear()}-${String(todayObj.getMonth() + 1).padStart(2, '0')}-${String(todayObj.getDate()).padStart(2, '0')}`
-  const lastPin  = GANTT_COLS.length - 1
-
-  return (
-    <div style={{ display: 'grid', gap: '14px' }}>
-      {rota && (
-        <RotaPopover
-          dateStr={rota.dateStr}
-          rect={rota.rect}
-          people={rotaCandidates(rota.dateStr)}
-          onToggle={(memberId, off) => onToggleOff(memberId, rota.dateStr, off)}
-          onClose={() => setRota(null)}
-        />
-      )}
-      <div className="gantt-scroll" style={{ background: 'white', borderRadius: '14px', border: '1px solid #cbd5e1', overflow: 'auto', maxHeight: '72vh' }}>
-        <table className="gantt-table" style={{ borderCollapse: 'separate', borderSpacing: 0, width: 'max-content' }}>
-          <thead>
-            <tr>
-              {GANTT_COLS.map((c, i) => (
-                <th key={c.key} className="gantt-pin" style={{
-                  position: 'sticky', top: 0, left: ganttColLeft(i), zIndex: 3,
-                  width: c.width, minWidth: c.width, maxWidth: c.width,
-                  background: '#1e3a5f', color: '#93c5fd', textAlign: 'left',
-                  fontSize: '11px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '.06em',
-                  padding: '13px 10px', borderBottom: '2px solid #16314f',
-                  borderRight: i === lastPin ? '1px solid #16314f' : '1px solid rgba(148,197,253,0.18)',
-                  boxShadow: i === lastPin ? '6px 0 10px -6px rgba(15,23,42,0.35)' : 'none',
-                }}>
-                  {c.label}
-                </th>
-              ))}
-              {dayNums.map(d => {
-                const isSun    = new Date(year, month, d).getDay() === 0
-                const holiday  = publicHolidayName(dateStrOf(d))
-                const isToday  = dateStrOf(d) === todayStr
-                const bg       = holiday ? '#2563eb' : (isSun ? '#0f172a' : (isToday ? '#2c4d7a' : '#1e3a5f'))
-                const fg       = holiday ? '#dbeafe' : (isSun ? '#64748b' : '#93c5fd')
-                return (
-                  <th key={d} title={holiday || undefined} style={{
-                    position: 'sticky', top: 0, zIndex: 2,
-                    width: GANTT_DAY_WIDTH, minWidth: GANTT_DAY_WIDTH,
-                    background: bg, color: fg,
-                    textAlign: 'center', padding: '8px 4px', borderBottom: '2px solid #16314f',
-                    borderRight: '1px solid rgba(148,197,253,0.18)',
-                  }}>
-                    <div style={{ fontSize: '9px', fontWeight: '800', textTransform: 'uppercase' }}>{new Date(year, month, d).toLocaleDateString('en-MY', { weekday: 'short' })}</div>
-                    <div style={{ fontSize: '12px', fontWeight: '700', marginTop: '2px' }}>{d}</div>
-                    {holiday && <div style={{ fontSize: '8px', fontWeight: '800', marginTop: '2px', color: '#bfdbfe' }}>PH</div>}
-                  </th>
-                )
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {sitesSorted.length === 0 ? (
-              <tr>
-                <td colSpan={GANTT_COLS.length + dayNums.length} style={{ padding: '40px 20px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
-                  No sites scheduled this month.
-                </td>
-              </tr>
-            ) : (
-              sitesSorted.map((site, i) => {
-                const start = site.scheduled_date
-                const end   = site.end_date || site.scheduled_date
-
-                const cells = [
-                  { key: 'no',      content: i + 1 },
-                  { key: 'site',    content: site.site_name },
-                  { key: 'company', content: site.client_company_name || '—' },
-                  { key: 'details', content: site.scope_of_work || '—' },
-                  { key: 'days',    content: site.site_duration_days ?? '—' },
-                ]
-
-                const namesByDay = dayNums.map(d => namesForDate(site.site_assignments, dateStrOf(d)))
-                const needsExpand = overflows(site.site_name, COL_CHAR_CAP.site)
-                  || overflows(site.client_company_name, COL_CHAR_CAP.company)
-                  || overflows(site.scope_of_work, COL_CHAR_CAP.details)
-                  || namesByDay.some(n => overflows(n, DAY_CHAR_CAP))
-                const isExpanded = expandedRows.has(site.id)
-
-                return (
-                  <tr key={site.id} className="gantt-row">
-                    {GANTT_COLS.map((c, ci) => (
-                      <td
-                        key={c.key}
-                        className="gantt-pin"
-                        onClick={() => navigate(`/sites/${site.id}`)}
-                        style={{
-                          position: 'sticky', left: ganttColLeft(ci), zIndex: 1,
-                          width: c.width, minWidth: c.width, maxWidth: c.width,
-                          background: 'white', cursor: 'pointer', verticalAlign: 'top',
-                          padding: '13px 10px', borderBottom: '1px solid #e5eaf1',
-                          borderRight: ci === lastPin ? '1px solid #d7dee7' : '1px solid #eef1f5',
-                          boxShadow: ci === lastPin ? '6px 0 10px -6px rgba(15,23,42,0.16)' : 'none',
-                          fontSize: c.key === 'site' ? '13px' : '12px',
-                          fontWeight: c.key === 'site' || c.key === 'days' ? '700' : '400',
-                          color: c.key === 'site' ? '#0f172a' : '#475569',
-                          lineHeight: 1.4,
-                          whiteSpace: isExpanded ? 'normal' : 'nowrap',
-                          wordBreak: isExpanded ? 'break-word' : 'normal',
-                          overflow: isExpanded ? 'visible' : 'hidden',
-                          textOverflow: isExpanded ? 'clip' : 'ellipsis',
-                        }}
-                      >
-                        {c.key === 'site' ? (
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-                            <span style={{ display: 'flex', alignItems: 'center', minWidth: 0, overflow: 'hidden' }}>
-                              <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: STATUS_DOT[site.site_status] || '#94a3b8', marginRight: '6px', flexShrink: 0 }} />
-                              <span style={{ overflow: isExpanded ? 'visible' : 'hidden', textOverflow: isExpanded ? 'clip' : 'ellipsis', whiteSpace: isExpanded ? 'normal' : 'nowrap' }}>{site.site_name}</span>
-                            </span>
-                            {needsExpand && (
-                              <button
-                                onClick={e => { e.stopPropagation(); toggleRow(site.id) }}
-                                style={{ flexShrink: 0, border: 'none', background: 'none', color: '#2563eb', fontSize: '10px', fontWeight: '800', cursor: 'pointer', padding: 0 }}
-                              >
-                                {isExpanded ? 'Less' : 'More'}
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          cells.find(x => x.key === c.key)?.content
-                        )}
-                      </td>
-                    ))}
-                    {dayNums.map((d, di) => {
-                      const dateStr = dateStrOf(d)
-                      const active  = start && end && dateStr >= start && dateStr <= end
-                      const isSun   = new Date(year, month, d).getDay() === 0
-                      const holiday = publicHolidayName(dateStr)
-                      const isToday = dateStr === todayStr
-                      const bg      = active ? (SESSION_COLORS[site.site_session] || DEFAULT_SESSION_COLOR) : (holiday ? '#93c5fd' : (isSun ? '#0f172a' : (isToday ? '#e6f0ff' : 'white')))
-                      const names   = namesByDay[di]
-                      return (
-                        <td key={d} style={{
-                          width: GANTT_DAY_WIDTH, minWidth: GANTT_DAY_WIDTH,
-                          background: bg, verticalAlign: 'middle',
-                          borderBottom: '1px solid #e5eaf1', borderRight: '1px solid #eef1f5',
-                          padding: '8px 6px', textAlign: 'center',
-                        }}>
-                          {active && (
-                            <span
-                              title={names}
-                              style={{
-                                fontSize: '9px', fontWeight: '800', color: '#000000',
-                                display: 'block',
-                                whiteSpace: isExpanded ? 'normal' : 'nowrap',
-                                wordBreak: isExpanded ? 'break-word' : 'normal',
-                                overflow: isExpanded ? 'visible' : 'hidden',
-                                textOverflow: isExpanded ? 'clip' : 'ellipsis',
-                              }}
-                            >
-                              {names}
-                            </span>
-                          )}
-                        </td>
-                      )
-                    })}
-                  </tr>
-                )
-              })
-            )}
-
-            <tr>
-              <td colSpan={GANTT_COLS.length + dayNums.length} style={{
-                background: '#eff6ff', color: '#1d4ed8', fontSize: '11px', fontWeight: '800',
-                textTransform: 'uppercase', letterSpacing: '.06em', padding: '9px 10px',
-                borderBottom: '1px solid #bfdbfe', borderTop: '2px solid #e5eaf1',
-              }}>
-                At Store
-              </td>
-            </tr>
-            <tr className="gantt-row">
-              {GANTT_COLS.map((c, ci) => (
-                <td key={c.key} className="gantt-pin" style={{
-                  position: 'sticky', left: ganttColLeft(ci), zIndex: 1,
-                  width: c.width, minWidth: c.width, maxWidth: c.width,
-                  background: '#f8fbff', verticalAlign: 'top',
-                  padding: '13px 10px', borderBottom: '1px solid #e5eaf1',
-                  borderRight: ci === lastPin ? '1px solid #d7dee7' : '1px solid #eef1f5',
-                  boxShadow: ci === lastPin ? '6px 0 10px -6px rgba(15,23,42,0.16)' : 'none',
-                  fontSize: c.key === 'site' ? '13px' : '12px',
-                  fontWeight: c.key === 'site' ? '700' : '400',
-                  color: c.key === 'site' ? '#1d4ed8' : '#94a3b8',
-                }}>
-                  {c.key === 'site' ? (
-                    <>
-                      <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#3b82f6', marginRight: '6px' }} />
-                      At Store
-                    </>
-                  ) : '—'}
-                </td>
-              ))}
-              {dayNums.map(d => {
-                const dateStr = dateStrOf(d)
-                const isSun   = new Date(year, month, d).getDay() === 0
-                const holiday = publicHolidayName(dateStr)
-                const names   = (isSun || holiday) ? '' : atStoreNamesForDate(dateStr)
-                const isToday = dateStr === todayStr
-                const editable = canEditRota && !isSun && !holiday
-                return (
-                  <td key={d} onClick={editable ? e => openRota(e, dateStr) : undefined} title={editable ? 'Set who is at store or off' : undefined} style={{
-                    width: GANTT_DAY_WIDTH, minWidth: GANTT_DAY_WIDTH,
-                    background: names ? '#dbeafe' : (isToday ? '#e6f0ff' : 'white'), verticalAlign: 'middle',
-                    borderBottom: '1px solid #e5eaf1', borderRight: '1px solid #eef1f5',
-                    padding: '8px 6px', textAlign: 'center', cursor: editable ? 'pointer' : 'default',
-                  }}>
-                    {names && <span style={{ fontSize: '9px', fontWeight: '800', color: '#1d4ed8', lineHeight: 1.3 }}>{names}</span>}
-                  </td>
-                )
-              })}
-            </tr>
-
-            <tr className="gantt-row">
-              {GANTT_COLS.map((c, ci) => (
-                <td key={c.key} className="gantt-pin" style={{
-                  position: 'sticky', left: ganttColLeft(ci), zIndex: 1,
-                  width: c.width, minWidth: c.width, maxWidth: c.width,
-                  background: '#f8fafc', verticalAlign: 'top',
-                  padding: '13px 10px', borderBottom: '1px solid #e5eaf1',
-                  borderRight: ci === lastPin ? '1px solid #d7dee7' : '1px solid #eef1f5',
-                  boxShadow: ci === lastPin ? '6px 0 10px -6px rgba(15,23,42,0.16)' : 'none',
-                  fontSize: c.key === 'site' ? '13px' : '12px',
-                  fontWeight: c.key === 'site' ? '700' : '400',
-                  color: c.key === 'site' ? '#475569' : '#94a3b8',
-                }}>
-                  {c.key === 'site' ? (
-                    <>
-                      <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#94a3b8', marginRight: '6px' }} />
-                      Off
-                    </>
-                  ) : c.key === 'details' && canEditRota ? 'Tap a day to set Store / Off' : '—'}
-                </td>
-              ))}
-              {dayNums.map(d => {
-                const dateStr = dateStrOf(d)
-                const isSun   = new Date(year, month, d).getDay() === 0
-                const holiday = publicHolidayName(dateStr)
-                const names   = offNamesForDate(dateStr)
-                const isToday = dateStr === todayStr
-                const editable = canEditRota && !isSun && !holiday
-                return (
-                  <td key={d} onClick={editable ? e => openRota(e, dateStr) : undefined} title={editable ? 'Set who is at store or off' : undefined} style={{
-                    width: GANTT_DAY_WIDTH, minWidth: GANTT_DAY_WIDTH,
-                    background: names ? '#e2e8f0' : (isToday ? '#e6f0ff' : 'white'), verticalAlign: 'middle',
-                    borderBottom: '1px solid #e5eaf1', borderRight: '1px solid #eef1f5',
-                    padding: '8px 6px', textAlign: 'center', cursor: editable ? 'pointer' : 'default',
-                  }}>
-                    {names && <span style={{ fontSize: '9px', fontWeight: '800', color: '#475569', lineHeight: 1.3 }}>{names}</span>}
-                  </td>
-                )
-              })}
-            </tr>
-
-            {leavesByType.length > 0 && (
-              <>
-                <tr>
-                  <td colSpan={GANTT_COLS.length + dayNums.length} style={{
-                    background: '#fef2f2', color: '#991b1b', fontSize: '11px', fontWeight: '800',
-                    textTransform: 'uppercase', letterSpacing: '.06em', padding: '9px 10px',
-                    borderBottom: '1px solid #fecaca', borderTop: '2px solid #e5eaf1',
-                  }}>
-                    Team Leave
-                  </td>
-                </tr>
-                {leavesByType.map(([type, leavesOfType]) => {
-                  const abbr    = leaveAbbr(type)
-                  const rowKey  = `leave:${type}`
-                  const label   = leaveTypeLabel(type)
-
-                  const cells = [
-                    { key: 'no',      content: '—' },
-                    { key: 'company', content: '—' },
-                    { key: 'details', content: `${leavesOfType.length} record${leavesOfType.length > 1 ? 's' : ''}` },
-                    { key: 'days',    content: '—' },
-                  ]
-
-                  const namesByDay = dayNums.map(d => {
-                    const dateStr = dateStrOf(d)
-                    return leavesOfType
-                      .filter(l => dateStr >= l.start_date && dateStr <= (l.end_date || l.start_date))
-                      .map(l => memberById[l.member_id]?.short_name || memberById[l.member_id]?.full_name)
-                      .filter(Boolean)
-                      .join(', ')
-                  })
-                  const needsExpand = overflows(label, COL_CHAR_CAP.site) || namesByDay.some(n => overflows(n, DAY_CHAR_CAP))
-                  const isExpanded  = expandedRows.has(rowKey)
-
-                  return (
-                    <tr key={rowKey} className="gantt-row">
-                      {GANTT_COLS.map((c, ci) => (
-                        <td key={c.key} className="gantt-pin" style={{
-                          position: 'sticky', left: ganttColLeft(ci), zIndex: 1,
-                          width: c.width, minWidth: c.width, maxWidth: c.width,
-                          background: '#fff7f7', verticalAlign: 'top',
-                          padding: '13px 10px', borderBottom: '1px solid #e5eaf1',
-                          borderRight: ci === lastPin ? '1px solid #d7dee7' : '1px solid #f3e3e3',
-                          boxShadow: ci === lastPin ? '6px 0 10px -6px rgba(15,23,42,0.16)' : 'none',
-                          fontSize: c.key === 'site' ? '13px' : '12px',
-                          fontWeight: c.key === 'site' || c.key === 'days' ? '700' : '400',
-                          color: c.key === 'site' ? '#7f1d1d' : '#a16767',
-                          lineHeight: 1.4,
-                          whiteSpace: isExpanded ? 'normal' : 'nowrap',
-                          wordBreak: isExpanded ? 'break-word' : 'normal',
-                          overflow: isExpanded ? 'visible' : 'hidden',
-                          textOverflow: isExpanded ? 'clip' : 'ellipsis',
-                        }}>
-                          {c.key === 'site' ? (
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-                              <span style={{ display: 'flex', alignItems: 'center', minWidth: 0, overflow: 'hidden' }}>
-                                <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444', marginRight: '6px', flexShrink: 0 }} />
-                                <span style={{ overflow: isExpanded ? 'visible' : 'hidden', textOverflow: isExpanded ? 'clip' : 'ellipsis', whiteSpace: isExpanded ? 'normal' : 'nowrap' }}>
-                                  {label} <span style={{ fontSize: '10px', fontWeight: '800', color: '#dc2626' }}>({abbr})</span>
-                                </span>
-                              </span>
-                              {needsExpand && (
-                                <button
-                                  onClick={() => toggleRow(rowKey)}
-                                  style={{ flexShrink: 0, border: 'none', background: 'none', color: '#2563eb', fontSize: '10px', fontWeight: '800', cursor: 'pointer', padding: 0 }}
-                                >
-                                  {isExpanded ? 'Less' : 'More'}
-                                </button>
-                              )}
-                            </div>
-                          ) : (
-                            cells.find(x => x.key === c.key)?.content
-                          )}
-                        </td>
-                      ))}
-                      {dayNums.map((d, di) => {
-                        const dateStr = dateStrOf(d)
-                        const names   = namesByDay[di]
-                        const active  = names.length > 0
-                        const isToday = dateStr === todayStr
-                        return (
-                          <td key={d} style={{
-                            width: GANTT_DAY_WIDTH, minWidth: GANTT_DAY_WIDTH,
-                            background: active ? '#fecaca' : (isToday ? '#e6f0ff' : 'white'), verticalAlign: 'middle',
-                            borderBottom: '1px solid #e5eaf1', borderRight: '1px solid #eef1f5',
-                            padding: '8px 6px', textAlign: 'center',
-                          }}>
-                            {active && (
-                              <span
-                                title={names}
-                                style={{
-                                  fontSize: '9px', fontWeight: '800', color: '#7f1d1d',
-                                  display: 'block',
-                                  whiteSpace: isExpanded ? 'normal' : 'nowrap',
-                                  wordBreak: isExpanded ? 'break-word' : 'normal',
-                                  overflow: isExpanded ? 'visible' : 'hidden',
-                                  textOverflow: isExpanded ? 'clip' : 'ellipsis',
-                                }}
-                              >
-                                {names}
-                              </span>
-                            )}
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  )
-                })}
-              </>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Legend */}
-      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 16px', display: 'grid', gap: '10px' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '18px' }}>
-          {LEGEND_ITEMS.map(item => (
-            <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-              <div style={{ width: '13px', height: '13px', borderRadius: '4px', background: item.swatch, border: '1px solid rgba(0,0,0,0.12)' }} />
-              <span style={{ fontSize: '12px', color: '#475569', fontWeight: '600' }}>{item.label}</span>
-            </div>
-          ))}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-            <div style={{ width: '13px', height: '13px', borderRadius: '4px', background: '#e6f0ff', border: '1px solid rgba(0,0,0,0.12)' }} />
-            <span style={{ fontSize: '12px', color: '#475569', fontWeight: '600' }}>Today</span>
-          </div>
-        </div>
-        <div style={{ width: '100%', height: '1px', background: '#e2e8f0' }} />
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '18px' }}>
-          {Object.entries(STATUS_DOT).map(([status, color]) => (
-            <div key={status} style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-              <div style={{ width: '9px', height: '9px', borderRadius: '50%', background: color }} />
-              <span style={{ fontSize: '12px', color: '#475569', fontWeight: '600', textTransform: 'capitalize' }}>{status}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 export default function CalendarPage() {
   const navigate = useNavigate()
-  const { isZairul, memberId } = useAuth()
+  const { isZairul } = useAuth()
   const { isMobile } = useViewport()
   const today    = useMemo(() => new Date(), [])
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
   const [current, setCurrent]   = useState(() => new Date(today.getFullYear(), today.getMonth(), 1))
   const [sites, setSites]       = useState([])
   const [loading, setLoading]   = useState(true)
-  const [pickedView, setView]   = useState('list') // 'month' | 'list' | 'crew' | 'person'
-  const [pickedMobileView, setMobileView] = useState('agenda') // 'agenda' | 'crew' | 'person'
+  const [pickedView, setView]   = useState('list') // 'month' | 'list'
   const [enabledTabs, setEnabledTabs] = useState(DEFAULT_CALENDAR_SETTINGS.tabs)
   const [expanded, setExpanded] = useState(null)
   const [dayModal, setDayModal] = useState(null) // { day, ds, sites }
@@ -639,8 +62,6 @@ export default function CalendarPage() {
   // Admins choose which tabs everyone sees; fall back to the first tab still on.
   const visibleViews = VIEWS.filter(v => enabledTabs[v.key])
   const view = enabledTabs[pickedView] ? pickedView : visibleViews[0]?.key
-  const mobileViews = ['agenda', ...['crew', 'person'].filter(k => enabledTabs[k])]
-  const mobileView = mobileViews.includes(pickedMobileView) ? pickedMobileView : 'agenda'
 
   useEffect(() => {
     setExpanded(null)
@@ -649,7 +70,7 @@ export default function CalendarPage() {
 
   useEffect(() => {
     fetchTeamLeaves().then(setLeaves).catch(() => setLeaves([]))
-    supabase.from('team_members').select('id, short_name, full_name, avatar_url, role').order('created_at').then(({ data }) => setMembers(data || []))
+    supabase.from('team_members').select('id, short_name, full_name').then(({ data }) => setMembers(data || []))
     fetchCalendarSettings().then(s => setEnabledTabs(s.tabs)).catch(() => {})
   }, [])
 
@@ -745,7 +166,6 @@ export default function CalendarPage() {
             </p>
           </div>
           <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-            {isZairul && <TabsMenu enabledTabs={enabledTabs} onToggle={toggleTab} />}
             <button
               onClick={() => setCurrent(new Date(today.getFullYear(), today.getMonth(), 1))}
               style={{ padding: '8px 12px', borderRadius: '10px', background: '#2563eb', border: 'none', color: 'white', fontSize: '12px', fontWeight: '700', cursor: 'pointer', flexShrink: 0 }}
@@ -762,34 +182,18 @@ export default function CalendarPage() {
             </button>
             <div style={{ textAlign: 'center' }}>
               <p style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>{monthLabel}</p>
-              <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', textTransform: 'capitalize' }}>{mobileView} view</p>
+              <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>Agenda view</p>
             </div>
             <button onClick={() => setCurrent(new Date(year, month + 1, 1))} style={{ padding: '8px', borderRadius: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', color: '#0f172a', cursor: 'pointer', display: 'flex' }}>
               <ChevronRight size={16} />
             </button>
           </div>
 
-          {mobileViews.length > 1 && <div style={{ display: 'flex', gap: '4px', background: 'white', border: '1px solid #dbe3ec', borderRadius: '12px', padding: '4px' }}>
-            {mobileViews.map(v => (
-              <button
-                key={v}
-                onClick={() => setMobileView(v)}
-                style={{ flex: 1, padding: '8px 0', borderRadius: '9px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '700', textTransform: 'capitalize', background: mobileView === v ? '#2563eb' : 'transparent', color: mobileView === v ? 'white' : '#64748b' }}
-              >
-                {v}
-              </button>
-            ))}
-          </div>}
-
           {loading ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '240px', gap: '10px', color: '#64748b', fontSize: '14px' }}>
               <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '2px solid #e2e8f0', borderTopColor: '#2563eb', animation: 'spin 0.7s linear infinite' }} />
               Loading...
             </div>
-          ) : mobileView === 'crew' ? (
-            <CrewScheduleView sites={sites} leaves={leaves} members={members} year={year} month={month} todayStr={todayStr} navigate={navigate} />
-          ) : mobileView === 'person' ? (
-            <PersonView sites={sites} leaves={leaves} members={members} year={year} month={month} todayStr={todayStr} navigate={navigate} defaultMemberId={memberId} />
           ) : agendaDays.length === 0 ? (
             <div style={{ background: 'white', borderRadius: '18px', border: '1px solid #e2e8f0', padding: '28px 20px', textAlign: 'center' }}>
               <p style={{ fontSize: '14px', fontWeight: '700', color: '#0f172a' }}>No sites scheduled</p>
@@ -909,25 +313,14 @@ export default function CalendarPage() {
         {/* Calendar */}
         <div style={{ flex: 1, minWidth: 0 }}>
 
-        {(view === 'crew' || view === 'person') ? (
-          loading ? (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '400px', gap: '10px', color: '#64748b', fontSize: '14px' }}>
-              <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '2px solid #e2e8f0', borderTopColor: '#2563eb', animation: 'spin 0.7s linear infinite' }} />
-              Loading…
-            </div>
-          ) : view === 'crew' ? (
-            <CrewScheduleView sites={sites} leaves={leaves} members={members} year={year} month={month} todayStr={todayStr} navigate={navigate} />
-          ) : (
-            <PersonView sites={sites} leaves={leaves} members={members} year={year} month={month} todayStr={todayStr} navigate={navigate} defaultMemberId={memberId} />
-          )
-        ) : view === 'list' ? (
+        {view === 'list' ? (
           loading ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '400px', gap: '10px', color: '#64748b', fontSize: '14px' }}>
               <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '2px solid #e2e8f0', borderTopColor: '#2563eb', animation: 'spin 0.7s linear infinite' }} />
               Loading…
             </div>
           ) : (
-            <GanttListView sitesSorted={sitesSorted} year={year} month={month} navigate={navigate} leaves={leaves} members={members} canEditRota={isZairul} onToggleOff={toggleOff} />
+            <CalendarListView sitesSorted={sitesSorted} year={year} month={month} navigate={navigate} leaves={leaves} members={members} canEditRota={isZairul} onToggleOff={toggleOff} />
           )
         ) : (
         <>
@@ -1223,59 +616,9 @@ function TabsMenu({ enabledTabs, onToggle }) {
               )
             })}
           </div>
-          <p style={{ padding: '8px 14px 12px', fontSize: '11px', color: '#94a3b8', borderTop: '1px solid #f1f5f9' }}>On phones, Agenda is always shown.</p>
+          <p style={{ padding: '8px 14px 12px', fontSize: '11px', color: '#94a3b8', borderTop: '1px solid #f1f5f9' }}>Phones always show the agenda. Crew and person views are on the Team page.</p>
         </div>
       )}
-    </div>
-  )
-}
-
-// Store / Off switch for one day. Floats above the page because the calendar table scrolls.
-function RotaPopover({ dateStr, rect, people, onToggle, onClose }) {
-  const ref = useRef(null)
-  useEffect(() => {
-    const onDown = e => { if (ref.current && !ref.current.contains(e.target)) onClose() }
-    const onKey = e => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('mousedown', onDown)
-    document.addEventListener('keydown', onKey)
-    window.addEventListener('resize', onClose)
-    return () => {
-      document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('keydown', onKey)
-      window.removeEventListener('resize', onClose)
-    }
-  }, [onClose])
-
-  const width = 250
-  const left = Math.max(8, Math.min(rect.left + rect.width / 2 - width / 2, window.innerWidth - width - 8))
-  const below = window.innerHeight - rect.bottom
-  const place = below > 260 || below > rect.top ? { top: rect.bottom + 6 } : { bottom: window.innerHeight - rect.top + 6 }
-  const label = new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-MY', { weekday: 'short', day: 'numeric', month: 'short' })
-  const seg = (active, tone) => ({
-    padding: '5px 10px', border: 'none', cursor: 'pointer', fontSize: '11.5px', fontWeight: '700', fontFamily: 'inherit',
-    background: active ? (tone === 'off' ? '#475569' : '#2563eb') : 'transparent',
-    color: active ? 'white' : '#64748b',
-  })
-
-  return (
-    <div ref={ref} style={{ position: 'fixed', zIndex: 1300, left, width, ...place, background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 16px 40px rgba(15,23,42,0.22)', overflow: 'hidden' }}>
-      <div style={{ padding: '10px 12px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: '13px', fontWeight: '800', color: '#0f172a' }}>{label}</span>
-        <span style={{ fontSize: '11px', color: '#94a3b8' }}>Store / Off</span>
-      </div>
-      <div style={{ maxHeight: '260px', overflowY: 'auto', padding: '6px' }}>
-        {people.length === 0 ? (
-          <p style={{ padding: '12px 8px', fontSize: '12px', color: '#94a3b8', textAlign: 'center' }}>Everyone is on a site or on leave this day.</p>
-        ) : people.map(p => (
-          <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '6px 6px' }}>
-            <span style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a' }}>{p.name}</span>
-            <div style={{ display: 'flex', border: '1px solid #e2e8f0', borderRadius: '999px', overflow: 'hidden' }}>
-              <button onClick={() => onToggle(p.id, false)} style={seg(!p.off, 'store')}>Store</button>
-              <button onClick={() => onToggle(p.id, true)} style={seg(p.off, 'off')}>Off</button>
-            </div>
-          </div>
-        ))}
-      </div>
     </div>
   )
 }

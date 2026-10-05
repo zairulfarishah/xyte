@@ -4,8 +4,8 @@ import { supabase } from '../supabase'
 const SETTINGS_BUCKET = 'site-photos'
 const SETTINGS_FILE_PATH = 'app-data/calendar-settings.json'
 
-export const CALENDAR_TABS = ['month', 'list', 'crew', 'person']
-export const DEFAULT_CALENDAR_SETTINGS = { tabs: { month: true, list: true, crew: true, person: true } }
+export const CALENDAR_TABS = ['month', 'list']
+export const DEFAULT_CALENDAR_SETTINGS = { tabs: { month: true, list: true } }
 
 // Unknown or missing tabs default to on, so a new tab shows up until an admin hides it.
 function sanitize(raw) {
