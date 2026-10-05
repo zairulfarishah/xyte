@@ -10,7 +10,11 @@ export function serverClients() {
     throw new Error('Push is not configured on the server')
   }
   webpush.setVapidDetails(VAPID_SUBJECT || 'mailto:admin@example.com', VITE_VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
-  return createClient(VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, { auth: { persistSession: false } })
+  // Row level security only lets signed-in team members through (sql/setup-security.sql),
+  // so the server needs the service role key. Never expose it with a VITE_ prefix.
+  // Falls back to the anon key so pushes keep working until the key is set.
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || VITE_SUPABASE_ANON_KEY
+  return createClient(VITE_SUPABASE_URL, key, { auth: { persistSession: false } })
 }
 
 // Push notification rows to every subscribed device whose owner has that category switched on.
