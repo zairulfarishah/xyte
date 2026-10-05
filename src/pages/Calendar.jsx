@@ -1,13 +1,22 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { supabase } from '../supabase'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, SlidersHorizontal } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useViewport } from '../utils/useViewport'
 import { fetchTeamLeaves, leaveAbbr, isOffDay, setOffDay, saveTeamLeaves } from '../utils/teamLeaves'
 import { useAuth } from '../context/AuthContext'
 import { publicHolidayName } from '../utils/holidays'
+import { CrewScheduleView, PersonView } from './CalendarPeople'
+import { DEFAULT_CALENDAR_SETTINGS, fetchCalendarSettings, saveCalendarSettings } from '../utils/calendarSettings'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+const VIEWS = [
+  { key: 'month',  label: 'Month' },
+  { key: 'list',   label: 'List' },
+  { key: 'crew',   label: 'Crew' },
+  { key: 'person', label: 'Person' },
+]
 
 const TYPE_COLORS = {
   site_scanning: { bg: 'linear-gradient(135deg,#0f2460 0%,#1a4b8c 55%,#0891b2 100%)', text: '#ffffff', border: '#0891b2', dot: '#2563eb', label: 'Site Scanning' },
@@ -609,13 +618,16 @@ function GanttListView({ sitesSorted, year, month, navigate, leaves, members, ca
 
 export default function CalendarPage() {
   const navigate = useNavigate()
-  const { isZairul } = useAuth()
+  const { isZairul, memberId } = useAuth()
   const { isMobile } = useViewport()
   const today    = useMemo(() => new Date(), [])
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
   const [current, setCurrent]   = useState(() => new Date(today.getFullYear(), today.getMonth(), 1))
   const [sites, setSites]       = useState([])
   const [loading, setLoading]   = useState(true)
-  const [view, setView]         = useState('list') // 'month' | 'list'
+  const [pickedView, setView]   = useState('list') // 'month' | 'list' | 'crew' | 'person'
+  const [pickedMobileView, setMobileView] = useState('agenda') // 'agenda' | 'crew' | 'person'
+  const [enabledTabs, setEnabledTabs] = useState(DEFAULT_CALENDAR_SETTINGS.tabs)
   const [expanded, setExpanded] = useState(null)
   const [dayModal, setDayModal] = useState(null) // { day, ds, sites }
   const [leaves, setLeaves]     = useState([])
@@ -624,6 +636,12 @@ export default function CalendarPage() {
   const year  = current.getFullYear()
   const month = current.getMonth()
 
+  // Admins choose which tabs everyone sees; fall back to the first tab still on.
+  const visibleViews = VIEWS.filter(v => enabledTabs[v.key])
+  const view = enabledTabs[pickedView] ? pickedView : visibleViews[0]?.key
+  const mobileViews = ['agenda', ...['crew', 'person'].filter(k => enabledTabs[k])]
+  const mobileView = mobileViews.includes(pickedMobileView) ? pickedMobileView : 'agenda'
+
   useEffect(() => {
     setExpanded(null)
     fetchSites()
@@ -631,8 +649,22 @@ export default function CalendarPage() {
 
   useEffect(() => {
     fetchTeamLeaves().then(setLeaves).catch(() => setLeaves([]))
-    supabase.from('team_members').select('id, short_name, full_name').then(({ data }) => setMembers(data || []))
+    supabase.from('team_members').select('id, short_name, full_name, avatar_url, role').order('created_at').then(({ data }) => setMembers(data || []))
+    fetchCalendarSettings().then(s => setEnabledTabs(s.tabs)).catch(() => {})
   }, [])
+
+  async function toggleTab(key) {
+    const prev = enabledTabs
+    const next = { ...prev, [key]: !prev[key] }
+    if (!Object.values(next).some(Boolean)) return // keep at least one tab
+    setEnabledTabs(next)
+    try {
+      await saveCalendarSettings({ tabs: next })
+    } catch (err) {
+      setEnabledTabs(prev)
+      alert(`Could not save: ${err.message}`)
+    }
+  }
 
   // Admin switches someone between Store and Off for a day (saved with the team leave records).
   async function toggleOff(memberId, date, off) {
@@ -655,7 +687,7 @@ export default function CalendarPage() {
     const to   = `${year}-${String(month + 1).padStart(2, '0')}-${String(last).padStart(2, '0')}`
     const { data } = await supabase
       .from('sites')
-      .select(`id, site_name, site_type, site_status, scheduled_date, end_date, site_session, site_photo_url,
+      .select(`id, site_name, site_type, site_status, scheduled_date, end_date, site_session, site_photo_url, location,
         client_company_name, scope_of_work, site_duration_days,
         site_assignments(assignment_role, work_date, team_members(id, short_name, full_name, avatar_url))`)
       .or(`and(scheduled_date.gte.${from},scheduled_date.lte.${to}),and(end_date.gte.${from},end_date.lte.${to}),and(scheduled_date.lte.${from},end_date.gte.${to})`)
@@ -704,20 +736,23 @@ export default function CalendarPage() {
 
   if (isMobile) {
     return (
-      <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg,#071226 0 88px,#e2e8f0 88px 100%)' }}>
-        <div style={{ padding: '18px 14px 0', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+      <div style={{ minHeight: '100vh', background: '#e2e8f0' }}>
+        <div style={{ padding: '18px 14px 16px', background: '#071226', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
           <div>
             <h1 style={{ fontSize: '22px', fontWeight: '700', color: 'white' }}>Calendar</h1>
             <p style={{ color: '#94a3b8', fontSize: '12px', marginTop: '3px' }}>
               {sites.length} site{sites.length !== 1 ? 's' : ''} in {monthLabel}
             </p>
           </div>
-          <button
-            onClick={() => setCurrent(new Date(today.getFullYear(), today.getMonth(), 1))}
-            style={{ padding: '8px 12px', borderRadius: '10px', background: '#2563eb', border: 'none', color: 'white', fontSize: '12px', fontWeight: '700', cursor: 'pointer', flexShrink: 0 }}
-          >
-            Today
-          </button>
+          <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+            {isZairul && <TabsMenu enabledTabs={enabledTabs} onToggle={toggleTab} />}
+            <button
+              onClick={() => setCurrent(new Date(today.getFullYear(), today.getMonth(), 1))}
+              style={{ padding: '8px 12px', borderRadius: '10px', background: '#2563eb', border: 'none', color: 'white', fontSize: '12px', fontWeight: '700', cursor: 'pointer', flexShrink: 0 }}
+            >
+              Today
+            </button>
+          </div>
         </div>
 
         <div style={{ padding: '14px 14px 28px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -727,18 +762,34 @@ export default function CalendarPage() {
             </button>
             <div style={{ textAlign: 'center' }}>
               <p style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>{monthLabel}</p>
-              <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>Agenda view</p>
+              <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', textTransform: 'capitalize' }}>{mobileView} view</p>
             </div>
             <button onClick={() => setCurrent(new Date(year, month + 1, 1))} style={{ padding: '8px', borderRadius: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', color: '#0f172a', cursor: 'pointer', display: 'flex' }}>
               <ChevronRight size={16} />
             </button>
           </div>
 
+          {mobileViews.length > 1 && <div style={{ display: 'flex', gap: '4px', background: 'white', border: '1px solid #dbe3ec', borderRadius: '12px', padding: '4px' }}>
+            {mobileViews.map(v => (
+              <button
+                key={v}
+                onClick={() => setMobileView(v)}
+                style={{ flex: 1, padding: '8px 0', borderRadius: '9px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '700', textTransform: 'capitalize', background: mobileView === v ? '#2563eb' : 'transparent', color: mobileView === v ? 'white' : '#64748b' }}
+              >
+                {v}
+              </button>
+            ))}
+          </div>}
+
           {loading ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '240px', gap: '10px', color: '#64748b', fontSize: '14px' }}>
               <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '2px solid #e2e8f0', borderTopColor: '#2563eb', animation: 'spin 0.7s linear infinite' }} />
               Loading...
             </div>
+          ) : mobileView === 'crew' ? (
+            <CrewScheduleView sites={sites} leaves={leaves} members={members} year={year} month={month} todayStr={todayStr} navigate={navigate} />
+          ) : mobileView === 'person' ? (
+            <PersonView sites={sites} leaves={leaves} members={members} year={year} month={month} todayStr={todayStr} navigate={navigate} defaultMemberId={memberId} />
           ) : agendaDays.length === 0 ? (
             <div style={{ background: 'white', borderRadius: '18px', border: '1px solid #e2e8f0', padding: '28px 20px', textAlign: 'center' }}>
               <p style={{ fontSize: '14px', fontWeight: '700', color: '#0f172a' }}>No sites scheduled</p>
@@ -802,11 +853,11 @@ export default function CalendarPage() {
   const SHOW = 2 // max chips before "+X more"
 
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg,#071226 0 100px,#c8d4e3 100px 100%)' }}>
+    <div style={{ minHeight: '100vh', background: '#c8d4e3' }}>
 
       {/* ── Header ── */}
-      <div style={{ padding: '24px 40px 0', display: 'grid', gap: '14px' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '18px' }}>
+      <div style={{ padding: '24px 40px 22px', background: '#071226', display: 'grid', gap: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '18px', flexWrap: 'wrap' }}>
           <div>
             <h1 style={{ fontSize: '22px', fontWeight: '700', color: 'white' }}>Calendar</h1>
             <p style={{ color: '#94a3b8', fontSize: '13px', marginTop: '2px' }}>
@@ -814,7 +865,7 @@ export default function CalendarPage() {
             </p>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <button onClick={() => setCurrent(new Date(year, month - 1, 1))} style={{ padding: '8px', borderRadius: '8px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.12)', color: 'white', cursor: 'pointer', display: 'flex' }}>
               <ChevronLeft size={16} />
             </button>
@@ -830,7 +881,7 @@ export default function CalendarPage() {
             </button>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '4px', marginLeft: '4px' }}>
-              {['month', 'list'].map(v => (
+              {visibleViews.map(({ key: v, label }) => (
                 <button
                   key={v}
                   onClick={() => setView(v)}
@@ -842,10 +893,11 @@ export default function CalendarPage() {
                     transition: 'background-color .15s ease, color .15s ease',
                   }}
                 >
-                  {v}
+                  {label}
                 </button>
               ))}
             </div>
+            {isZairul && <TabsMenu enabledTabs={enabledTabs} onToggle={toggleTab} />}
           </div>
         </div>
 
@@ -857,7 +909,18 @@ export default function CalendarPage() {
         {/* Calendar */}
         <div style={{ flex: 1, minWidth: 0 }}>
 
-        {view === 'list' ? (
+        {(view === 'crew' || view === 'person') ? (
+          loading ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '400px', gap: '10px', color: '#64748b', fontSize: '14px' }}>
+              <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '2px solid #e2e8f0', borderTopColor: '#2563eb', animation: 'spin 0.7s linear infinite' }} />
+              Loading…
+            </div>
+          ) : view === 'crew' ? (
+            <CrewScheduleView sites={sites} leaves={leaves} members={members} year={year} month={month} todayStr={todayStr} navigate={navigate} />
+          ) : (
+            <PersonView sites={sites} leaves={leaves} members={members} year={year} month={month} todayStr={todayStr} navigate={navigate} defaultMemberId={memberId} />
+          )
+        ) : view === 'list' ? (
           loading ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '400px', gap: '10px', color: '#64748b', fontSize: '14px' }}>
               <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '2px solid #e2e8f0', borderTopColor: '#2563eb', animation: 'spin 0.7s linear infinite' }} />
@@ -1099,6 +1162,68 @@ export default function CalendarPage() {
               })}
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Admin-only: which Calendar tabs everyone sees. Saved team-wide.
+function TabsMenu({ enabledTabs, onToggle }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!open) return
+    const onDown = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    const onKey = e => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+  const onCount = VIEWS.filter(v => enabledTabs[v.key]).length
+
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'flex' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        title="Choose which tabs the team sees"
+        aria-expanded={open}
+        style={{ padding: '8px 10px', borderRadius: '10px', background: open ? 'white' : 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.12)', color: open ? '#0f172a' : 'white', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+      >
+        <SlidersHorizontal size={16} />
+      </button>
+      {open && (
+        <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 8px)', zIndex: 1300, width: '260px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 16px 40px rgba(15,23,42,0.22)', overflow: 'hidden' }}>
+          <div style={{ padding: '12px 14px', borderBottom: '1px solid #f1f5f9' }}>
+            <p style={{ fontSize: '13px', fontWeight: '800', color: '#0f172a' }}>Calendar tabs</p>
+            <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>Turn tabs on or off for the whole team</p>
+          </div>
+          <div style={{ padding: '6px' }}>
+            {VIEWS.map(({ key, label }) => {
+              const on = enabledTabs[key]
+              const locked = on && onCount === 1
+              return (
+                <button
+                  key={key}
+                  role="switch"
+                  aria-checked={on}
+                  disabled={locked}
+                  onClick={() => onToggle(key)}
+                  title={locked ? 'At least one tab must stay on' : undefined}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '9px 8px', borderRadius: '8px', background: 'none', border: 'none', cursor: locked ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
+                >
+                  <span style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a' }}>{label}</span>
+                  <span style={{ width: '34px', height: '20px', borderRadius: '999px', background: on ? '#2563eb' : '#cbd5e1', position: 'relative', transition: 'background .15s', opacity: locked ? 0.5 : 1, flexShrink: 0 }}>
+                    <span style={{ position: 'absolute', top: '2px', left: on ? '16px' : '2px', width: '16px', height: '16px', borderRadius: '50%', background: 'white', transition: 'left .15s', boxShadow: '0 1px 2px rgba(0,0,0,.2)' }} />
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+          <p style={{ padding: '8px 14px 12px', fontSize: '11px', color: '#94a3b8', borderTop: '1px solid #f1f5f9' }}>On phones, Agenda is always shown.</p>
         </div>
       )}
     </div>
