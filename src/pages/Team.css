@@ -4,16 +4,25 @@
   --line: #e2e8f0; --line-2: #f1f5f9; --blue: #2563eb; --amber: #d97706;
   --shadow: 0 1px 2px rgba(15,23,42,.04), 0 8px 24px rgba(15,23,42,.06);
   min-height: calc(100vh - 54px);
-  background:
-    radial-gradient(circle at 18% 5%, rgba(59,130,246,.18), transparent 26%),
-    radial-gradient(circle at 70% 0%, rgba(14,165,233,.10), transparent 30%),
-    linear-gradient(180deg, #071226 0 150px, #eef3f8 150px 100%);
+  background: #eef3f8;
   color: var(--ink);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
 :where(.tm) button { font: inherit; cursor: pointer; border: 0; background: none; color: inherit; padding: 0; }
-.tm-wrap { max-width: 1280px; margin: 0 auto; padding: 22px 16px 64px; }
-@media (min-width: 900px) { .tm-wrap { padding: 26px 40px 80px; } }
+
+/* Dark band sized by its own content, so nothing below can end up half on it */
+.tm-hero {
+  background:
+    radial-gradient(circle at 18% 0%, rgba(59,130,246,.22), transparent 40%),
+    radial-gradient(circle at 75% 0%, rgba(14,165,233,.12), transparent 40%),
+    #071226;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+}
+.tm-hero .tm-top { max-width: 1280px; margin: 0 auto; padding: 24px 16px 22px; }
+@media (min-width: 900px) { .tm-hero .tm-top { padding: 28px 40px 26px; } }
+
+.tm-wrap { max-width: 1280px; margin: 0 auto; padding: 4px 16px 64px; }
+@media (min-width: 900px) { .tm-wrap { padding: 6px 40px 80px; } }
 
 .tm-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 14px; flex-wrap: wrap; color: #fff; }
 .tm-top h1 { font-size: 26px; font-weight: 800; letter-spacing: -.02em; }

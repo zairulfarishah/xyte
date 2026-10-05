@@ -224,7 +224,7 @@ export default function Team() {
 
   return (
     <div className="tm">
-      <div className="tm-wrap">
+      <header className="tm-hero">
         <div className="tm-top">
           <div>
             <h1>Team</h1>
@@ -236,7 +236,9 @@ export default function Team() {
             ))}
           </div>
         </div>
+      </header>
 
+      <div className="tm-wrap">
         {view === 'roster'  && <RosterView {...ctx} />}
         {view === 'week'    && <WeekBoard {...ctx} weekNav={weekNav} />}
         {view === 'where'   && <WhereView {...ctx} weekNav={weekNav} />}
