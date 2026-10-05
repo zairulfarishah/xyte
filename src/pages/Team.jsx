@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
@@ -35,14 +35,10 @@ const loadColor = pct => pct >= 100 ? '#dc2626' : pct >= 80 ? '#d97706' : '#0596
 const shortOf = m => m.short_name || m.full_name?.split(' ')[0] || '?'
 const initialsOf = m => (m.full_name || '?').split(' ').filter(Boolean).map(p => p[0]).join('').slice(0, 2).toUpperCase()
 
-function Avatar({ m, size = 40, onUpload = null }) {
+// Photos are changed in Settings → Team Members
+function Avatar({ m, size = 40 }) {
   return (
-    <div
-      className={`tm-av${onUpload ? ' can-upload' : ''}`}
-      onClick={onUpload ? e => { e.stopPropagation(); onUpload() } : undefined}
-      title={onUpload ? 'Change photo' : undefined}
-      style={{ width: size, height: size, fontSize: size * 0.36, background: m.color }}
-    >
+    <div className="tm-av" style={{ width: size, height: size, fontSize: size * 0.36, background: m.color }}>
       {m.avatar_url ? <img src={m.avatar_url} alt="" /> : initialsOf(m)}
     </div>
   )
@@ -175,26 +171,6 @@ export default function Team() {
       .sort((a, b) => (b.isLead - a.isLead) || (b.sites - a.sites) || a.full_name.localeCompare(b.full_name))
   }, [rawMembers, sites, today])
 
-  // ── avatar upload (admin) ──
-  const avatarInput = useRef(null)
-  const uploadFor = useRef(null)
-  const startUpload = isZairul ? id => { uploadFor.current = id; avatarInput.current?.click() } : null
-  async function handleAvatar(e) {
-    const file = e.target.files?.[0]
-    const memberId = uploadFor.current
-    e.target.value = ''
-    if (!file || !memberId) return
-    if (!file.type.startsWith('image/')) { alert('Please select an image file'); return }
-    // Unique filename per upload avoids the CDN serving the cached old file
-    const fileName = `${memberId}_${Date.now()}.${file.name.split('.').pop()}`
-    const { error: upErr } = await supabase.storage.from('team-avatars').upload(fileName, file)
-    if (upErr) { alert('Failed to upload photo: ' + upErr.message); return }
-    const avatarUrl = supabase.storage.from('team-avatars').getPublicUrl(fileName).data?.publicUrl
-    const { error } = await supabase.from('team_members').update({ avatar_url: avatarUrl }).eq('id', memberId)
-    if (error) { alert('Failed to save photo: ' + error.message); return }
-    setRawMembers(prev => prev.map(m => m.id === memberId ? { ...m, avatar_url: avatarUrl } : m))
-  }
-
   async function saveField(memberId, field, value) {
     const clean = value.trim() || null
     const { error } = await supabase.from('team_members').update({ [field]: clean }).eq('id', memberId)
@@ -212,7 +188,7 @@ export default function Team() {
     </div>
   )
 
-  const ctx = { members, today, thisWeekDates, weekDates, dayStatus, weekLoad, siteColor, open: setOpenId, startUpload }
+  const ctx = { members, today, thisWeekDates, weekDates, dayStatus, weekLoad, siteColor, open: setOpenId }
   const weekNav = (
     <div className="tm-seg">
       <button onClick={() => setWeekStart(addDays(weekStart, -7))}>‹ Prev</button>
@@ -256,7 +232,6 @@ export default function Team() {
           onClose={() => setOpenId(null)}
         />
       )}
-      <input ref={avatarInput} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatar} />
     </div>
   )
 }
@@ -302,7 +277,7 @@ function nextJobLabel(m, today, dayStatus) {
 }
 
 // ── 1. Roster ──
-function RosterView({ members, today, thisWeekDates, dayStatus, weekLoad, siteColor, open, startUpload }) {
+function RosterView({ members, today, thisWeekDates, dayStatus, weekLoad, siteColor, open }) {
   const todays = members.map(m => dayStatus(m.id, today))
   const onSite = todays.filter(s => s.kind === 'site').length
   const locations = new Set(todays.filter(s => s.kind === 'site').flatMap(s => s.jobs.map(j => j.site.id))).size
@@ -317,7 +292,7 @@ function RosterView({ members, today, thisWeekDates, dayStatus, weekLoad, siteCo
         return (
           <button key={m.id} className="tm-card tm-rc" onClick={() => open(m.id)}>
             <div className="tm-rc-top">
-              <Avatar m={m} size={52} onUpload={startUpload && (() => startUpload(m.id))} />
+              <Avatar m={m} size={52} />
               <div><div className="tm-rc-name">{m.full_name}</div><div className="tm-rc-role">{m.role || 'Member'} <Tags m={m} /></div></div>
             </div>
             <div className="tm-rc-today" style={{ background: tone.bg, color: tone.c }}>
@@ -575,7 +550,7 @@ function EditableField({ label, value, onSave }) {
   )
 }
 
-function ProfileDrawer({ m, today, thisWeekDates, dayStatus, siteColor, startUpload, sites, leaves, isAdmin, saveField, onClose }) {
+function ProfileDrawer({ m, today, thisWeekDates, dayStatus, siteColor, sites, leaves, isAdmin, saveField, onClose }) {
   useEffect(() => {
     const onKey = e => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
@@ -598,7 +573,7 @@ function ProfileDrawer({ m, today, thisWeekDates, dayStatus, siteColor, startUpl
     <aside className="tm-drawer" role="dialog" aria-label={m.full_name}>
       <button className="x" onClick={onClose} aria-label="Close">×</button>
       <div style={{ display: 'flex', gap: 14, alignItems: 'center', paddingRight: 36 }}>
-        <Avatar m={m} size={64} onUpload={startUpload && (() => startUpload(m.id))} />
+        <Avatar m={m} size={64} />
         <div><h2>{m.full_name}</h2><div className="tm-rc-role">{m.role || 'Member'} <Tags m={m} /></div></div>
       </div>
       {nextLeave && (
