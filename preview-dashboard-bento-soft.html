@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dashboard — Bento (soft)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<style>
+  :root{--ink:#0f172a;--ink-2:#334155;--muted:#64748b;--faint:#94a3b8;--line:#e2e8f0;--line-2:#f1f5f9;--bg:#eef3f8;
+    --g-blue:linear-gradient(135deg,color-mix(in srgb,#60a5fa 80%,#64748b),color-mix(in srgb,#2563eb 80%,#64748b));--g-red:linear-gradient(135deg,color-mix(in srgb,#fb7185 80%,#64748b),color-mix(in srgb,#e11d48 80%,#64748b));--g-amber:linear-gradient(135deg,color-mix(in srgb,#fbbf24 80%,#64748b),color-mix(in srgb,#f97316 80%,#64748b));
+    --g-green:linear-gradient(135deg,color-mix(in srgb,#4ade80 80%,#64748b),color-mix(in srgb,#059669 80%,#64748b));--g-violet:linear-gradient(135deg,color-mix(in srgb,#a78bfa 80%,#64748b),color-mix(in srgb,#6d28d9 80%,#64748b));--g-teal:linear-gradient(135deg,color-mix(in srgb,#2dd4bf 80%,#64748b),color-mix(in srgb,#0891b2 80%,#64748b));
+    --shadow:0 1px 2px rgba(15,23,42,.04),0 10px 30px rgba(15,23,42,.06)}
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;font-size:14px}
+  button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+
+  .chooser{position:sticky;top:0;z-index:60;background:rgba(2,6,23,.77);backdrop-filter:blur(8px)}
+  .chooser-in{max-width:1320px;margin:0 auto;padding:10px 16px;display:flex;gap:6px;align-items:center;overflow-x:auto}
+  .chooser .lab{font-size:12px;font-weight:800;color:#94a3b8;margin-right:8px;white-space:nowrap}
+  .opt{padding:7px 12px;border-radius:8px;font-size:13px;font-weight:600;color:#94a3b8;white-space:nowrap}
+  .opt:hover{color:#fff}.opt.on{background:linear-gradient(135deg,color-mix(in srgb,#3b82f6 80%,#64748b),color-mix(in srgb,#7c3aed 80%,#64748b));color:#fff}
+  .opt b{opacity:.6;margin-right:6px}
+  .concept{display:none}.concept.on{display:block}
+  .note{max-width:1320px;margin:14px auto 14px;padding:0 16px;font-size:13px;color:var(--ink-2);line-height:1.55}
+  @media(min-width:900px){.note{padding:0 32px}}
+  .note div{background:#fff;border:1px dashed #94a3b8;border-radius:12px;padding:10px 14px}
+
+  /* shared */
+  .wrap{max-width:1320px;margin:0 auto;padding:0 16px 70px}
+  @media(min-width:900px){.wrap{padding:0 32px 80px}}
+  .hero{background:radial-gradient(circle at 15% 0%,rgba(59,130,246,.28),transparent 40%),radial-gradient(circle at 85% 10%,rgba(168,85,247,.20),transparent 40%),radial-gradient(circle at 60% 120%,rgba(14,165,233,.16),transparent 45%),#071226;color:#fff}
+  .hero-in{max-width:1320px;margin:0 auto;padding:26px 16px 90px}
+  @media(min-width:900px){.hero-in{padding:30px 32px 96px}}
+  .hero .eyebrow{font-size:12px;font-weight:700;color:#93c5fd;letter-spacing:.08em;text-transform:uppercase}
+  .hero h1{font-size:30px;font-weight:900;letter-spacing:-.03em;margin-top:6px}
+  .hero h1 span{background:linear-gradient(90deg,color-mix(in srgb,#60a5fa 80%,#64748b),color-mix(in srgb,#c084fc 80%,#64748b),color-mix(in srgb,#f472b6 80%,#64748b));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p{color:#94a3b8;font-size:14px;margin-top:6px}
+  .card{background:#fff;border-radius:18px;box-shadow:var(--shadow);border:1px solid rgba(226,232,240,.64)}
+  .card-h{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:16px 18px 8px}
+  .card-h h3{font-size:15px;font-weight:800;display:flex;align-items:center;gap:8px}
+  .card-h h3 .ic{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;color:#fff;font-size:14px}
+  .card-h a{font-size:12.5px;font-weight:700;color:#2563eb;text-decoration:none}
+  .av{width:30px;height:30px;border-radius:50%;display:inline-grid;place-items:center;color:#fff;font-size:11px;font-weight:800;overflow:hidden;flex-shrink:0;border:2px solid #fff}
+  .av img{width:100%;height:100%;object-fit:cover}
+  .stack{display:flex}.stack .av{margin-left:-8px}.stack .av:first-child{margin-left:0}
+  .pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;white-space:nowrap}
+  .empty{padding:16px 18px;color:var(--faint);font-size:13px}
+  .num{font-variant-numeric:tabular-nums}
+  .kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:-64px;position:relative}
+  @media(min-width:900px){.kpis{grid-template-columns:repeat(4,1fr)}}
+  .kpi{border-radius:18px;padding:18px;color:#fff;position:relative;overflow:hidden;box-shadow:0 14px 30px -10px var(--glow)}
+  .kpi::after{content:'';position:absolute;right:-30px;top:-30px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.14)}
+  .kpi small{font-size:12px;font-weight:700;opacity:.9;text-transform:uppercase;letter-spacing:.05em}
+  .kpi b{display:block;font-size:34px;font-weight:900;letter-spacing:-.03em;margin-top:6px;line-height:1}
+  .kpi span{display:block;font-size:12.5px;opacity:.9;margin-top:6px;font-weight:600}
+  .kpi .ico{position:absolute;right:16px;top:16px;font-size:22px;opacity:.9;z-index:1}
+
+  /* site card with type gradient */
+  .scard{border-radius:16px;overflow:hidden;background:#fff;border:1px solid var(--line);display:flex;flex-direction:column}
+  .scard .top{padding:14px 16px;color:#fff;background:var(--tg);position:relative}
+  .scard .top small{font-size:11px;font-weight:800;opacity:.85;text-transform:uppercase;letter-spacing:.05em}
+  .scard .top b{display:block;font-size:16px;font-weight:800;margin-top:4px;line-height:1.25}
+  .scard .top span{display:block;font-size:12.5px;opacity:.85;margin-top:2px}
+  .scard .bot{padding:12px 16px;display:flex;flex-direction:column;gap:8px}
+  .person{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;padding:3px 10px 3px 3px;border-radius:999px;background:var(--line-2)}
+  .person .av{width:24px;height:24px;font-size:9px;border-width:0}
+  .person.pic{background:#fef3c7;color:#92400e}
+  .nocrew{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:800;color:#be123c;background:#ffe4e6;border-radius:999px;padding:5px 12px}
+
+  /* to-do row */
+  .todo{display:flex;gap:12px;align-items:center;padding:12px 18px;border-top:1px solid var(--line-2)}
+  .todo:first-child{border-top:0}
+  .todo .ti{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;color:#fff;font-size:17px;flex-shrink:0;background:var(--tg);box-shadow:0 8px 16px -8px var(--glow)}
+  .todo .main{flex:1;min-width:0}
+  .todo b{font-weight:700;font-size:13.5px}
+  .todo .sub{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .todo .go{font-size:12px;font-weight:800;color:#fff;background:var(--tg);border-radius:9px;padding:7px 11px;white-space:nowrap}
+
+  /* summary row — same six cards as the current dashboard */
+  .kstrip{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:-64px;position:relative}
+  @media(min-width:700px){.kstrip{grid-template-columns:repeat(3,1fr)}}
+  @media(min-width:1200px){.kstrip{grid-template-columns:repeat(6,1fr)}}
+  .kc{background:#fff;border-radius:16px;padding:16px 18px;border:1px solid rgba(226,232,240,.72);border-top:3px solid var(--kc);box-shadow:0 1px 2px rgba(15,23,42,.04),0 12px 28px -12px rgba(15,23,42,.14);cursor:pointer;transition:transform .15s,box-shadow .15s;position:relative;overflow:hidden}
+  .kc:hover{transform:translateY(-3px);box-shadow:0 18px 34px -14px var(--kc)}
+  .kc::after{content:'';position:absolute;right:-40px;top:-40px;width:110px;height:110px;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--kc) 16%,transparent),transparent 70%)}
+  .kc .top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;position:relative;z-index:1}
+  .kc small{font-size:11px;font-weight:800;letter-spacing:.08em;color:#64748b;text-transform:uppercase}
+  .kc .ico{width:32px;height:32px;border-radius:10px;background:var(--kg);display:grid;place-items:center;color:#fff;font-size:14px;box-shadow:0 8px 16px -6px var(--kc);flex-shrink:0}
+  .kc b{display:block;font-size:40px;font-weight:900;letter-spacing:-.04em;margin:12px 0 12px;line-height:1;color:#0f172a}
+  .kc .tr{border-top:1px solid #eef2f6;padding-top:11px;font-size:12.5px;font-weight:700;color:var(--kc);display:flex;gap:7px;align-items:center}
+  .kc .tr::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--kc);flex-shrink:0}
+  .kstrip.dark{margin-top:22px}
+  .kstrip.dark .kc{background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.02));border-color:rgba(255,255,255,.08);border-top:3px solid var(--kc);box-shadow:0 0 22px -10px var(--kc)}
+  .kstrip.dark .kc small{color:#94a3b8}
+  .kstrip.dark .kc b{color:#fff;text-shadow:0 0 22px var(--kc)}
+  .kstrip.dark .kc .tr{border-top-color:rgba(255,255,255,.08)}
+  .after-strip{margin-top:18px!important}
+
+  /* leave list — real leave only, never the Saturday rota */
+  .lv{display:flex;gap:12px;align-items:center;padding:11px 18px;border-top:1px solid var(--line-2)}
+  .lv:first-child{border-top:0}
+  .lv .main{flex:1;min-width:0}
+  .lv b{font-size:13.5px;font-weight:800}
+  .lv small{display:block;font-size:12px;color:var(--muted);margin-top:1px}
+  .lt{font-size:11px;font-weight:900;padding:4px 9px;border-radius:8px;letter-spacing:.03em;white-space:nowrap}
+  .lw{font-size:11.5px;font-weight:800;padding:4px 10px;border-radius:999px;white-space:nowrap;background:var(--line-2);color:var(--ink-2)}
+  .lw.now{background:linear-gradient(135deg,color-mix(in srgb,#fb7185 80%,#64748b),color-mix(in srgb,#e11d48 80%,#64748b));color:#fff;box-shadow:0 6px 14px -6px rgba(225,29,72,.48)}
+  .lv-sum{display:flex;gap:8px;flex-wrap:wrap;padding:0 18px 10px}
+  .night .lv{border-top-color:rgba(255,255,255,.06)}
+  .night .lv b{color:#fff}
+  .night .lv small{color:#94a3b8}
+  .night .lw{background:rgba(255,255,255,.08);color:#cbd5e1}
+  .tile .lv{background:rgba(255,255,255,.14);border-radius:12px;border-top:0;padding:9px 11px;margin-top:8px}
+  .tile .lv small{color:rgba(255,255,255,.85)}
+  .tile .lw{background:rgba(255,255,255,.22);color:#fff}
+  .tile .lw.now{background:#fff;color:#be123c}
+
+  /* 1 · command center */
+  .cc{display:grid;grid-template-columns:1fr;gap:18px;margin-top:20px;align-items:start}
+  @media(min-width:1050px){.cc{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)}}
+  .sgrid{display:grid;grid-template-columns:1fr;gap:12px;padding:6px 18px 18px}
+  @media(min-width:700px){.sgrid{grid-template-columns:repeat(2,1fr)}}
+  .tl{padding:6px 18px 18px}
+  .tl .d{display:flex;gap:14px;padding:10px 0;border-bottom:1px dashed var(--line)}
+  .tl .d:last-child{border-bottom:0}
+  .tl .date{width:46px;text-align:center;flex-shrink:0;border-radius:12px;padding:6px 0;background:var(--line-2)}
+  .tl .date small{display:block;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase}
+  .tl .date b{font-size:18px;font-weight:900}
+  .tl .jobs{flex:1;display:flex;flex-direction:column;gap:6px;justify-content:center}
+  .tl .job{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;border-radius:12px;background:var(--tt);border-left:4px solid var(--tc)}
+  .tl .job b{font-size:13px;font-weight:700}
+  .tl .job small{display:block;font-size:11.5px;color:var(--muted)}
+  .whobar{display:flex;gap:16px;flex-wrap:wrap;padding:4px 18px 16px;font-size:12.5px;font-weight:700;color:var(--ink-2)}
+  .whobar span{display:inline-flex;align-items:center;gap:8px}
+
+  /* 2 · bento */
+  .bento{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:-64px;position:relative}
+  @media(min-width:1000px){.bento{grid-template-columns:repeat(4,1fr);grid-auto-rows:minmax(150px,auto)}}
+  .tile{border-radius:22px;padding:20px;position:relative;overflow:hidden;box-shadow:var(--shadow)}
+  .tile.dark{background:#0f172a;color:#fff}
+  .tile.c{color:#fff}
+  .tile h4{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;opacity:.85}
+  .tile .big{font-size:44px;font-weight:900;letter-spacing:-.04em;line-height:1;margin-top:8px}
+  .tile .big small{font-size:16px;opacity:.7;font-weight:700;letter-spacing:0}
+  .tile p{font-size:13px;opacity:.9;margin-top:6px;line-height:1.5}
+  .tile.w2{grid-column:span 2}.tile.h2{grid-row:span 2}
+  .tile .glow{position:absolute;width:200px;height:200px;border-radius:50%;filter:blur(40px);opacity:.35;right:-60px;top:-60px}
+  .tile .list{margin-top:12px;display:flex;flex-direction:column;gap:8px;position:relative}
+  .tile .li{display:flex;gap:10px;align-items:center;background:rgba(255,255,255,.14);border-radius:12px;padding:9px 11px;font-size:13px}
+  .tile .li b{font-weight:700}
+  .tile .li small{display:block;font-size:11.5px;opacity:.8}
+  .tile.white{background:#fff}
+  .tile.white .li{background:var(--line-2)}
+  .ring{width:120px;height:120px;border-radius:50%;display:grid;place-items:center;margin:10px auto 0;background:conic-gradient(var(--rc) calc(var(--p)*1%),rgba(255,255,255,.12) 0)}
+  .ring div{width:92px;height:92px;border-radius:50%;background:#0f172a;display:grid;place-items:center;text-align:center}
+  .ring b{font-size:26px;font-weight:900;display:block;line-height:1}
+  .ring small{font-size:11px;opacity:.7}
+  .bars{display:flex;align-items:flex-end;gap:8px;height:110px;margin-top:14px}
+  .bars div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:5px;height:100%;font-size:11px;font-weight:800;opacity:.9}
+  .bars i{width:100%;border-radius:8px 8px 4px 4px;background:linear-gradient(180deg,color-mix(in srgb,#a78bfa 80%,#64748b),color-mix(in srgb,#6366f1 80%,#64748b));min-height:4px}
+  .bars div.today i{background:linear-gradient(180deg,color-mix(in srgb,#fbbf24 80%,#64748b),color-mix(in srgb,#f97316 80%,#64748b))}
+
+  /* 3 · team pulse */
+  .pulse{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;margin-top:-64px;position:relative}
+  .pcard{background:#fff;border-radius:20px;padding:18px 14px;text-align:center;box-shadow:var(--shadow);position:relative;overflow:hidden}
+  .pcard::before{content:'';position:absolute;inset:0 0 auto 0;height:54px;background:var(--sg);opacity:.95}
+  .pcard .ph{position:relative;width:72px;height:72px;margin:0 auto;border-radius:50%;padding:4px;background:var(--sg)}
+  .pcard .ph .av{width:64px;height:64px;font-size:20px;border:3px solid #fff}
+  .pcard b{display:block;font-size:14px;font-weight:800;margin-top:10px}
+  .pcard .st{display:inline-block;margin-top:6px;font-size:11px;font-weight:800;padding:3px 10px;border-radius:999px;color:#fff;background:var(--sg)}
+  .pcard .where{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.4;min-height:34px}
+  .p2{display:grid;grid-template-columns:1fr;gap:18px;margin-top:20px;align-items:start}
+  @media(min-width:1050px){.p2{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;font-weight:700;color:var(--ink-2);margin:18px 2px 0}
+  .legend span{display:inline-flex;gap:7px;align-items:center}
+  .legend i{width:14px;height:14px;border-radius:50%;background:var(--sg)}
+
+  /* 4 · night mode */
+  .night{background:#020617;color:#e2e8f0;min-height:100vh}
+  .night .wrap{padding-top:26px}
+  .night h1{font-size:30px;font-weight:900;letter-spacing:-.03em}
+  .night h1 span{background:linear-gradient(90deg,color-mix(in srgb,#22d3ee 80%,#64748b),color-mix(in srgb,#a78bfa 80%,#64748b),color-mix(in srgb,#f472b6 80%,#64748b));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .night .sub{color:#64748b;margin-top:4px}
+  .nk{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:22px}
+  @media(min-width:900px){.nk{grid-template-columns:repeat(4,1fr)}}
+  .nkpi{border-radius:18px;padding:18px;background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.08);position:relative;overflow:hidden}
+  .nkpi::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--nc);box-shadow:0 0 18px var(--nc)}
+  .nkpi small{font-size:12px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+  .nkpi b{display:block;font-size:34px;font-weight:900;margin-top:6px;color:#fff;text-shadow:0 0 24px var(--nc)}
+  .nkpi span{font-size:12.5px;color:#94a3b8}
+  .npanel{border-radius:20px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);margin-top:18px}
+  .npanel .card-h h3{color:#fff}
+  .nweek{display:grid;grid-template-columns:repeat(7,minmax(140px,1fr));gap:10px;padding:8px 18px 18px;min-width:1050px}
+  .nday{border-radius:14px;padding:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);min-height:190px}
+  .nday.today{border-color:#22d3ee;box-shadow:0 0 0 1px #22d3ee,0 0 24px -6px #22d3ee}
+  .nday .h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+  .nday .h b{font-size:20px;font-weight:900;color:#fff}
+  .nday .h small{font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase}
+  .njob{border-radius:10px;padding:8px 9px;margin-bottom:6px;background:color-mix(in srgb,var(--nc) 18%,transparent);border:1px solid color-mix(in srgb,var(--nc) 45%,transparent)}
+  .njob b{font-size:12px;font-weight:800;color:#fff;display:block;line-height:1.3}
+  .njob small{font-size:11px;color:#cbd5e1}
+  .njob.bad{--nc:color-mix(in srgb,#f43f5e 80%,#64748b)}
+  .nfree{font-size:11px;color:#64748b;margin-top:6px;line-height:1.5}
+  .nfree b{color:#94a3b8}
+  .nalerts{display:flex;flex-wrap:wrap;gap:10px;padding:6px 18px 18px}
+  .nalert{display:flex;gap:10px;align-items:center;border-radius:14px;padding:10px 14px;background:color-mix(in srgb,var(--nc) 14%,transparent);border:1px solid color-mix(in srgb,var(--nc) 40%,transparent);font-size:13px;color:#fff;flex:1 1 280px}
+  .nalert small{display:block;color:#94a3b8;font-size:12px}
+  .nalert .d{width:10px;height:10px;border-radius:50%;background:var(--nc);box-shadow:0 0 12px var(--nc);flex-shrink:0}
+
+  /* 5 · stacked app cards */
+  .app{max-width:1320px;margin:0 auto;padding:0 16px 70px}
+  @media(min-width:900px){.app{padding:0 32px 80px}}
+  .agrid{display:grid;grid-template-columns:1fr;gap:16px;margin-top:-64px;position:relative}
+  @media(min-width:1000px){.agrid{grid-template-columns:repeat(3,1fr)}}
+  .acard{border-radius:24px;padding:20px;color:#fff;position:relative;overflow:hidden;box-shadow:0 20px 40px -18px var(--glow)}
+  .acard::after{content:'';position:absolute;inset:auto -40px -60px auto;width:180px;height:180px;border-radius:50%;background:rgba(255,255,255,.12)}
+  .acard h4{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;opacity:.85;display:flex;justify-content:space-between}
+  .acard .t{font-size:22px;font-weight:900;letter-spacing:-.02em;margin-top:10px;line-height:1.2}
+  .acard .s{font-size:13px;opacity:.9;margin-top:4px}
+  .acard .rows{margin-top:14px;display:flex;flex-direction:column;gap:8px;position:relative;z-index:1}
+  .acard .r{background:rgba(255,255,255,.16);border-radius:14px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:13px}
+  .acard .r b{font-weight:800}
+  .acard .r small{display:block;font-size:11.5px;opacity:.85}
+  .acard .r .av{border-color:rgba(255,255,255,.6)}
+  .strip{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;padding:6px 18px 18px}
+  .strip .sd{border-radius:16px;padding:10px 6px;text-align:center;background:var(--line-2)}
+  .strip .sd.today{background:linear-gradient(135deg,color-mix(in srgb,#3b82f6 80%,#64748b),color-mix(in srgb,#7c3aed 80%,#64748b));color:#fff}
+  .strip .sd small{font-size:10.5px;font-weight:800;text-transform:uppercase;opacity:.75}
+  .strip .sd b{display:block;font-size:20px;font-weight:900}
+  .strip .sd .dots{display:flex;justify-content:center;gap:3px;margin-top:6px;min-height:8px}
+  .strip .sd .dots i{width:8px;height:8px;border-radius:50%;background:var(--dc)}
+  .strip .sd span{display:block;font-size:11px;font-weight:700;margin-top:4px;opacity:.8}
+</style>
+</head>
+<body>
+<div class="chooser"><div class="chooser-in">
+  <span class="lab">COLOURFUL DASHBOARDS</span>
+  <button class="opt" data-c="1"><b>1</b>Command Center</button>
+  <button class="opt on" data-c="2"><b>2</b>Bento</button>
+  <button class="opt" data-c="3"><b>3</b>Team Pulse</button>
+  <button class="opt" data-c="4"><b>4</b>Night Ops</button>
+  <button class="opt" data-c="5"><b>5</b>App Cards</button>
+</div></div>
+
+<section class="concept" id="c1"><div id="d1"></div></section>
+<section class="concept on" id="c2"><div id="d2"></div></section>
+<section class="concept" id="c3"><div id="d3"></div></section>
+<section class="concept night" id="c4"><div id="d4"></div></section>
+<section class="concept" id="c5"><div id="d5"></div></section>
+
+<script>
+const DATA = {"members":[{"s":"Zairul","f":"Zairul Farishah","a":"68b60ffb-0dbe-48ad-a19b-e1b6216d095e.jpg"},{"s":"Abu","f":"Abu Hafizuddin","a":"00e679ea-bba7-4860-8525-0c44ca337ae9_1777206017331.jpg"},{"s":"Kailash","f":"Kailash Pal Singh","a":"80c2b939-55cb-49bb-8098-5462cf637c1b.jpg"},{"s":"Akmal","f":"Muhammad Nurakmal","a":"46536cca-643d-4a31-9f2e-373434852bd2.PNG"},{"s":"Izni","f":"Nurul Izni","a":"1236228c-3e97-43f7-a983-341b462047f6_1777206010858.jpeg"},{"s":"Aiman","f":"Muhammad Aiman Bin Ahmad Ridzuan","a":null},{"s":"Hakim","f":"Lukmanul Hakim Bin Muhammad Halel","a":null}],"sites":[{"n":"MOF Inc Tower","loc":"Kuala Lumpur, Malaysia","co":"Cubebee Design Sdn bhd","scope":"Scan 2 nos of slab (1m x 1m)","start":"2026-10-01","end":"2026-10-01","ses":"Full Day","type":"site_scanning","st":"completed","rep":"approved","photo":true,"a":[[2,1,null]]},{"n":"Miranda Hill","loc":"Miranda Hill North Kiara (U/C), Segambut, Kepong, Kuala Lumpur, Malaysia","co":"Evergreen Venture Engineering Sdn Bhd","scope":"Scan coring location on side of beam - 1200nos","start":"2026-10-01","end":"2026-10-10","ses":null,"type":"site_scanning","st":"ongoing","rep":"not_applicable","photo":true,"a":[[0,0,"2026-10-02"],[3,0,"2026-10-02"],[4,0,"2026-10-02"],[1,0,"2026-10-02"],[0,1,"2026-10-01"],[1,0,"2026-10-01"],[3,0,"2026-10-01"],[4,0,"2026-10-01"],[2,1,"2026-10-06"],[6,0,"2026-10-06"],[5,0,"2026-10-06"]]},{"n":"Prima 10 Cyberjaya","loc":"Prima Avenue, Cyber 6, Cyberjaya, Sepang, Selangor, Malaysia","co":"Perunding SSE","scope":"Scan:\n1 nos slab \n1 nos column\n\nRebound Hammer:\n2 rebound hammer on the \n1 nos slab\n1 column\n\nScan Purpose:\nStructural Analysis","start":"2026-10-02","end":"2026-10-02","ses":"Full Day","type":"site_scanning","st":"completed","rep":"in_progress","photo":true,"a":[[3,1,null],[2,0,null],[4,0,null],[0,0,null],[6,0,null],[5,0,null]]},{"n":"Seminar on Integrated Structural Refurbishment Engineering","loc":"Holiday Villa, Jalan Dato Sulaiman, Century Garden, Johor Bahru, Johor, 80250, Malaysia","co":"Sonicon Construction Sdn Bhd","scope":"This seminar provides civil and structural engineers with practical insights into total demolition, structural assessment, repair, and strengthening; all increasingly relevant in refurbishment, site clearance, and infrastructure upgrade projects.","start":"2026-10-03","end":"2026-10-03","ses":"AM","type":"meeting","st":"upcoming","rep":"not_applicable","photo":true,"a":[[1,1,null]]},{"n":"Nestle Chembong","loc":"Kawasan Perindustrian Chembong, Chembong, Rembau, Negeri Sembilan, Malaysia","co":"YS Jaya Construction Sdn Bhd","scope":"1) Scan slab - 5 location\n2) Vibration Monitoring - 5 location\n3) Rebound hammer - 5 location (this on 6th Oct)","start":"2026-10-05","end":"2026-10-05","ses":"Full Day","type":"site_scanning","st":"upcoming","rep":"pending","photo":true,"a":[[4,1,null],[3,0,null]]},{"n":"Jotun Paints (Nilai Factory)","loc":"Nilai, Seremban, Negeri Sembilan, 71800, Malaysia","co":"Laison Engineering Sdn Bhd","scope":"Scanning:\nColumn 2 nos (2 side 600mm height)\nBeam 8 nos (End & Mid Span)\nSlab 1 nos (600mmx600mm)\n\nRebound Hammer Test \n(5 Nos - 1 Slab, 1 Column, 3 Beam)\n\nstructural details for as built","start":"2026-10-06","end":"2026-10-07","ses":null,"type":"site_scanning","st":"upcoming","rep":"pending","photo":true,"a":[[3,1,"2026-10-06"],[0,0,"2026-10-06"],[4,0,"2026-10-06"],[0,1,"2026-10-07"],[4,0,"2026-10-07"],[5,0,"2026-10-07"],[6,0,"2026-10-07"]]},{"n":"Bangunan Public Bank","loc":"Kuala Lumpur, Malaysia","co":"Syarikat Ong Yok Lin","scope":"determine the beam","start":"2026-10-07","end":"2026-10-07","ses":"Full Day","type":"site_scanning","st":"upcoming","rep":"pending","photo":true,"a":[[2,1,null],[3,0,null]]},{"n":"PMU Bintang","loc":"Cameron Highlands, Pahang, Malaysia","co":"Orasko","scope":"Scan 2 nos of plinth","start":"2026-10-08","end":"2026-10-09","ses":null,"type":"site_scanning","st":"upcoming","rep":"pending","photo":true,"a":[[0,1,null]]},{"n":"Dr Mike Coaching Session","loc":"Sunway, Jalan Ampang, Kampung Hujung Pasir, Kampung Paya, Kampung Cendana, Kuala Lumpur, 50250, Malaysia","co":"Sonicon Construction","scope":null,"start":"2026-10-23","end":"2026-10-23","ses":"Full Day","type":"meeting","st":"upcoming","rep":"not_applicable","photo":true,"a":[[0,1,null]]},{"n":"PMU Gurun - Betapac","loc":"Gurun, Kuala Muda, Kedah, 08300, Malaysia","co":null,"scope":null,"start":"2026-10-30","end":"2026-10-30","ses":"Full Day","type":"site_scanning","st":"postponed","rep":"pending","photo":true,"a":[]}],"leaves":[[0,"ANNUAL LEAVE","FULL_DAY","2026-09-28","2026-09-29",""],[5,"OFF DAY","FULL_DAY","2026-10-03","2026-10-03",""],[3,"OFF DAY","FULL_DAY","2026-10-03","2026-10-03",""],[2,"OFF DAY","FULL_DAY","2026-10-03","2026-10-03",""],[6,"OFF DAY","FULL_DAY","2026-10-03","2026-10-03",""],[1,"OFF DAY","FULL_DAY","2026-10-10","2026-10-10",""],[4,"OFF DAY","FULL_DAY","2026-10-10","2026-10-10",""],[0,"OFF DAY","FULL_DAY","2026-10-10","2026-10-10",""],[0,"ANNUAL LEAVE","FULL_DAY","2026-10-12","2026-10-13",""],[5,"OFF DAY","FULL_DAY","2026-10-17","2026-10-17",""],[3,"OFF DAY","FULL_DAY","2026-10-17","2026-10-17",""],[2,"OFF DAY","FULL_DAY","2026-10-17","2026-10-17",""],[6,"OFF DAY","FULL_DAY","2026-10-17","2026-10-17",""],[1,"OFF DAY","FULL_DAY","2026-10-24","2026-10-24",""],[4,"OFF DAY","FULL_DAY","2026-10-24","2026-10-24",""],[0,"OFF DAY","FULL_DAY","2026-10-24","2026-10-24",""]]}
+const AV = 'https://ipaxoqsoiouzrwjhsvgj.supabase.co/storage/v1/object/public/team-avatars/'
+const TODAY = '2026-10-05'
+const ME = 0
+const M_COLORS = ['#2563eb','#059669','#d97706','#7c3aed','#db2777','#0891b2','#dc2626']
+const TYPE = {
+  site_scanning:{ c:'#2563eb', t:'#eff6ff', g:'linear-gradient(135deg,color-mix(in srgb,#1e3a8a 80%,#64748b),color-mix(in srgb,#2563eb 80%,#64748b) 55%,color-mix(in srgb,#0891b2 80%,#64748b))', l:'Site scanning', ic:'📡' },
+  site_visit:{ c:'#059669', t:'#ecfdf5', g:'linear-gradient(135deg,color-mix(in srgb,#065f46 80%,#64748b),color-mix(in srgb,#059669 80%,#64748b) 55%,color-mix(in srgb,#0d9488 80%,#64748b))', l:'Site visit', ic:'🦺' },
+  meeting:{ c:'#7c3aed', t:'#f5f3ff', g:'linear-gradient(135deg,color-mix(in srgb,#4c1d95 80%,#64748b),color-mix(in srgb,#7c3aed 80%,#64748b) 55%,color-mix(in srgb,#c026d3 80%,#64748b))', l:'Meeting', ic:'🗓' },
+}
+const STATUS_L = { upcoming:'upcoming', ongoing:'ongoing', completed:'completed', postponed:'postponed', cancelled:'cancelled' }
+const REPORT_L = { pending:'Report not started', in_progress:'Report in progress', submitted:'Waiting approval', approved:'Approved', not_applicable:'No report' }
+const ST_G = { site:'linear-gradient(135deg,color-mix(in srgb,#3b82f6 80%,#64748b),color-mix(in srgb,#6366f1 80%,#64748b))', free:'linear-gradient(135deg,color-mix(in srgb,#34d399 80%,#64748b),color-mix(in srgb,#059669 80%,#64748b))', store:'linear-gradient(135deg,color-mix(in srgb,#34d399 80%,#64748b),color-mix(in srgb,#059669 80%,#64748b))', leave:'linear-gradient(135deg,color-mix(in srgb,#fb7185 80%,#64748b),color-mix(in srgb,#e11d48 80%,#64748b))', off:'linear-gradient(135deg,color-mix(in srgb,#cbd5e1 80%,#64748b),color-mix(in srgb,#64748b 80%,#64748b))' }
+const SEV = { red:{ g:'var(--g-red)', glow:'rgba(225,29,72,.36)', c:'#f43f5e' }, amber:{ g:'var(--g-amber)', glow:'rgba(249,115,22,.36)', c:'#f59e0b' }, grey:{ g:'linear-gradient(135deg,color-mix(in srgb,#94a3b8 80%,#64748b),color-mix(in srgb,#475569 80%,#64748b))', glow:'rgba(71,85,105,.32)', c:'#94a3b8' } }
+
+const members = DATA.members.map((m,i)=>({ ...m, i, color:M_COLORS[i%M_COLORS.length], url:m.a?AV+m.a:null }))
+const allSites = DATA.sites.map((s,i)=>({ ...s, i }))
+const sites = allSites.filter(s=>!['cancelled','postponed'].includes(s.st))
+const leaves = DATA.leaves.map(([m,type,ses,start,end])=>({m,type,ses,start,end}))
+
+const $ = s => document.querySelector(s)
+const iso = dt => `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`
+const addD = (s,n) => { const d=new Date(s+'T00:00:00'); d.setDate(d.getDate()+n); return iso(d) }
+const dow = d => new Date(d+'T00:00:00').getDay()
+const dn = d => Number(d.slice(8))
+const DN = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+const MN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+const fmt = d => `${DN[dow(d)]} ${dn(d)} ${MN[+d.slice(5,7)-1]}`
+const short = d => `${dn(d)} ${MN[+d.slice(5,7)-1]}`
+const rel = d => d===TODAY?'Today':d===addD(TODAY,1)?'Tomorrow':fmt(d)
+const tc = s => (s||'').toLowerCase().replace(/\b\w/g,c=>c.toUpperCase())
+const esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))
+const ini = m => m.f.split(' ').filter(Boolean).map(p=>p[0]).join('').slice(0,2).toUpperCase()
+const av = (m,size) => `<span class="av" title="${esc(m.f)}" style="background:${m.color}${size?`;width:${size}px;height:${size}px;font-size:${size*.36}px`:''}">${m.url?`<img src="${m.url}" alt="">`:ini(m)}</span>`
+const place = s => (s.loc||'').split(',').map(x=>x.trim()).filter(Boolean).slice(-2,-1)[0] || (s.loc||'').split(',')[0] || '—'
+
+const onSite = (s,d) => d>=s.start && d<=s.end
+const siteDates = s => { const out=[]; for(let d=s.start; d<=s.end; d=addD(d,1)) out.push(d); return out }
+const perDay = s => s.a.some(a=>a[2])
+function crewOn(s,d){
+  const rows = perDay(s) ? s.a.filter(a=>a[2]===d) : s.a.filter(a=>!a[2])
+  const pic = rows.filter(r=>r[1]).map(r=>members[r[0]])
+  const crew = rows.filter(r=>!r[1]).map(r=>members[r[0]]).filter(m=>!pic.includes(m))
+  return { pic, crew, all:[...pic,...crew] }
+}
+const sitesOn = d => sites.filter(s=>onSite(s,d))
+const dayLabel = (s,d) => { const sd=siteDates(s); return sd.length>1?`Day ${sd.indexOf(d)+1} of ${sd.length}`:(s.ses||'Full day') }
+function statusOf(mi,d){
+  const jobs = sitesOn(d).filter(s=>crewOn(s,d).all.includes(members[mi]))
+  if(jobs.length) return { k:'site', jobs, pic: jobs.some(s=>crewOn(s,d).pic.includes(members[mi])), l:'On site' }
+  const l = leaves.find(l=>l.m===mi && d>=l.start && d<=l.end && l.type!=='OFF DAY') || leaves.find(l=>l.m===mi && d>=l.start && d<=l.end)
+  if(l) return l.type==='OFF DAY' ? {k:'off',l:'Off'} : {k:'leave',l:tc(l.type)}
+  if(dow(d)===0) return {k:'off',l:'Sunday'}
+  return {k:dow(d)===6?'store':'free',l:dow(d)===6?'Store':'Available'}
+}
+const people = c => c.all.length ? c.pic.map(m=>`<span class="person pic">${av(m)}★ ${esc(m.s)}</span>`).join('')+c.crew.map(m=>`<span class="person">${av(m)}${esc(m.s)}</span>`).join('') : '<span class="nocrew">⚠ No crew assigned</span>'
+
+// the to-do list: only things someone must act on
+function actions(){
+  const out = [], horizon = addD(TODAY,14)
+  sites.forEach(s=>{
+    const gaps = siteDates(s).filter(d=>d>=TODAY && d<=horizon && dow(d)!==0 && !crewOn(s,d).all.length)
+    if(gaps.length) out.push({ type:'crew', sev: gaps[0]<=addD(TODAY,1)?'red':'amber', i:s.i, ic:'👷', name:s.n,
+      title:`Assign crew — ${s.n}`, sub: gaps.length===1?`${rel(gaps[0])} has nobody assigned`:`${gaps.length} days with nobody: ${gaps.map(d=>d===TODAY?'today':dn(d)).join(', ')}`, when:gaps[0], go:'Assign' })
+    const noPic = siteDates(s).filter(d=>d>=TODAY && d<=horizon && crewOn(s,d).all.length && !crewOn(s,d).pic.length)
+    if(noPic.length) out.push({ type:'crew', sev:'amber', i:s.i, ic:'⭐', name:s.n, title:`Set a PIC — ${s.n}`, sub:`${noPic.length} day${noPic.length>1?'s':''} with crew but no PIC`, when:noPic[0], go:'Set PIC' })
+  })
+  allSites.filter(s=>s.st==='completed' && ['pending','in_progress'].includes(s.rep)).forEach(s=>{
+    const pic = crewOn(s,s.end).pic[0]
+    out.push({ type:'report', sev:'amber', i:s.i, ic:'📝', name:s.n, title:`Finish report — ${s.n}`, sub:`${REPORT_L[s.rep]} · done ${short(s.end)}${pic?` · PIC ${pic.s}`:''}`, when:s.end, go:'Open' })
+  })
+  allSites.filter(s=>s.rep==='submitted').forEach(s=>out.push({ type:'report', sev:'amber', i:s.i, ic:'✅', name:s.n, title:`Approve report — ${s.n}`, sub:'Submitted, waiting for approval', when:s.end, go:'Review' }))
+  allSites.filter(s=>s.st==='postponed').forEach(s=>out.push({ type:'schedule', sev:'grey', i:s.i, ic:'⏸', name:s.n, title:`Reschedule — ${s.n}`, sub:`Postponed from ${fmt(s.start)}`, when:s.start, go:'Reschedule' }))
+  sites.filter(s=>s.end<TODAY && s.st!=='completed').forEach(s=>out.push({ type:'schedule', sev:'amber', i:s.i, ic:'🏁', name:s.n, title:`Close site — ${s.n}`, sub:`Ended ${short(s.end)} but still ${STATUS_L[s.st]}`, when:s.end, go:'Update' }))
+  const order = { red:0, amber:1, grey:2 }
+  return out.sort((a,b)=>order[a.sev]-order[b.sev] || a.when.localeCompare(b.when))
+}
+const ACTS = actions()
+const todoRow = a => `<div class="todo" style="--tg:${SEV[a.sev].g};--glow:${SEV[a.sev].glow}"><span class="ti">${a.ic}</span><div class="main"><b>${esc(a.title)}</b><div class="sub">${a.sub}</div></div><button class="go">${a.go}</button></div>`
+
+const LEAVE_T = {
+  'ANNUAL LEAVE':          { a:'AL',  c:'#1d4ed8', bg:'#dbeafe' },
+  MEDICAL:                 { a:'MC',  c:'#b45309', bg:'#fef3c7' },
+  'EMERGENCY LEAVE':       { a:'EL',  c:'#b91c1c', bg:'#fee2e2' },
+  'HOSPITALIZATION LEAVE': { a:'HL',  c:'#7e22ce', bg:'#f3e8ff' },
+  'MARRIAGE LEAVE':        { a:'ML',  c:'#be185d', bg:'#fce7f3' },
+  'PARENTAL LEAVE':        { a:'PL',  c:'#0e7490', bg:'#cffafe' },
+  UNPAID:                  { a:'UPL', c:'#475569', bg:'#e2e8f0' },
+}
+const leaveT = type => LEAVE_T[type] || { a:(type||'LV').slice(0,2).toUpperCase(), c:'#6d28d9', bg:'#ede9fe' }
+// On leave today or starting within 30 days; Saturday rota off days are not leave
+const LEAVE_SOON = leaves.filter(l=>l.type!=='OFF DAY' && l.end>=TODAY && l.start<=addD(TODAY,30)).sort((a,b)=>a.start.localeCompare(b.start))
+const leaveDays = l => { let n=0; for(let d=l.start; d<=l.end; d=addD(d,1)) if(dow(d)!==0) n += l.ses && l.ses!=='FULL_DAY' ? .5 : 1; return n }
+const leaveWhen = l => { if(l.start<=TODAY) return { now:true, t:'On leave now' }; const n=Math.round((new Date(l.start+'T00:00:00')-new Date(TODAY+'T00:00:00'))/864e5); return { now:false, t:n===1?'Tomorrow':`in ${n} days` } }
+const leaveRow = l => { const t=leaveT(l.type), w=leaveWhen(l), n=leaveDays(l); return `<div class="lv">${av(members[l.m],36)}<div class="main"><b>${esc(members[l.m].s)}</b><small>${tc(l.type)} · ${l.start===l.end?fmt(l.start):`${short(l.start)} – ${short(l.end)}`} · ${n} day${n===1?'':'s'}${l.ses==='AM_ONLY'?' (AM)':l.ses==='PM_ONLY'?' (PM)':''}</small></div><span class="lt" style="background:${t.bg};color:${t.c}">${t.a}</span><span class="lw ${w.now?'now':''}">${w.t}</span></div>` }
+const leaveList = () => LEAVE_SOON.map(leaveRow).join('') || '<div class="empty">🎉 Nobody on leave in the next 30 days</div>'
+const leaveSummary = () => { const by={}; LEAVE_SOON.forEach(l=>{ const t=leaveT(l.type); (by[t.a] ||= { t, n:0 }).n++ }); return Object.values(by).map(({t,n})=>`<span class="lt" style="background:${t.bg};color:${t.c}">${t.a} × ${n}</span>`).join('') }
+const leaveCard = () => `<div class="card"><div class="card-h"><h3><span class="ic" style="background:linear-gradient(135deg,color-mix(in srgb,#f472b6 80%,#64748b),color-mix(in srgb,#db2777 80%,#64748b))">🌴</span>Team leave</h3><span style="font-size:12px;color:var(--muted);font-weight:700">next 30 days · excl. Saturday off</span></div>${LEAVE_SOON.length?`<div class="lv-sum">${leaveSummary()}</div>`:''}${leaveList()}</div>`
+const upcomingLeave = () => leaves.filter(l=>l.type!=='OFF DAY' && l.end>=TODAY && l.start<=addD(TODAY,21))
+const month = TODAY.slice(0,7)
+const monthSites = sites.filter(s=>s.start.slice(0,7)===month || s.end.slice(0,7)===month)
+const monthDone = monthSites.filter(s=>s.st==='completed').length
+const reportsOpen = allSites.filter(s=>s.st==='completed' && ['pending','in_progress','submitted'].includes(s.rep)).length
+const todayJobs = sitesOn(TODAY)
+const statusToday = members.map(m=>statusOf(m.i,TODAY))
+const onSiteToday = statusToday.filter(s=>s.k==='site').length
+const freeToday = members.filter((m,i)=>['free','store'].includes(statusToday[i].k))
+const awayToday = members.filter((m,i)=>['leave','off'].includes(statusToday[i].k))
+const weekDates = Array.from({length:7},(_,i)=>addD(TODAY,-((dow(TODAY)+6)%7)+i))
+const hero = (sub) => `<header class="hero"><div class="hero-in"><div class="eyebrow">${fmt(TODAY)} 2026</div><h1>Good morning, <span>${members[ME].s}</span> 👋</h1><p>${sub}</p></div></header>`
+const heroSub = `${todayJobs.length} site${todayJobs.length===1?'':'s'} running today · ${onSiteToday} of ${members.length} people out · ${ACTS.length} thing${ACTS.length===1?'':'s'} need${ACTS.length===1?'s':''} you`
+// Numbers taken from the current dashboard screenshot (all-time), not just October
+const KPI = [
+  { l:'Total sites',     v:199, tr:'+6 this week',      c:'#2563eb', g:'linear-gradient(135deg,color-mix(in srgb,#60a5fa 80%,#64748b),color-mix(in srgb,#2563eb 80%,#64748b))', ic:'▦' },
+  { l:'Upcoming',        v:9,   tr:'8 near deadline',   c:'#d97706', g:'linear-gradient(135deg,color-mix(in srgb,#fbbf24 80%,#64748b),color-mix(in srgb,#f97316 80%,#64748b))', ic:'▣' },
+  { l:'Ongoing',         v:1,   tr:'1 active now',      c:'#ea580c', g:'linear-gradient(135deg,color-mix(in srgb,#fb923c 80%,#64748b),color-mix(in srgb,#dc2626 80%,#64748b))', ic:'◉' },
+  { l:'Completed',       v:188, tr:'94% done',          c:'#16a34a', g:'linear-gradient(135deg,color-mix(in srgb,#4ade80 80%,#64748b),color-mix(in srgb,#16a34a 80%,#64748b))', ic:'✓' },
+  { l:'Team members',    v:7,   tr:'Active team',       c:'#7c3aed', g:'linear-gradient(135deg,color-mix(in srgb,#a78bfa 80%,#64748b),color-mix(in srgb,#6d28d9 80%,#64748b))', ic:'◈' },
+  { l:'Pending reports', v:7,   tr:'7 needs action',    c:'#dc2626', g:'linear-gradient(135deg,color-mix(in srgb,#f87171 80%,#64748b),color-mix(in srgb,#dc2626 80%,#64748b))', ic:'▤' },
+]
+const kpiStrip = (dark = false) => `<div class="kstrip ${dark?'dark':''}">${KPI.map(k=>`<div class="kc" style="--kc:${k.c};--kg:${k.g}"><div class="top"><small>${k.l}</small><span class="ico">${k.ic}</span></div><b class="num">${k.v}</b><div class="tr">${k.tr}</div></div>`).join('')}</div>`
+const kpiTiles = () => `<div class="kpis">
+  <div class="kpi" style="background:var(--g-blue);--glow:rgba(37,99,235,.44)"><span class="ico">📍</span><small>Sites today</small><b class="num">${todayJobs.length}</b><span>${todayJobs.map(s=>s.n.split(' ').slice(0,2).join(' ')).join(' · ')||'quiet day'}</span></div>
+  <div class="kpi" style="background:var(--g-teal);--glow:rgba(8,145,178,.44)"><span class="ico">👷</span><small>People out</small><b class="num">${onSiteToday}<span style="display:inline;font-size:18px;opacity:.7"> / ${members.length}</span></b><span>${freeToday.length} free at store</span></div>
+  <div class="kpi" style="background:${ACTS.length?'var(--g-red)':'var(--g-green)'};--glow:rgba(225,29,72,.40)"><span class="ico">⚡</span><small>Needs action</small><b class="num">${ACTS.length}</b><span>${ACTS.filter(a=>a.sev==='red').length} urgent today</span></div>
+  <div class="kpi" style="background:var(--g-violet);--glow:rgba(109,40,217,.40)"><span class="ico">📝</span><small>Reports open</small><b class="num">${reportsOpen}</b><span>${monthDone} of ${monthSites.length} sites done this month</span></div>
+</div>`
+const siteCard = (s,d) => `<div class="scard" style="--tg:${TYPE[s.type].g}"><div class="top"><small>${TYPE[s.type].ic} ${TYPE[s.type].l} · ${dayLabel(s,d)}</small><b>${esc(s.n)}</b><span>📍 ${esc(place(s))} · ${esc(s.co)||'—'}</span></div><div class="bot"><div style="display:flex;flex-wrap:wrap;gap:6px">${people(crewOn(s,d))}</div></div></div>`
+
+/* 1 · command center */
+function r1(){
+  const next = Array.from({length:7},(_,i)=>addD(TODAY,i+1)).filter(d=>dow(d)!==0)
+  $('#d1').innerHTML = `<div class="note"><div><b>1 · Command Center</b> — the current dashboard's dark header and gradient tiles, but every tile is something you act on. Today's sites as colourful cards with team photos, a to-do list with coloured icons, and a timeline of the next days.</div></div>` + hero(heroSub) + `<div class="wrap">` + kpiStrip() + `
+  <div class="cc">
+    <div class="card"><div class="card-h"><h3><span class="ic" style="background:var(--g-blue)">📍</span>Today on site</h3><a href="#">Calendar →</a></div>
+      <div class="sgrid">${todayJobs.map(s=>siteCard(s,TODAY)).join('') || '<div class="empty">No site work today.</div>'}</div>
+      <div class="whobar"><span>🟢 At store: ${freeToday.map(m=>av(m,24)+esc(m.s)).join(' ')||'—'}</span>${awayToday.length?`<span>🔴 Away: ${awayToday.map(m=>av(m,24)+esc(m.s)).join(' ')}</span>`:''}</div>
+    </div>
+    <div class="card"><div class="card-h"><h3><span class="ic" style="background:var(--g-red)">⚡</span>Needs action</h3><span class="pill" style="background:#ffe4e6;color:#be123c">${ACTS.length}</span></div>
+      ${ACTS.map(todoRow).join('') || '<div class="empty">🎉 All clear!</div>'}
+    </div>
+  </div>
+  <div class="cc">
+  <div class="card"><div class="card-h"><h3><span class="ic" style="background:var(--g-violet)">🗓</span>Coming up</h3><a href="#">Sites →</a></div>
+    <div class="tl">${next.map(d=>{const ss=sitesOn(d);const lv=leaves.filter(l=>l.type!=='OFF DAY'&&d>=l.start&&d<=l.end);return `<div class="d"><div class="date"><small>${DN[dow(d)]}</small><b>${dn(d)}</b></div><div class="jobs">${ss.map(s=>{const c=crewOn(s,d);return `<div class="job" style="--tc:${TYPE[s.type].c};--tt:${TYPE[s.type].t}"><div><b>${esc(s.n)}</b><small>${dayLabel(s,d)} · ${esc(place(s))}</small></div><div class="stack">${c.all.map(m=>av(m,28)).join('')||'<span class="nocrew" style="padding:3px 9px;font-size:11px">No crew</span>'}</div></div>`}).join('')}${lv.map(l=>`<div class="job" style="--tc:#e11d48;--tt:#fff1f2"><div><b>🌴 ${esc(members[l.m].s)} on leave</b><small>${tc(l.type)}</small></div>${av(members[l.m],28)}</div>`).join('')}${!ss.length&&!lv.length?'<span style="color:var(--faint);font-size:13px">Nothing booked</span>':''}</div></div>`}).join('')}</div>
+  </div>
+  ${leaveCard()}
+  </div></div>`
+}
+
+/* 2 · bento */
+function r2(){
+  const loads = weekDates.map(d=>members.filter(m=>statusOf(m.i,d).k==='site').length)
+  const max = Math.max(1,...loads)
+  const me = members[ME]
+  let myNext = null
+  for(let i=1;i<=30;i++){ const d=addD(TODAY,i), s=statusOf(ME,d); if(s.k==='site'){ myNext={d,s}; break } }
+  const pct = Math.round(onSiteToday/members.length*100)
+  $('#d2').innerHTML = `<div class="note"><div><b>2 · Bento</b> — big bold tiles, each answering one question: what's urgent, where's everyone, what's my next job, how busy is the week. Bright gradients, big numbers, nothing filler.</div></div>` + hero(heroSub) + `<div class="wrap">${kpiStrip()}
+  <div class="bento after-strip">
+    <div class="tile c w2 h2" style="background:var(--g-red)"><div class="glow" style="background:color-mix(in srgb,#fde68a 80%,#64748b)"></div><h4>⚡ Needs action</h4><div class="big">${ACTS.length}</div>
+      <div class="list">${ACTS.map(a=>`<div class="li"><span style="font-size:18px">${a.ic}</span><div><b>${esc(a.title)}</b><small>${a.sub}</small></div></div>`).join('') || '<div class="li">🎉 All clear</div>'}</div></div>
+    <div class="tile dark"><h4>👷 Team out today</h4><div class="ring" style="--p:${pct};--rc:color-mix(in srgb,#22d3ee 80%,#64748b)"><div><span><b>${onSiteToday}/${members.length}</b><small>on site</small></span></div></div></div>
+    <div class="tile c" style="background:var(--g-teal)"><div class="glow" style="background:color-mix(in srgb,#a5f3fc 80%,#64748b)"></div><h4>🟢 Free right now</h4><div class="big">${freeToday.length}</div><div class="stack" style="margin-top:10px">${freeToday.map(m=>av(m,34)).join('')}</div><p>${freeToday.map(m=>m.s).join(', ')}</p></div>
+    <div class="tile c w2" style="background:linear-gradient(135deg,color-mix(in srgb,#1e3a8a 80%,#64748b),color-mix(in srgb,#2563eb 80%,#64748b) 55%,color-mix(in srgb,#0891b2 80%,#64748b))"><div class="glow" style="background:color-mix(in srgb,#93c5fd 80%,#64748b)"></div><h4>📍 Today on site</h4>
+      <div class="list">${todayJobs.map(s=>{const c=crewOn(s,TODAY);return `<div class="li"><div style="flex:1"><b>${esc(s.n)}</b><small>${dayLabel(s,TODAY)} · ${esc(place(s))}</small></div><div class="stack">${c.all.map(m=>av(m,28)).join('')||'<span class="pill" style="background:#fff;color:#be123c">No crew</span>'}</div></div>`}).join('')||'<div class="li">Quiet day</div>'}</div></div>
+    <div class="tile c" style="background:var(--g-violet)"><div class="glow" style="background:color-mix(in srgb,#f0abfc 80%,#64748b)"></div><h4>🎯 Your next job</h4>${myNext?`<div style="font-size:20px;font-weight:900;margin-top:10px;line-height:1.2">${esc(myNext.s.jobs.map(j=>j.n).join(' + '))}</div><p>${rel(myNext.d)}${myNext.s.pic?' · you are PIC':''}</p>`:'<p>Nothing booked</p>'}</div>
+    <div class="tile c" style="background:var(--g-amber)"><div class="glow" style="background:color-mix(in srgb,#fef08a 80%,#64748b)"></div><h4>📝 Reports open</h4><div class="big">${reportsOpen}</div><p>${monthDone} of ${monthSites.length} October sites completed</p></div>
+    <div class="tile dark w2"><h4>📊 This week · people on site</h4><div class="bars">${weekDates.map((d,i)=>`<div class="${d===TODAY?'today':''}"><span>${loads[i]||''}</span><i style="height:${loads[i]/max*80}%"></i><span style="opacity:.6">${DN[dow(d)]}</span></div>`).join('')}</div></div>
+    <div class="tile c w2" style="background:linear-gradient(135deg,color-mix(in srgb,#f472b6 80%,#64748b),color-mix(in srgb,#db2777 80%,#64748b))"><div class="glow" style="background:color-mix(in srgb,#fbcfe8 80%,#64748b)"></div><h4>🌴 Team leave · next 30 days</h4><div class="big">${LEAVE_SOON.length}<small> ${LEAVE_SOON.some(l=>l.start<=TODAY)?'· someone out now':'booked'}</small></div><div style="position:relative">${LEAVE_SOON.map(leaveRow).join('')||'<p>Nobody on leave 🎉</p>'}</div></div>
+  </div></div>`
+}
+
+/* 3 · team pulse */
+function r3(){
+  const tmr = addD(TODAY,1)
+  $('#d3').innerHTML = `<div class="note"><div><b>3 · Team Pulse</b> — people first. Every team member's photo with a coloured ring for where they are today (blue on site, green free, red leave, grey off), then today's sites and the to-do list underneath.</div></div>` + hero(heroSub) + `<div class="wrap">${kpiStrip()}
+  <h3 style="font-size:15px;font-weight:800;margin:22px 2px 0">👥 Team today</h3>
+  <div class="pulse after-strip" style="margin-top:12px!important">${members.map((m,i)=>{const s=statusToday[i];return `<div class="pcard" style="--sg:${ST_G[s.k]}"><div class="ph">${av(m)}</div><b>${esc(m.s)}</b><span class="st">${s.k==='site'?(s.pic?'★ PIC':'On site'):s.l}</span><div class="where">${s.k==='site'?esc(s.jobs.map(j=>j.n).join(' + ')):'&nbsp;'}<br><span style="font-size:11px;color:var(--faint)">Tmr: ${esc((x=>x.k==='site'?x.jobs.map(j=>j.n).join(' + '):x.l)(statusOf(m.i,tmr)))}</span></div></div>`}).join('')}</div>
+  <div class="legend"><span><i style="--sg:${ST_G.site}"></i>On site</span><span><i style="--sg:${ST_G.free}"></i>Free / store</span><span><i style="--sg:${ST_G.leave}"></i>Leave</span><span><i style="--sg:${ST_G.off}"></i>Off</span></div>
+  <div class="p2">
+    <div class="card"><div class="card-h"><h3><span class="ic" style="background:var(--g-blue)">📍</span>Today on site</h3><a href="#">Calendar →</a></div><div class="sgrid" style="grid-template-columns:1fr">${todayJobs.map(s=>siteCard(s,TODAY)).join('')||'<div class="empty">No site work today.</div>'}</div></div>
+    <div class="card"><div class="card-h"><h3><span class="ic" style="background:var(--g-red)">⚡</span>Needs action</h3><span class="pill" style="background:#ffe4e6;color:#be123c">${ACTS.length}</span></div>${ACTS.map(todoRow).join('')||'<div class="empty">🎉 All clear!</div>'}</div>
+  </div>
+  <div style="margin-top:18px">${leaveCard()}</div></div>`
+}
+
+/* 4 · night ops */
+function r4(){
+  $('#d4').innerHTML = `<div class="note" style="color:#94a3b8;padding-top:4px"><div style="background:rgba(255,255,255,.04);border-color:#334155"><b style="color:#fff">4 · Night Ops</b> — a dark control-room look with neon accents. Glowing numbers on top, problems as coloured glowing chips, and the whole week as neon cards with crew and who's free. Today is outlined in cyan.</div></div><div class="wrap">
+  <h1>Good morning, <span>${members[ME].s}</span></h1><div class="sub">${fmt(TODAY)} 2026 · ${heroSub}</div>
+  ${kpiStrip(true)}
+  <div class="npanel"><div class="card-h"><h3>⚡ Needs action</h3></div><div class="nalerts">${ACTS.map(a=>`<div class="nalert" style="--nc:${SEV[a.sev].c}"><span class="d"></span><div><b>${esc(a.title)}</b><small>${a.sub}</small></div></div>`).join('')||'<span style="color:#64748b">All clear</span>'}</div></div>
+  <div class="npanel"><div class="card-h"><h3>🌴 Team leave</h3><span style="font-size:12px;color:#64748b;font-weight:700">next 30 days · excl. Saturday off</span></div>${LEAVE_SOON.length?`<div class="lv-sum">${leaveSummary()}</div>`:''}${leaveList()}</div>
+  <div class="npanel" style="overflow-x:auto"><div class="card-h"><h3>🗓 This week</h3></div><div class="nweek">${weekDates.map(d=>{
+    const ss=sitesOn(d), free=dow(d)===0?[]:members.filter(m=>['free','store'].includes(statusOf(m.i,d).k)), away=dow(d)===0?[]:members.filter(m=>['leave','off'].includes(statusOf(m.i,d).k))
+    return `<div class="nday ${d===TODAY?'today':''}"><div class="h"><b>${dn(d)}</b><small>${DN[dow(d)]}</small></div>${ss.map(s=>{const c=crewOn(s,d);return `<div class="njob ${c.all.length?'':'bad'}" style="--nc:${TYPE[s.type].c}"><b>${esc(s.n)}</b><small>${c.all.length?c.all.map((m,k)=>(k<c.pic.length?'★':'')+m.s).join(', '):'⚠ no crew'}</small></div>`}).join('')||`<div style="color:#475569;font-size:12px">${dow(d)===0?'Sunday':'No jobs'}</div>`}${dow(d)!==0?`<div class="nfree"><b>Free:</b> ${free.map(m=>m.s).join(', ')||'—'}${away.length?`<br><b>Away:</b> ${away.map(m=>m.s).join(', ')}`:''}</div>`:''}</div>`}).join('')}</div></div>
+  </div>`
+}
+
+/* 5 · app cards */
+function r5(){
+  const me = members[ME], st = statusOf(ME,TODAY)
+  let myNext = []
+  for(let i=1;i<=30 && myNext.length<3;i++){ const d=addD(TODAY,i), s=statusOf(ME,d); if(s.k==='site'){ const key=s.jobs.map(j=>j.i).join(), last=myNext.at(-1); if(last&&last.key===key&&addD(last.to,1)===d){ last.to=d; last.pic=last.pic||s.pic } else myNext.push({key,from:d,to:d,s,pic:s.pic}) } }
+  $('#d5').innerHTML = `<div class="note"><div><b>5 · App Cards</b> — big glossy cards like a phone app: your day, what needs action, and today's sites. Below, a colourful week strip (dots = jobs) and the team. Works great on phones — cards just stack.</div></div>` + hero(heroSub) + `<div class="app">${kpiStrip()}
+  <div class="agrid after-strip">
+    <div class="acard" style="background:var(--g-violet);--glow:rgba(109,40,217,.56)"><h4><span>🎯 Your day</span><span>${esc(me.s)}</span></h4>
+      <div class="t">${st.k==='site'?esc(st.jobs.map(j=>j.n).join(' + ')):st.l}</div><div class="s">${st.k==='site'?'You are on site today':'Today'} · ${fmt(TODAY)}</div>
+      <div class="rows">${myNext.map(j=>`<div class="r"><div><b>${esc(j.s.jobs.map(x=>x.n).join(' + '))}</b><small>${j.from===j.to?rel(j.from):`${short(j.from)} – ${short(j.to)}`}</small></div>${j.pic?'<span class="pill" style="background:#fff;color:#6d28d9">★ PIC</span>':''}</div>`).join('')||'<div class="r">Nothing booked</div>'}
+      ${leaves.filter(l=>l.m===ME&&l.type!=='OFF DAY'&&l.end>=TODAY).map(l=>`<div class="r"><div><b>🌴 ${tc(l.type)}</b><small>${short(l.start)} – ${short(l.end)}</small></div></div>`).join('')}</div></div>
+    <div class="acard" style="background:var(--g-red);--glow:rgba(225,29,72,.56)"><h4><span>⚡ Needs action</span><span>${ACTS.length}</span></h4>
+      <div class="t">${ACTS.length?`${ACTS.length} thing${ACTS.length===1?'':'s'} to sort`:'All clear 🎉'}</div><div class="s">${ACTS.filter(a=>a.sev==='red').length} urgent today</div>
+      <div class="rows">${ACTS.map(a=>`<div class="r"><div><b>${a.ic} ${esc(a.title)}</b><small>${a.sub}</small></div></div>`).join('')}</div></div>
+    <div class="acard" style="background:linear-gradient(135deg,color-mix(in srgb,#1e3a8a 80%,#64748b),color-mix(in srgb,#2563eb 80%,#64748b) 55%,color-mix(in srgb,#0891b2 80%,#64748b));--glow:rgba(37,99,235,.56)"><h4><span>📍 Today on site</span><span>${onSiteToday}/${members.length} out</span></h4>
+      <div class="t">${todayJobs.length} site${todayJobs.length===1?'':'s'}</div><div class="s">${freeToday.length} free at store${awayToday.length?` · ${awayToday.length} away`:''}</div>
+      <div class="rows">${todayJobs.map(s=>{const c=crewOn(s,TODAY);return `<div class="r"><div><b>${esc(s.n)}</b><small>${dayLabel(s,TODAY)} · ${esc(place(s))}</small></div><div class="stack">${c.all.map(m=>av(m,28)).join('')||'<span class="pill" style="background:#fff;color:#be123c">No crew</span>'}</div></div>`}).join('')}</div></div>
+  </div>
+  <div class="card" style="margin-top:18px"><div class="card-h"><h3><span class="ic" style="background:var(--g-teal)">🗓</span>This week</h3><a href="#">Calendar →</a></div>
+    <div class="strip">${weekDates.map(d=>{const ss=sitesOn(d);const out=members.filter(m=>statusOf(m.i,d).k==='site').length;return `<div class="sd ${d===TODAY?'today':''}"><small>${DN[dow(d)]}</small><b>${dn(d)}</b><div class="dots">${ss.map(s=>`<i style="--dc:${crewOn(s,d).all.length?(d===TODAY?'#fff':TYPE[s.type].c):'#f43f5e'}" title="${esc(s.n)}"></i>`).join('')}</div><span>${dow(d)===0?'rest':`${out} out`}</span></div>`}).join('')}</div>
+  </div>
+  <div style="margin-top:18px">${leaveCard()}</div>
+  <div class="card" style="margin-top:18px"><div class="card-h"><h3><span class="ic" style="background:var(--g-green)">👥</span>Team today</h3><a href="#">Team →</a></div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;padding:6px 18px 18px">${members.map((m,i)=>{const s=statusToday[i];return `<span class="person" style="background:${s.k==='site'?'#eff6ff':s.k==='leave'?'#fff1f2':['free','store'].includes(s.k)?'#ecfdf5':'#f1f5f9'};padding:4px 12px 4px 4px">${av(m,28)}<span><b style="font-weight:800">${esc(m.s)}</b><br><small style="font-weight:600;color:var(--muted);font-size:11px">${s.k==='site'?esc(s.jobs.map(j=>j.n).join(' + ')):s.l}</small></span></span>`}).join('')}</div>
+  </div></div>`
+}
+
+r1(); r2(); r3(); r4(); r5()
+document.querySelectorAll('.opt').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.opt').forEach(x=>x.classList.toggle('on',x===b))
+  document.querySelectorAll('.concept').forEach(c=>c.classList.toggle('on',c.id==='c'+b.dataset.c))
+  window.scrollTo({top:0})
+})
+</script>
+</body>
+</html>
