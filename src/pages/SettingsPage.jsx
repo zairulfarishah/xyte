@@ -74,6 +74,7 @@ export default function SettingsPage() {
   const [leaveForm, setLeaveForm] = useState(EMPTY_LEAVE_FORM)
   const [leaveSaving, setLeaveSaving] = useState(false)
   const [phoneDraft, setPhoneDraft] = useState({})
+  const [shortDraft, setShortDraft] = useState({})
   const [phoneSaving, setPhoneSaving] = useState(null)
   const [phoneError, setPhoneError] = useState('')
   const [showMemberForm, setShowMemberForm] = useState(false)
@@ -110,19 +111,29 @@ export default function SettingsPage() {
     [members]
   )
 
-  async function savePhone(member) {
-    const raw = phoneDraft[member.id] ?? ''
-    const trimmed = raw.trim()
+  // Short name and phone share one Save; only fields that changed are written.
+  const detailsDirty = m =>
+    (phoneDraft[m.id] ?? m.phone ?? '') !== (m.phone ?? '') ||
+    (shortDraft[m.id] ?? m.short_name ?? '') !== (m.short_name ?? '')
 
-    if (trimmed && !isValidPhone(trimmed)) {
-      setPhoneError(`${member.full_name}: enter a valid number, e.g. 012-345 6789`)
-      return
+  async function saveDetails(member) {
+    const updates = {}
+    if (member.id in shortDraft) {
+      // Blank falls back to the first name, same as when adding a member
+      updates.short_name = shortDraft[member.id].trim() || member.full_name.split(' ')[0]
+    }
+    if (member.id in phoneDraft) {
+      const trimmed = phoneDraft[member.id].trim()
+      if (trimmed && !isValidPhone(trimmed)) {
+        setPhoneError(`${member.full_name}: enter a valid number, e.g. 012-345 6789`)
+        return
+      }
+      updates.phone = trimmed ? normalizePhone(trimmed) : null
     }
 
     setPhoneError('')
     setPhoneSaving(member.id)
-    const value = trimmed ? normalizePhone(trimmed) : null
-    const { error } = await supabase.from('team_members').update({ phone: value }).eq('id', member.id)
+    const { error } = await supabase.from('team_members').update(updates).eq('id', member.id)
     setPhoneSaving(null)
 
     if (error) {
@@ -132,12 +143,14 @@ export default function SettingsPage() {
       return
     }
 
-    setMembers(prev => prev.map(m => m.id === member.id ? { ...m, phone: value } : m))
-    setPhoneDraft(prev => {
+    setMembers(prev => prev.map(m => m.id === member.id ? { ...m, ...updates } : m))
+    const clear = prev => {
       const next = { ...prev }
       delete next[member.id]
       return next
-    })
+    }
+    setPhoneDraft(clear)
+    setShortDraft(clear)
   }
 
   function closeMemberForm() {
@@ -520,6 +533,16 @@ export default function SettingsPage() {
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <input
+                          value={shortDraft[m.id] ?? m.short_name ?? ''}
+                          onChange={e => setShortDraft(prev => ({ ...prev, [m.id]: e.target.value }))}
+                          placeholder="Short name"
+                          title="Short name — shown on the calendar, Team page and WhatsApp briefs"
+                          style={{
+                            width: '110px', padding: '6px 10px', borderRadius: '8px',
+                            border: '1px solid #e2e8f0', fontSize: '12px', color: '#0f172a',
+                          }}
+                        />
+                        <input
                           value={phoneDraft[m.id] ?? m.phone ?? ''}
                           onChange={e => setPhoneDraft(prev => ({ ...prev, [m.id]: e.target.value }))}
                           placeholder="012-345 6789"
@@ -529,14 +552,14 @@ export default function SettingsPage() {
                           }}
                         />
                         <button
-                          onClick={() => savePhone(m)}
-                          disabled={phoneSaving === m.id || (phoneDraft[m.id] ?? m.phone ?? '') === (m.phone ?? '')}
+                          onClick={() => saveDetails(m)}
+                          disabled={phoneSaving === m.id || !detailsDirty(m)}
                           style={{
                             padding: '6px 12px', borderRadius: '8px', border: '1px solid #bfdbfe',
-                            background: (phoneDraft[m.id] ?? m.phone ?? '') === (m.phone ?? '') ? '#f8fafc' : '#eff6ff',
-                            color: (phoneDraft[m.id] ?? m.phone ?? '') === (m.phone ?? '') ? '#94a3b8' : '#1d4ed8',
+                            background: detailsDirty(m) ? '#eff6ff' : '#f8fafc',
+                            color: detailsDirty(m) ? '#1d4ed8' : '#94a3b8',
                             fontSize: '11px', fontWeight: '700',
-                            cursor: (phoneDraft[m.id] ?? m.phone ?? '') === (m.phone ?? '') ? 'default' : 'pointer',
+                            cursor: detailsDirty(m) ? 'pointer' : 'default',
                           }}
                         >
                           {phoneSaving === m.id ? 'Saving…' : 'Save'}
