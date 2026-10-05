@@ -6,7 +6,7 @@ import {
   Pencil, Trash2, Search, ArrowUpRight, MapPin, MessageCircle, X, Camera,
   Calendar, Clock, CheckCircle,
 } from 'lucide-react'
-import { notify, notifyAssignments, notifyDailyAssignments, notifyMany, siteRoleIds } from '../utils/notify'
+import { memberSchedule, notify, notifyMany, notifyScheduleChanges, siteRoleIds } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
 import { getSiteHeaderImage } from '../utils/siteHeader'
@@ -135,7 +135,27 @@ function getPageNumbers(current, total, siblingCount = 1) {
   return [1, '…', ...Array.from({ length: right - left + 1 }, (_, i) => left + i), '…', total]
 }
 
-async function uploadSitePhoto(file) {
+// Phone photos are often several MB; scale down to 1600px JPEG so the upload is quick.
+async function shrinkPhoto(file, maxSide = 1600) {
+  if (!file.type.startsWith('image/') || file.type === 'image/gif' || file.size < 400 * 1024) return file
+  try {
+    const bitmap = await createImageBitmap(file)
+    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(bitmap.width * scale)
+    canvas.height = Math.round(bitmap.height * scale)
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    bitmap.close?.()
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.82))
+    if (!blob || blob.size >= file.size) return file
+    return new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' })
+  } catch {
+    return file
+  }
+}
+
+async function uploadSitePhoto(original) {
+  const file = await shrinkPhoto(original)
   const ext = file.name.split('.').pop()
   const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
   const { error } = await supabase.storage.from('site-photos').upload(path, file)
@@ -162,12 +182,16 @@ function LocationPicker({ lat, lng, onPick, mapKey }) {
   )
 }
 
+// Last loaded data, kept for the session so coming back to Sites shows the list
+// straight away while a fresh copy loads in the background.
+let sitesCache = null
+
 export default function Sites() {
   const { fullName, isZairul, memberId } = useAuth()
   const { isMobile, isTablet } = useViewport()
-  const [sites, setSites]             = useState([])
-  const [members, setMembers]         = useState([])
-  const [loading, setLoading]         = useState(true)
+  const [sites, setSites]             = useState(() => sitesCache?.sites || [])
+  const [members, setMembers]         = useState(() => sitesCache?.members || [])
+  const [loading, setLoading]         = useState(!sitesCache)
   const [tab, setTab]                 = useState('All')
   const [search, setSearch]           = useState('')
   const [showForm, setShowForm]       = useState(false)
@@ -180,7 +204,7 @@ export default function Sites() {
   const [quickSaving, setQuickSaving]   = useState(null)
   const [draftStatus, setDraftStatus]   = useState(null)
   const [panelAnchor, setPanelAnchor]   = useState(null)
-  const [leaves, setLeaves]             = useState([])
+  const [leaves, setLeaves]             = useState(() => sitesCache?.leaves || [])
   const [waMenu, setWaMenu]             = useState(null)
   const photoInputRef = useRef(null)
   const PER_PAGE = 8
@@ -207,19 +231,27 @@ export default function Sites() {
     return () => window.removeEventListener('xyte:leaves-updated', h)
   }, [])
 
+  // Only the first load shows the full-page spinner; refreshes after a save swap the data in quietly.
   async function fetchAll() {
-    setLoading(true)
     const [{ data:s }, { data:m }, leaveData] = await Promise.all([
       supabase
         .from('sites')
-        .select(`*, site_assignments(assignment_role, work_date, team_members(id, full_name, short_name, avatar_url, phone))`)
+        .select(`*, site_assignments(assignment_role, work_date, member_id)`)
         .order('scheduled_date', { ascending:false }),
       supabase.from('team_members').select('*').order('full_name'),
       fetchTeamLeaves().catch(() => []),
     ])
-    setSites(s || [])
-    setMembers(m || [])
-    setLeaves(leaveData || [])
+    // Assignments come back with just member_id; attach the member from the team list
+    // instead of having the server repeat it on every row.
+    const byId = new Map((m || []).map(x => [x.id, x]))
+    const withMembers = (s || []).map(site => ({
+      ...site,
+      site_assignments: (site.site_assignments || []).map(a => ({ ...a, team_members: byId.get(a.member_id) || null })),
+    }))
+    sitesCache = { sites: withMembers, members: m || [], leaves: leaveData || [] }
+    setSites(sitesCache.sites)
+    setMembers(sitesCache.members)
+    setLeaves(sitesCache.leaves)
     setLoading(false)
   }
 
@@ -253,16 +285,17 @@ export default function Sites() {
       // PICs and crew of this site hear about it under separate notification settings
       // (deduped — a per-day site can list the same person on several days).
       const { picIds, crewIds } = siteRoleIds(site)
-      const tell = async msg => {
-        await notifyMany(`${msg} (you are PIC)`, fullName, picIds.filter(id => id !== memberId), 'pic_update')
-        await notifyMany(msg, fullName, crewIds.filter(id => id !== memberId), 'site_update')
-      }
+      // Not awaited: the save is done, nobody should wait on notifications.
+      const tell = msg => Promise.all([
+        notifyMany(`${msg} (you are PIC)`, fullName, picIds.filter(id => id !== memberId), 'pic_update'),
+        notifyMany(msg, fullName, crewIds.filter(id => id !== memberId), 'site_update'),
+      ]).catch(err => console.warn('Notification failed:', err.message))
 
       if (updates.site_status) {
-        await tell(`Site "${site.site_name}" status changed to ${updates.site_status}`)
+        tell(`Site "${site.site_name}" status changed to ${updates.site_status}`)
       }
       if (updates.report_status) {
-        await tell(updates.report_status === 'approved'
+        tell(updates.report_status === 'approved'
           ? `Report for "${site.site_name}" has been approved by Zairul`
           : updates.report_status === 'submitted'
           ? `Report for "${site.site_name}" has been submitted — awaiting review`
@@ -421,73 +454,41 @@ export default function Sites() {
         }),
       }
       let siteId = editSite?.id
-      const origA     = editSite?.site_assignments||[]
-      const wasPerDay = origA.some(a => a.work_date)
-      const origPic   = origA.find(a => a.assignment_role==='PIC' && !a.work_date)?.team_members?.id||''
-      const origCrew  = origA.filter(a => a.assignment_role==='crew' && !a.work_date).map(a => a.team_members?.id).filter(Boolean).sort()
-      const nextCrew  = [...form.crew_ids].sort()
-      const changed   = !editSite || form.assign_mode==='per_day' || wasPerDay ||
-        origPic!==form.pic_id || origCrew.length!==nextCrew.length || origCrew.some((id,i) => id!==nextCrew[i])
+      const assignments = []
+      if (form.assign_mode === 'per_day') {
+        Object.entries(form.daily_assignments).forEach(([dateStr, day]) => {
+          if (day.pic_id) assignments.push({ member_id:day.pic_id, assignment_role:'PIC', work_date:dateStr })
+          day.crew_ids.forEach(id => { if (id!==day.pic_id) assignments.push({ member_id:id, assignment_role:'crew', work_date:dateStr }) })
+        })
+      } else {
+        if (form.pic_id) assignments.push({ member_id:form.pic_id, assignment_role:'PIC', work_date:null })
+        form.crew_ids.forEach(id => { if (id!==form.pic_id) assignments.push({ member_id:id, assignment_role:'crew', work_date:null }) })
+      }
+      // Only rewrite assignments when the rows themselves differ
+      const assignmentKeys = rows => rows.map(a => `${a.member_id || a.team_members?.id}|${a.assignment_role}|${a.work_date || ''}`).sort().join(',')
+      const changed = !editSite || assignmentKeys(editSite.site_assignments || []) !== assignmentKeys(assignments)
       if (editSite) {
         const { error } = await supabase.from('sites').update(payload).eq('id', siteId)
         if (error) throw new Error(error.message)
         if (changed) {
-          await supabase.from('site_assignments').delete().eq('site_id', siteId)
-          await supabase.from('workload_log').delete().eq('site_id', siteId)
+          await Promise.all([
+            supabase.from('site_assignments').delete().eq('site_id', siteId),
+            supabase.from('workload_log').delete().eq('site_id', siteId),
+          ])
         }
       } else {
         const { data, error } = await supabase.from('sites').insert(payload).select().single()
         if (error) throw new Error(error.message)
         siteId = data.id
       }
-      if (changed) {
-        const assignments = []
-        if (form.assign_mode === 'per_day') {
-          Object.entries(form.daily_assignments).forEach(([dateStr, day]) => {
-            if (day.pic_id) assignments.push({ site_id:siteId, member_id:day.pic_id, assignment_role:'PIC', work_date:dateStr })
-            day.crew_ids.forEach(id => { if (id!==day.pic_id) assignments.push({ site_id:siteId, member_id:id, assignment_role:'crew', work_date:dateStr }) })
-          })
-        } else {
-          if (form.pic_id) assignments.push({ site_id:siteId, member_id:form.pic_id, assignment_role:'PIC' })
-          form.crew_ids.forEach(id => { if (id!==form.pic_id) assignments.push({ site_id:siteId, member_id:id, assignment_role:'crew' }) })
-        }
-        if (assignments.length > 0) {
-          const { error: assignError } = await supabase.from('site_assignments').insert(assignments)
-          if (assignError) throw new Error(assignError.message)
-        }
-
-        // Notify PIC and crew
-        if (form.assign_mode === 'per_day') {
-          // Each person hears their own days rather than "there is a schedule somewhere"
-          await notifyDailyAssignments({
-            siteName: form.site_name,
-            days: Object.entries(form.daily_assignments).map(([date, day]) => ({
-              date,
-              picId: day.pic_id,
-              crewIds: day.crew_ids,
-            })),
-            actor: fullName,
-          })
-        } else {
-          await notifyAssignments({
-            siteName: form.site_name,
-            scheduledDate: form.scheduled_date,
-            picId: form.pic_id,
-            crewIds: form.crew_ids,
-            actor: fullName,
-          })
-        }
+      if (changed && assignments.length > 0) {
+        const rows = assignments.map(a => ({ ...a, site_id:siteId }))
+        const { error: assignError } = await supabase.from('site_assignments').insert(rows)
+        if (assignError) throw new Error(assignError.message)
       }
-      await notify(`${editSite?'Updated':'Added'} site: ${form.site_name}`, fullName, null, 'general')
-      if (editSite) {
-        // Existing PICs hear about edits to their site; newly assigned ones already got an assignment alert.
-        const statusNote = editSite.site_status !== form.site_status ? ` — status: ${form.site_status}` : ''
-        const stillPic = siteRoleIds(editSite).picIds.filter(id => id !== memberId && (
-          form.assign_mode === 'per_day'
-            ? Object.values(form.daily_assignments).some(day => day.pic_id === id)
-            : form.pic_id === id))
-        await notifyMany(`${fullName} updated site "${form.site_name}" (you are PIC)${statusNote}`, fullName, stillPic, 'pic_update')
-      }
+      // The site is saved — close the form now and let notifications go out in the background.
+      sendSaveNotifications(form, editSite, assignments, payload)
+        .catch(err => console.warn('Notification failed:', err.message))
       window.dispatchEvent(new CustomEvent('xyte:site-saved'))
       setShowForm(false); setEditSite(null); fetchAll()
     } catch (err) {
@@ -495,6 +496,31 @@ export default function Sites() {
     } finally {
       setSaving(false)
     }
+  }
+
+  // Only people whose own schedule changed hear about it: new days, removed days, a new
+  // role, or (for everyone still on the site) a change of session on the same day.
+  async function sendSaveNotifications(form, editSite, assignments, savedSite) {
+    const before = editSite ? memberSchedule(editSite.site_assignments || [], getSiteDates(editSite)) : new Map()
+    const after  = memberSchedule(assignments, getSiteDates(savedSite))
+    const sessionChanged = !!editSite && (editSite.site_session || null) !== (savedSite.site_session || null)
+    const told = await notifyScheduleChanges({
+      siteName: form.site_name,
+      before,
+      after,
+      sessionNote: sessionChanged && savedSite.site_session ? `now ${savedSite.site_session}` : sessionChanged ? 'session updated' : null,
+      actor: fullName,
+      skipId: memberId,
+    })
+
+    const jobs = [notify(`${editSite?'Updated':'Added'} site: ${form.site_name}`, fullName, null, 'general')]
+    if (editSite) {
+      // PICs who weren't already told about their own schedule still hear the site was edited.
+      const statusNote = editSite.site_status !== form.site_status ? ` — status: ${form.site_status}` : ''
+      const stillPic = [...after].filter(([id, s]) => s.role === 'PIC' && id !== memberId && !told.has(id)).map(([id]) => id)
+      jobs.push(notifyMany(`${fullName} updated site "${form.site_name}" (you are PIC)${statusNote}`, fullName, stillPic, 'pic_update'))
+    }
+    await Promise.all(jobs)
   }
 
   async function handleDelete(id) {

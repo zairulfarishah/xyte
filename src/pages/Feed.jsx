@@ -464,10 +464,10 @@ function Comments({ post, comments, members, onChange }) {
     })
     if (error) { setSaving(false); alert(error.message); return }
     const mentioned = mentionedIds(body, members).filter(id => id !== memberId)
-    if (mentioned.length) await notifyMany(`${fullName} mentioned you in a Feed comment`, fullName, mentioned, 'mention')
+    if (mentioned.length) notifyMany(`${fullName} mentioned you in a Feed comment`, fullName, mentioned, 'mention')
     if (post.author_id && post.author_id !== memberId && !mentioned.includes(post.author_id)) {
       const snippet = body.length > 60 ? `${body.slice(0, 60).trimEnd()}…` : body
-      await notify(`${fullName} commented on your Feed post: "${snippet}"`, fullName, post.author_id, 'feed_comment')
+      notify(`${fullName} commented on your Feed post: "${snippet}"`, fullName, post.author_id, 'feed_comment')
     }
     setSaving(false)
     setText('')
@@ -547,7 +547,7 @@ function PostCard({ post, comments, reactions, members, sites, onChange, onToggl
 
     const before = new Set(mentionedIds(post.body || '', members))
     const added = mentionedIds(body, members).filter(id => !before.has(id) && id !== memberId)
-    if (added.length) await notifyMany(`${fullName} mentioned you in a Feed post`, fullName, added, 'mention')
+    if (added.length) notifyMany(`${fullName} mentioned you in a Feed post`, fullName, added, 'mention')
 
     setSaving(false)
     setEditing(false)

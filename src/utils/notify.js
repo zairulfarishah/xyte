@@ -61,44 +61,61 @@ export function formatAssignmentDays(dates = []) {
   return `${clean.length} days: ${short.join(', ')}`
 }
 
-// Multi-day site where each day has its own crew — everyone hears about their own days.
-// days: [{ date, picId, crewIds }]
-export async function notifyDailyAssignments({ siteName, days = [], actor = 'System' }) {
+// Map of memberId → { role, dates:Set } for a site's assignment rows. Rows without a
+// work_date cover every day of the site (siteDates).
+export function memberSchedule(assignments = [], siteDates = []) {
   const byMember = new Map()
-  const remember = (memberId, role, date) => {
-    if (!memberId) return
-    const entry = byMember.get(memberId) || { role: 'crew', dates: [] }
-    if (role === 'PIC') entry.role = 'PIC'
-    if (!entry.dates.includes(date)) entry.dates.push(date)
-    byMember.set(memberId, entry)
+  for (const a of assignments) {
+    const id = a.member_id || a.team_members?.id
+    if (!id) continue
+    const entry = byMember.get(id) || { role: 'crew', dates: new Set() }
+    if (String(a.assignment_role || '').toLowerCase() === 'pic') entry.role = 'PIC'
+    const days = a.work_date ? [String(a.work_date).slice(0, 10)] : siteDates.length ? siteDates : ['']
+    days.forEach(d => entry.dates.add(d))
+    byMember.set(id, entry)
+  }
+  return byMember
+}
+
+// Compares a site's schedule before and after an edit and tells only the people whose own
+// schedule changed. sessionNote (e.g. "now Full Day") goes to everyone else still on the site.
+// Returns the set of member ids that were notified.
+export async function notifyScheduleChanges({ siteName, before, after, sessionNote = null, actor = 'System', skipId = null }) {
+  const rows = []
+  const add = (id, message) => rows.push({ message, actor, recipient_id: id, category: 'assignment' })
+
+  for (const id of new Set([...before.keys(), ...after.keys()])) {
+    if (!id || id === skipId) continue
+    const old = before.get(id)
+    const now = after.get(id)
+    const oldDates = old?.dates || new Set()
+    const newDates = now?.dates || new Set()
+    const added   = [...newDates].filter(d => !oldDates.has(d))
+    const removed = [...oldDates].filter(d => !newDates.has(d))
+
+    if (!now) add(id, `You have been removed from "${siteName}"`)
+    else if (!old) add(id, `You have been assigned as ${now.role} for "${siteName}" — ${formatAssignmentDays(added)}`)
+    else if (added.length && removed.length) add(id, `Your days for "${siteName}" have changed — now ${formatAssignmentDays([...newDates])}${now.role !== old.role ? ` (as ${now.role})` : ''}`)
+    else if (added.length) add(id, `You have been assigned as ${now.role} for "${siteName}" — ${formatAssignmentDays(added)}`)
+    else if (removed.length) add(id, `You have been removed from "${siteName}" on ${formatAssignmentDays(removed)}`)
+    else if (now.role !== old.role) add(id, `You are now ${now.role} for "${siteName}"`)
+    else if (sessionNote) add(id, `"${siteName}" session changed — ${sessionNote}`)
   }
 
-  days.forEach(({ date, picId, crewIds = [] }) => {
-    remember(picId, 'PIC', date)
-    crewIds.forEach(id => { if (id !== picId) remember(id, 'crew', date) })
-  })
-
-  for (const [memberId, { role, dates }] of byMember) {
-    const label = role === 'PIC' ? 'PIC' : 'crew'
-    await notify(
-      `You have been assigned as ${label} for "${siteName}" — ${formatAssignmentDays(dates)}`,
-      actor,
-      memberId,
-      'assignment'
-    )
-  }
+  if (rows.length) await insertNotifications(rows)
+  return new Set(rows.map(r => r.recipient_id))
 }
 
 // Personal notification to the PIC and each crew member of a site
 export async function notifyAssignments({ siteName, scheduledDate, picId, crewIds = [], actor = 'System' }) {
+  const rows = []
   if (picId) {
-    await notify(getAssignmentMessage('PIC', siteName, scheduledDate), actor, picId, 'assignment')
+    rows.push({ message: getAssignmentMessage('PIC', siteName, scheduledDate), actor, recipient_id: picId, category: 'assignment' })
   }
-
-  const crewOnly = crewIds.filter(id => id && id !== picId)
-  if (crewOnly.length > 0) {
-    await notifyMany(getAssignmentMessage('crew', siteName, scheduledDate), actor, crewOnly, 'assignment')
-  }
+  const crewOnly = [...new Set(crewIds.filter(id => id && id !== picId))]
+  const crewMessage = getAssignmentMessage('crew', siteName, scheduledDate)
+  crewOnly.forEach(id => rows.push({ message: crewMessage, actor, recipient_id: id, category: 'assignment' }))
+  if (rows.length) await insertNotifications(rows)
 }
 
 // Member ids on a site split by role. Accepts site_assignments rows with either

@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 import { supabase } from '../supabase'
 import { FileDown, X, ChevronRight, Loader } from 'lucide-react'
 
@@ -46,6 +45,9 @@ export default function CompileExport({ members, docs }) {
     setDone(false)
 
     try {
+      // pdf-lib is large; only download it when someone actually compiles
+      const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib')
+
       // Fetch full member details including ic_number
       setProgress('Fetching member details…')
       const { data: fullMembers } = await supabase

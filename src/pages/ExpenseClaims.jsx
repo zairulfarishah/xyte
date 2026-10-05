@@ -121,7 +121,7 @@ export default function ExpenseClaims() {
 
     if (error) { setFormError(error.message); setSaving(false); return }
 
-    await notifyAdmin(`${fullName} submitted a ${fmtRM(amount)} claim for approval`, fullName, 'claim')
+    notifyAdmin(`${fullName} submitted a ${fmtRM(amount)} claim for approval`, fullName, 'claim')
 
     setSaving(false)
     setShowModal(false)
@@ -137,7 +137,7 @@ export default function ExpenseClaims() {
     if (error) { alert(error.message); return }
 
     if (claim.member_id) {
-      await notify(`Your ${fmtRM(claim.amount)} claim was ${STATUS[status].label.toLowerCase()}`, fullName, claim.member_id, 'claim')
+      notify(`Your ${fmtRM(claim.amount)} claim was ${STATUS[status].label.toLowerCase()}`, fullName, claim.member_id, 'claim')
     }
     setClaims(prev => prev.map(c => c.id === claim.id ? { ...c, status, reviewed_by: memberId } : c))
   }

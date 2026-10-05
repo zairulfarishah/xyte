@@ -5,7 +5,7 @@ import L from 'leaflet'
 import { Link } from 'react-router-dom'
 import { ArrowUpRight, CheckCircle, Plus, Pencil, Sparkles, Camera } from 'lucide-react'
 import { calculateWorkload } from '../utils/workload'
-import { notify, notifyAssignments, notifyMany, siteRoleIds } from '../utils/notify'
+import { memberSchedule, notify, notifyAssignments, notifyMany, notifyScheduleChanges, siteRoleIds } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
 import { PinnedFeedCard } from '../components/FeedWidgets'
@@ -13,7 +13,7 @@ import { mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement
 import { useViewport } from '../utils/useViewport'
 import { fetchTeamLeaves, getLeaveSessionLabel, getLeaveSummary, getMemberLeaveOnDate, getMembersOnLeave } from '../utils/teamLeaves'
 import {
-  assignmentDays, assignmentMemberId, crewForDate, isMissingPic, memberRoleOnSite,
+  assignmentDays, assignmentMemberId, crewForDate, getSiteDates, isMissingPic, memberRoleOnSite,
   picForDate, representativeDate, sitePic, uniqueAssignments,
 } from '../utils/siteDays'
 import 'leaflet/dist/leaflet.css'
@@ -445,7 +445,7 @@ export default function Dashboard() {
       })
       if (assignments.length > 0) await supabase.from('site_assignments').insert(assignments)
 
-      await notifyAssignments({
+      notifyAssignments({
         siteName: form.site_name,
         scheduledDate: form.scheduled_date,
         picId: form.pic_id,
@@ -454,7 +454,7 @@ export default function Dashboard() {
       })
     }
 
-    await notify(`Added new site: ${form.site_name}`, fullName, null, 'general')
+    notify(`Added new site: ${form.site_name}`, fullName, null, 'general')
     setSaving(false)
     setShowAdd(false)
     setForm(EMPTY_FORM)
@@ -496,19 +496,19 @@ export default function Dashboard() {
       return
     }
 
-    await notify(`Updated ${updateSite.site_name} → ${updateSite.site_status}`, fullName, null, 'general')
+    notify(`Updated ${updateSite.site_name} → ${updateSite.site_status}`, fullName, null, 'general')
 
     const picIds = siteRoleIds(original).picIds.filter(id => id !== memberId)
     if (original?.site_status !== updateSite.site_status) {
-      await notifyMany(`Site "${updateSite.site_name}" status changed to ${updateSite.site_status} (you are PIC)`, fullName, picIds, 'pic_update')
+      notifyMany(`Site "${updateSite.site_name}" status changed to ${updateSite.site_status} (you are PIC)`, fullName, picIds, 'pic_update')
     }
 
     if (original?.report_status !== updateSite.report_status) {
       if (updateSite.report_status === 'submitted')
-        await notify(`Report for "${updateSite.site_name}" has been submitted — ready for review`, 'System', null, 'general')
+        notify(`Report for "${updateSite.site_name}" has been submitted — ready for review`, 'System', null, 'general')
       if (updateSite.report_status === 'approved') {
-        await notify(`Report for "${updateSite.site_name}" has been approved by Zairul`, 'System', null, 'general')
-        await notifyMany(`Report for "${updateSite.site_name}" has been approved (you are PIC)`, fullName, picIds, 'pic_update')
+        notify(`Report for "${updateSite.site_name}" has been approved by Zairul`, 'System', null, 'general')
+        notifyMany(`Report for "${updateSite.site_name}" has been approved (you are PIC)`, fullName, picIds, 'pic_update')
       }
     }
 
@@ -578,15 +578,17 @@ export default function Dashboard() {
 
     const targetSite = sites.find(site => site.id === quickAssign.siteId)
 
-    await notifyAssignments({
+    // Only people whose own schedule changed hear about it
+    const siteDates = getSiteDates(targetSite)
+    notifyScheduleChanges({
       siteName: targetSite?.site_name || 'site',
-      scheduledDate: targetSite?.scheduled_date,
-      picId: quickAssign.picId,
-      crewIds: quickAssign.crewIds,
+      before: memberSchedule(targetSite?.site_assignments || [], siteDates),
+      after: memberSchedule(assignments, siteDates),
       actor: fullName,
-    })
+      skipId: memberId,
+    }).catch(err => console.warn('Notification failed:', err.message))
 
-    await notify(`Updated assignments for ${targetSite?.site_name || 'site'}`, fullName, null, 'general')
+    notify(`Updated assignments for ${targetSite?.site_name || 'site'}`, fullName, null, 'general')
     setQuickAssignSaving(false)
     setQuickAssign(null)
     fetchAll()

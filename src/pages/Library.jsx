@@ -2,7 +2,6 @@ import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { Download, Upload, ChevronDown, ChevronRight, FileText, File, X, Trash2, Eye, Plus } from 'lucide-react'
-import mammoth from 'mammoth'
 import { useViewport } from '../utils/useViewport'
 import CompileExport from '../components/CompileExport'
 
@@ -209,6 +208,7 @@ export default function Library() {
     if (type === 'docx') {
       const resp   = await fetch(url)
       const buf    = await resp.arrayBuffer()
+      const { default: mammoth } = await import('mammoth')
       const result = await mammoth.convertToHtml({ arrayBuffer: buf })
       setPreview({ doc, url, html: result.value })
       setPreviewing(false)
