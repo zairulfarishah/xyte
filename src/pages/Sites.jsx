@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker, useMapEvents } from 'react-leaflet'
 import { supabase } from '../supabase'
 import {
   Pencil, Trash2, Search, ArrowUpRight, MapPin, MessageCircle, X, Camera,
-  Calendar, Clock, CheckCircle, SlidersHorizontal,
+  Calendar, Check, CheckCircle, SlidersHorizontal, MoreHorizontal, Copy,
+  AlertTriangle, FileWarning, Filter, Plus, CheckSquare, Square, Layers,
 } from 'lucide-react'
 import { memberSchedule, notify, notifyMany, notifyScheduleChanges, siteRoleIds } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
@@ -83,6 +84,113 @@ const EMPTY = {
   assign_mode:'same', daily_assignments:{},
   delivery_order_number:'', completion_reason:'',
   site_photo:null, site_photo_preview:null, site_photo_url:'',
+}
+
+const SORTS = [
+  { value:'newest',  label:'Newest first'  },
+  { value:'soonest', label:'Soonest first' },
+  { value:'oldest',  label:'Oldest first'  },
+  { value:'name',    label:'Name A–Z'      },
+]
+const REPORT_FILTERS = [
+  { value:'pending',     label:'Pending'            },
+  { value:'in_progress', label:'In progress'        },
+  { value:'submitted',   label:'Awaiting approval'  },
+  { value:'approved',    label:'Approved'           },
+]
+const BULK_STATUSES = ['upcoming','ongoing','completed','postponed','cancelled']
+// A report is overdue this many days after the site's last day (plus its planned report time)
+const REPORT_GRACE_DAYS = 3
+const GROUP_ORDER = ['Today','This week','Later','Past']
+const UNDO_MS = 6000
+
+const DAY_MS = 86400000
+function todayStr() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+function dayDiff(from, to) {
+  return Math.round((new Date(`${to}T00:00:00`) - new Date(`${from}T00:00:00`)) / DAY_MS)
+}
+function siteStart(site) { return String(site.scheduled_date || '').slice(0, 10) }
+function siteEnd(site)   { return String(site.end_date || site.scheduled_date || '').slice(0, 10) }
+
+// "6 Oct 2026", "6–8 Oct 2026", "28 Sep – 2 Oct 2026"
+function formatRange(start, end) {
+  if (!start) return '—'
+  const a = new Date(`${start}T00:00:00`)
+  const b = new Date(`${end || start}T00:00:00`)
+  const full = d => d.toLocaleDateString('en-MY', { day:'numeric', month:'short', year:'numeric' })
+  if (!end || end === start) return full(a)
+  if (a.getFullYear() !== b.getFullYear()) return `${full(a)} – ${full(b)}`
+  if (a.getMonth() !== b.getMonth()) return `${a.toLocaleDateString('en-MY', { day:'numeric', month:'short' })} – ${full(b)}`
+  return `${a.getDate()}–${full(b)}`
+}
+
+// "Today", "Tomorrow", "In 3 days", "Day 2 of 4", "Yesterday", "5 days ago"
+function relativeLabel(site, today) {
+  const start = siteStart(site), end = siteEnd(site)
+  if (!start) return null
+  const toStart = dayDiff(today, start)
+  const toEnd   = dayDiff(today, end)
+  if (toStart <= 0 && toEnd >= 0) {
+    const total = dayDiff(start, end) + 1
+    return { text: total > 1 ? `Day ${1 - toStart} of ${total}` : 'Today', tone:'now' }
+  }
+  if (toStart === 1) return { text:'Tomorrow', tone:'soon' }
+  if (toStart > 1)   return { text: toStart <= 30 ? `In ${toStart} days` : `In ${Math.round(toStart / 7)} wks`, tone: toStart <= 7 ? 'soon' : 'later' }
+  if (toEnd === -1)  return { text:'Yesterday', tone:'past' }
+  return { text: -toEnd <= 30 ? `${-toEnd} days ago` : `${Math.round(-toEnd / 7)} wks ago`, tone:'past' }
+}
+
+function timeGroup(site, today) {
+  const toStart = dayDiff(today, siteStart(site))
+  const toEnd   = dayDiff(today, siteEnd(site))
+  if (toStart <= 0 && toEnd >= 0) return 'Today'
+  if (toEnd < 0) return 'Past'
+  return toStart <= 7 ? 'This week' : 'Later'
+}
+
+// Status that the calendar has overtaken: still "upcoming" after it started, or "ongoing" after it ended
+function staleReason(site, today) {
+  if (site.site_status === 'upcoming' && dayDiff(today, siteStart(site)) < 0) return 'Date passed — still upcoming'
+  if (site.site_status === 'ongoing'  && dayDiff(today, siteEnd(site)) < 0)   return 'Ended — still ongoing'
+  return null
+}
+
+function reportOverdueDays(site, today) {
+  if (site.site_type !== 'site_scanning' || site.site_status !== 'completed') return 0
+  if (!['pending','in_progress'].includes(site.report_status)) return 0
+  const due = dayDiff(siteEnd(site), today) - Math.ceil(Number(site.report_duration_days) || 0) - REPORT_GRACE_DAYS
+  return due > 0 ? due : 0
+}
+
+// Where the job is: Scheduled → On site → Report → Approved (no-report jobs: Scheduled → On site/Held → Done).
+// cur is the step in progress; cur past the last step means everything is done.
+function trackStage(site) {
+  const noReport = site.report_status === 'not_applicable'
+  const labels = noReport
+    ? ['Scheduled', site.site_type === 'meeting' ? 'Held' : 'On site', 'Done']
+    : ['Scheduled', 'On site', 'Report', 'Approved']
+  let cur = 0
+  if (site.site_status === 'ongoing') cur = 1
+  else if (site.site_status === 'completed') {
+    cur = noReport ? 3 : site.report_status === 'approved' ? 4 : site.report_status === 'submitted' ? 3 : 2
+  }
+  return { labels, cur }
+}
+
+// "Full day", "Half day · AM", "2 hours", "10 days"
+function durationLabel(site) {
+  const days = Number(site.site_duration_days) || 0
+  if (days > 1) return `${days % 1 ? days : Math.round(days)} days`
+  const base = days === 0.25 ? '2 hours' : days === 0.5 ? 'Half day' : 'Full day'
+  return site.site_session && site.site_session !== 'Full Day' ? `${base} · ${site.site_session}` : base
+}
+
+// First two parts of the address — full one is on hover
+function shortLocation(location) {
+  return String(location || '').split(',').map(x => x.trim()).filter(Boolean).slice(0, 2).join(', ')
 }
 
 function MemberAvatar({ member, index = 0, className = '' }) {
@@ -166,6 +274,8 @@ function LocationPicker({ lat, lng, onPick, mapKey }) {
 // Last loaded data, kept for the session so coming back to Sites shows the list
 // straight away while a fresh copy loads in the background.
 let sitesCache = null
+// Last filter/search/page in the URL, so links back to /sites land on the same view
+let lastSitesQuery = ''
 
 export default function Sites() {
   const { fullName, isZairul, memberId } = useAuth()
@@ -173,56 +283,111 @@ export default function Sites() {
   const [sites, setSites]             = useState(() => sitesCache?.sites || [])
   const [members, setMembers]         = useState(() => sitesCache?.members || [])
   const [loading, setLoading]         = useState(!sitesCache)
-  const [tab, setTab]                 = useState('All')
-  const [search, setSearch]           = useState('')
   const [showForm, setShowForm]       = useState(false)
   const [editSite, setEditSite]       = useState(null)
+  const [formTitle, setFormTitle]     = useState('')
   const [form, setForm]               = useState(EMPTY)
+  const formInitial = useRef('')
   const [saving, setSaving]           = useState(false)
   const [uploadError, setUploadError] = useState(null)
-  const [page, setPage]               = useState(1)
   const [expandedCard, setExpandedCard] = useState(null)
   const [quickSaving, setQuickSaving]   = useState(null)
   const [draftStatus, setDraftStatus]   = useState(null)
   const [panelAnchor, setPanelAnchor]   = useState(null)
   const [leaves, setLeaves]             = useState(() => sitesCache?.leaves || [])
   const [waMenu, setWaMenu]             = useState(null)
+  const [moreMenu, setMoreMenu]         = useState(null)
+  const [showFilters, setShowFilters]   = useState(false)
+  const [toasts, setToasts]             = useState([])
+  const [selectMode, setSelectMode]     = useState(false)
+  const [selected, setSelected]         = useState(() => new Set())
+  const [bulkSaving, setBulkSaving]     = useState(false)
+  const pendingDeletes = useRef(new Map())
   const photoInputRef = useRef(null)
   const searchRef = useRef(null)
   // Always three rows: columns follow the Sites.css grid breakpoints; one column on phones shows 8
   const columns = width >= 1600 ? 5 : width >= 1280 ? 4 : width >= 1024 ? 3 : width >= 640 ? 2 : 1
   const perPage = columns === 1 ? 8 : columns * 3
 
+  // ── View state lives in the URL (?tab=ongoing&q=ampang&page=2 …) ──
+  const [params, setParams] = useSearchParams()
+  const tab        = params.get('tab') || 'All'
+  const search     = params.get('q') || ''
+  const page       = Math.max(1, parseInt(params.get('page') || '1', 10) || 1)
+  const mine       = params.get('mine') === '1'
+  const attention  = params.get('attention') === '1'
+  const typeFilter = params.get('type') || ''
+  const repFilter  = params.get('report') || ''
+  const spFilter   = params.get('sp') || ''
+  const dateFrom   = params.get('from') || ''
+  const dateTo     = params.get('to') || ''
+  const grouped    = params.get('group') === '1'
+  const sort       = params.get('sort') || (tab === 'Upcoming' ? 'soonest' : 'newest')
+
+  // Any change other than the page number goes back to page 1
+  function setParam(updates, { replace = false } = {}) {
+    setParams(prev => {
+      const next = new URLSearchParams(prev)
+      Object.entries(updates).forEach(([k, v]) => {
+        if (v === '' || v == null || v === false || (k === 'tab' && v === 'All') || (k === 'page' && v === 1)) next.delete(k)
+        else next.set(k, v === true ? '1' : String(v))
+      })
+      if (!('page' in updates)) next.delete('page')
+      return next
+    }, { replace })
+  }
+  const setPage = p => setParam({ page: typeof p === 'function' ? p(page) : p })
+
+  // Coming back to a bare /sites restores the last view; any query in the URL wins
+  useEffect(() => {
+    if (!params.toString() && lastSitesQuery) setParams(new URLSearchParams(lastSitesQuery), { replace:true })
+  }, [])
+  useEffect(() => { lastSitesQuery = params.toString() }, [params])
+
   // Keep the first card on screen in view when the column count changes
   const prevPerPage = useRef(perPage)
   useEffect(() => {
     if (prevPerPage.current === perPage) return
     const from = prevPerPage.current
-    setPage(p => Math.floor(((p - 1) * from) / perPage) + 1)
+    setParam({ page: Math.floor(((page - 1) * from) / perPage) + 1 }, { replace:true })
     prevPerPage.current = perPage
   }, [perPage])
 
-  // '/' jumps to search, Esc closes the update panel
+  // '/' jumps to search, Esc closes the update panel and menus
   useEffect(() => {
     const onKey = e => {
       const typing = ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)
       if (e.key === '/' && !typing) { e.preventDefault(); searchRef.current?.focus() }
-      if (e.key === 'Escape') { setExpandedCard(null); setDraftStatus(null); setPanelAnchor(null) }
+      if (e.key === 'Escape') { setExpandedCard(null); setDraftStatus(null); setPanelAnchor(null); setMoreMenu(null); setWaMenu(null) }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
   const location = useLocation()
+  const navigate = useNavigate()
   useEffect(() => { fetchAll() }, [])
 
-  // Close the WhatsApp picker on any outside click
+  // Leaving the page carries out any delete still waiting on its undo window
+  useEffect(() => () => {
+    pendingDeletes.current.forEach(({ timer, commit }) => { clearTimeout(timer); commit() })
+  }, [])
+
+  // Close the WhatsApp picker / more menu on any outside click
   useEffect(() => {
-    if (!waMenu) return
-    const close = () => setWaMenu(null)
+    if (!waMenu && !moreMenu) return
+    const close = () => { setWaMenu(null); setMoreMenu(null) }
     window.addEventListener('click', close)
     return () => window.removeEventListener('click', close)
-  }, [waMenu])
+  }, [waMenu, moreMenu])
+
+  function toast(msg, { tone = 'ok', action = null, ms = 4000 } = {}) {
+    const id = Math.random().toString(36).slice(2)
+    setToasts(t => [...t, { id, msg, tone, action }])
+    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), ms)
+    return id
+  }
+  const dismissToast = id => setToasts(t => t.filter(x => x.id !== id))
   useEffect(() => { if (location.state?.openAdd) openAdd() }, [location.state])
   useEffect(() => {
     const h = () => openAdd()
@@ -253,7 +418,7 @@ export default function Sites() {
       site_assignments: (site.site_assignments || []).map(a => ({ ...a, team_members: byId.get(a.member_id) || null })),
     }))
     sitesCache = { sites: withMembers, members: m || [], leaves: leaveData || [] }
-    setSites(sitesCache.sites)
+    setSites(sitesCache.sites.filter(x => !pendingDeletes.current.has(x.id)))
     setMembers(sitesCache.members)
     setLeaves(sitesCache.leaves)
     setLoading(false)
@@ -267,7 +432,7 @@ export default function Sites() {
       draftStatus.completion_reason
     )
     if (completionError) {
-      alert(completionError)
+      toast(completionError, { tone:'err', ms:6000 })
       return
     }
 
@@ -283,35 +448,105 @@ export default function Sites() {
     if (Object.keys(updates).length > 0) {
       setQuickSaving(site.id)
       const { error } = await supabase.from('sites').update(updates).eq('id', site.id)
-      if (error) { setQuickSaving(null); return }
+      if (error) {
+        setQuickSaving(null)
+        toast(`Couldn't save: ${error.message}`, { tone:'err', ms:7000 })
+        return
+      }
       setSites(prev => prev.map(s => s.id === site.id ? { ...s, ...updates } : s))
-
-      // PICs and crew of this site hear about it under separate notification settings
-      // (deduped — a per-day site can list the same person on several days).
-      const { picIds, crewIds } = siteRoleIds(site)
-      // Not awaited: the save is done, nobody should wait on notifications.
-      const tell = msg => Promise.all([
-        notifyMany(`${msg} (you are PIC)`, fullName, picIds.filter(id => id !== memberId), 'pic_update'),
-        notifyMany(msg, fullName, crewIds.filter(id => id !== memberId), 'site_update'),
-      ]).catch(err => console.warn('Notification failed:', err.message))
-
-      if (updates.site_status) {
-        tell(`Site "${site.site_name}" status changed to ${updates.site_status}`)
-      }
-      if (updates.report_status) {
-        tell(updates.report_status === 'approved'
-          ? `Report for "${site.site_name}" has been approved by Zairul`
-          : updates.report_status === 'submitted'
-          ? `Report for "${site.site_name}" has been submitted — awaiting review`
-          : `Report for "${site.site_name}" status changed to ${updates.report_status.replace(/_/g, ' ')}`)
-      }
+      notifyStatusChange(site, updates)
       setQuickSaving(null)
+      toast(`"${site.site_name}" updated`)
     }
     setExpandedCard(null); setDraftStatus(null); setPanelAnchor(null)
   }
 
-  function openAdd() { setForm(EMPTY); setEditSite(null); setShowForm(true) }
-  function openEdit(site) {
+  // PICs and crew of this site hear about it under separate notification settings
+  // (deduped — a per-day site can list the same person on several days).
+  // Not awaited: the save is done, nobody should wait on notifications.
+  function notifyStatusChange(site, updates) {
+    const { picIds, crewIds } = siteRoleIds(site)
+    const tell = msg => Promise.all([
+      notifyMany(`${msg} (you are PIC)`, fullName, picIds.filter(id => id !== memberId), 'pic_update'),
+      notifyMany(msg, fullName, crewIds.filter(id => id !== memberId), 'site_update'),
+    ]).catch(err => console.warn('Notification failed:', err.message))
+
+    if (updates.site_status) {
+      tell(`Site "${site.site_name}" status changed to ${updates.site_status}`)
+    }
+    if (updates.report_status) {
+      tell(updates.report_status === 'approved'
+        ? `Report for "${site.site_name}" has been approved by Zairul`
+        : updates.report_status === 'submitted'
+        ? `Report for "${site.site_name}" has been submitted — awaiting review`
+        : `Report for "${site.site_name}" status changed to ${updates.report_status.replace(/_/g, ' ')}`)
+    }
+  }
+
+  // Set one status on every selected site. Completing needs a DO number or reason,
+  // so sites without one are left as they are and counted as skipped.
+  async function handleBulkStatus(status) {
+    const targets = sites.filter(s => selected.has(s.id) && s.site_status !== status)
+    const skipped = status === 'completed'
+      ? targets.filter(s => {
+          const meta = parseCompletionMeta(s.notes || '')
+          return validateCompletionRequirement(status, meta.deliveryOrderNumber, meta.completionReason)
+        })
+      : []
+    const ready = targets.filter(s => !skipped.includes(s))
+    if (ready.length === 0) {
+      toast(skipped.length ? `${skipped.length} site(s) need a DO number or reason before they can be completed — use Update on each.` : 'Nothing to change.', { tone: skipped.length ? 'err' : 'ok', ms:7000 })
+      return
+    }
+    setBulkSaving(true)
+    const { error } = await supabase.from('sites').update({ site_status: status }).in('id', ready.map(s => s.id))
+    setBulkSaving(false)
+    if (error) { toast(`Couldn't update: ${error.message}`, { tone:'err', ms:7000 }); return }
+    const ids = new Set(ready.map(s => s.id))
+    setSites(prev => prev.map(s => ids.has(s.id) ? { ...s, site_status: status } : s))
+    ready.forEach(s => notifyStatusChange(s, { site_status: status }))
+    toast(`${ready.length} site${ready.length > 1 ? 's' : ''} set to ${status}${skipped.length ? ` · ${skipped.length} skipped (no DO number or reason)` : ''}`, { tone: skipped.length ? 'warn' : 'ok', ms:6000 })
+    setSelected(new Set()); setSelectMode(false)
+  }
+
+  function toggleSelected(id) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  function startForm(nextForm, site, title) {
+    formInitial.current = JSON.stringify(nextForm)
+    setForm(nextForm); setEditSite(site); setFormTitle(title); setUploadError(null); setShowForm(true)
+  }
+  // Ask before throwing away edits (backdrop click, X, Cancel)
+  function closeForm() {
+    if (!saving && JSON.stringify(form) !== formInitial.current && !confirm('Discard your unsaved changes?')) return
+    setShowForm(false)
+  }
+
+  function openAdd() { startForm(EMPTY, null, 'Add New Site') }
+  // Same client, place, scope and team as an earlier site — just pick the new dates
+  function openDuplicate(site) {
+    const base = formFromSite(site)
+    const { pic_id, crew_ids } = base.assign_mode === 'per_day'
+      ? (() => {
+          const p = sitePic(site), c = siteCrew(site)
+          return { pic_id: p?.team_members?.id || '', crew_ids: c.map(x => x.team_members?.id).filter(id => id && id !== p?.team_members?.id) }
+        })()
+      : base
+    startForm({
+      ...base,
+      scheduled_date:'', end_date:'', site_session:'',
+      site_status:'upcoming', report_status:'pending',
+      delivery_order_number:'', completion_reason:'',
+      assign_mode:'same', daily_assignments:{}, pic_id, crew_ids: [...new Set(crew_ids)],
+    }, null, `Duplicate · ${site.site_name}`)
+  }
+  function openEdit(site) { startForm(formFromSite(site), site, 'Edit Site') }
+  function formFromSite(site) {
     const assignments = site.site_assignments || []
     const isPerDay = assignments.some(a => a.work_date)
     const pic  = assignments.find(a => a.assignment_role === 'PIC' && !a.work_date)
@@ -326,7 +561,7 @@ export default function Sites() {
       })
     }
     const completionMeta = parseCompletionMeta(site.notes || '')
-    setForm({
+    return {
       site_type: site.site_type || 'site_scanning',
       site_name:site.site_name, location:site.location,
       latitude:site.latitude||'', longitude:site.longitude||'',
@@ -345,8 +580,7 @@ export default function Sites() {
       delivery_order_number: completionMeta.deliveryOrderNumber,
       completion_reason: completionMeta.completionReason,
       site_photo:null, site_photo_preview:site.site_photo_url||null, site_photo_url:site.site_photo_url||'',
-    })
-    setEditSite(site); setShowForm(true)
+    }
   }
   function toggleCrew(id) {
     setForm(f => ({ ...f, crew_ids: f.crew_ids.includes(id) ? f.crew_ids.filter(x => x!==id) : [...f.crew_ids, id] }))
@@ -494,6 +728,7 @@ export default function Sites() {
       sendSaveNotifications(form, editSite, assignments, payload)
         .catch(err => console.warn('Notification failed:', err.message))
       window.dispatchEvent(new CustomEvent('xyte:site-saved'))
+      toast(editSite ? `"${form.site_name}" saved` : `"${form.site_name}" added`)
       setShowForm(false); setEditSite(null); fetchAll()
     } catch (err) {
       setUploadError(err.message||'Unable to save.')
@@ -527,28 +762,94 @@ export default function Sites() {
     await Promise.all(jobs)
   }
 
-  async function handleDelete(id) {
-    if (!confirm('Delete this site?')) return
-    await supabase.from('sites').delete().eq('id', id)
-    fetchAll()
+  // The card disappears straight away; the row is only deleted once the undo window closes
+  function handleDelete(site) {
+    setMoreMenu(null)
+    setSites(prev => prev.filter(s => s.id !== site.id))
+    const commit = async () => {
+      pendingDeletes.current.delete(site.id)
+      const { error } = await supabase.from('sites').delete().eq('id', site.id)
+      if (error) {
+        toast(`Couldn't delete "${site.site_name}": ${error.message}`, { tone:'err', ms:7000 })
+        fetchAll()
+      }
+    }
+    const toastId = toast(`Deleted "${site.site_name}"`, {
+      ms: UNDO_MS,
+      action: {
+        label:'Undo',
+        fn: () => {
+          clearTimeout(pendingDeletes.current.get(site.id)?.timer)
+          pendingDeletes.current.delete(site.id)
+          setSites(prev => prev.some(s => s.id === site.id) ? prev : [...prev, site]
+            .sort((a, b) => String(b.scheduled_date).localeCompare(String(a.scheduled_date))))
+          dismissToast(toastId)
+        },
+      },
+    })
+    pendingDeletes.current.set(site.id, { timer: setTimeout(commit, UNDO_MS), commit })
   }
 
+  const today = todayStr()
+  const needsAttention = s => !!staleReason(s, today) || reportOverdueDays(s, today) > 0
+  const isMine = s => {
+    if (!memberId) return false
+    const { picIds, crewIds } = siteRoleIds(s)
+    return picIds.includes(memberId) || crewIds.includes(memberId)
+  }
+  const doNumber = s => parseCompletionMeta(s.notes || '').deliveryOrderNumber
+
+  // Everything except the status tab, so the tab counts follow the other filters
+  const baseFiltered = sites.filter(s => {
+    if (mine && !isMine(s)) return false
+    if (attention && !needsAttention(s)) return false
+    if (typeFilter && s.site_type !== typeFilter) return false
+    if (repFilter && s.report_status !== repFilter) return false
+    if (spFilter && s.salesperson !== spFilter) return false
+    if (dateFrom && siteEnd(s) < dateFrom) return false
+    if (dateTo && siteStart(s) > dateTo) return false
+    if (search) {
+      const needle = search.toLowerCase()
+      const people = (s.site_assignments || []).map(a => a.team_members?.full_name)
+      const fields = [s.site_name, s.location, s.client_company_name, s.client_name, s.salesperson, s.scope_of_work, doNumber(s), ...people]
+      if (!fields.some(field => String(field || '').toLowerCase().includes(needle))) return false
+    }
+    return true
+  })
+
   const counts = TABS.reduce((acc, t) => {
-    acc[t] = t === 'All' ? sites.length : sites.filter(s => s.site_status === t.toLowerCase()).length
+    acc[t] = t === 'All' ? baseFiltered.length : baseFiltered.filter(s => s.site_status === t.toLowerCase()).length
     return acc
   }, {})
 
-  const filtered = sites
+  // Soonest: what's running or coming next first (nearest date up), then the past (most recent first)
+  const sorters = {
+    newest:  (a, b) => siteStart(b).localeCompare(siteStart(a)),
+    oldest:  (a, b) => siteStart(a).localeCompare(siteStart(b)),
+    name:    (a, b) => String(a.site_name || '').localeCompare(String(b.site_name || '')),
+    soonest: (a, b) => {
+      const pa = siteEnd(a) < today, pb = siteEnd(b) < today
+      if (pa !== pb) return pa ? 1 : -1
+      return pa ? siteEnd(b).localeCompare(siteEnd(a)) : siteStart(a).localeCompare(siteStart(b))
+    },
+  }
+  const filtered = baseFiltered
     .filter(s => tab==='All' || s.site_status===tab.toLowerCase())
-    .filter(s => {
-      if (!search) return true
-      const needle = search.toLowerCase()
-      return [s.site_name, s.location, s.client_company_name]
-        .some(field => String(field || '').toLowerCase().includes(needle))
-    })
+    .sort(sorters[sort] || sorters.newest)
 
   const totalPages = Math.ceil(filtered.length / perPage)
   const paginated  = filtered.slice((page-1)*perPage, page*perPage)
+
+  // A page past the end (fewer results after a filter or a delete) snaps back to the last one
+  useEffect(() => {
+    if (!loading && totalPages > 0 && page > totalPages) setParam({ page: totalPages }, { replace:true })
+  }, [loading, page, totalPages])
+
+  const filterCount = [mine, attention, typeFilter, repFilter, spFilter, dateFrom, dateTo].filter(Boolean).length
+  const hasAnyFilter = filterCount > 0 || !!search || tab !== 'All'
+  const clearFilters = () => setParam({ tab:'', q:'', mine:'', attention:'', type:'', report:'', sp:'', from:'', to:'' })
+  const attentionCount = sites.filter(needsAttention).length
+  const myCount = memberId ? sites.filter(isMine).length : 0
 
 
   const lightInput = {
@@ -563,60 +864,178 @@ export default function Sites() {
     return acc
   }, {})
 
+  // Skeleton cards in the real grid, so nothing jumps when the data lands
   if (loading) return (
-    <div className="ss" style={{ display:'flex', alignItems:'center', justifyContent:'center' }}>
-      <div style={{ display:'flex', alignItems:'center', gap:'10px', color:'#94a3b8', fontSize:'14px', fontWeight:'600' }}>
-        <div className="w-4 h-4 rounded-full border-2 border-slate-500 border-t-blue-400 animate-spin" />
-        Loading sites…
-      </div>
+    <div className="ss">
+      <main className="ss-main">
+        <div className="ss-top">
+          <div className="ss-head">
+            <div>
+              <div className="ss-eyebrow">{new Date().toLocaleDateString('en-MY', { weekday:'long', day:'numeric', month:'long' })}</div>
+              <h1>Sites</h1>
+              <p className="ss-sub">Loading sites…</p>
+            </div>
+          </div>
+          <div className="ss-bar"><div className="ss-tabs ss-sk-tabs"><span /><span /><span /><span /></div></div>
+        </div>
+        <div className="ss-grid">
+          {Array.from({ length: perPage }, (_, i) => (
+            <div key={i} className="ss-card ss-sk">
+              <div className="ss-spacer" />
+              <div className="ss-panel-g">
+                <i style={{ width:'30%', height:'10px' }} /><i style={{ width:'75%', height:'18px', marginTop:'8px' }} />
+                <i style={{ width:'50%', marginTop:'8px' }} /><i style={{ width:'85%', marginTop:'14px' }} />
+                <i style={{ height:'34px', marginTop:'16px' }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </main>
     </div>
   )
 
   const closePanel = () => { setExpandedCard(null); setDraftStatus(null); setPanelAnchor(null) }
   const ongoingCount  = sites.filter(s => s.site_status === 'ongoing').length
   const upcomingCount = sites.filter(s => s.site_status === 'upcoming').length
+  const openUpdate = site => {
+    const completionMeta = parseCompletionMeta(site.notes || '')
+    setPanelAnchor({ open: true })
+    setExpandedCard(site.id)
+    setDraftStatus({
+      site_status: site.site_status,
+      report_status: site.report_status,
+      delivery_order_number: completionMeta.deliveryOrderNumber,
+      completion_reason: completionMeta.completionReason,
+    })
+  }
+  // Time-group headings only make sense when cards are in date order
+  const showGroups = grouped && sort !== 'name'
+  const groupedPage = showGroups
+    ? paginated.reduce((acc, site) => {
+        const g = timeGroup(site, today)
+        const last = acc[acc.length - 1]
+        if (last && last.group === g) last.sites.push(site); else acc.push({ group: g, sites: [site] })
+        return acc
+      }, [])
+    : [{ group: null, sites: paginated }]
+  const salespeople = [...new Set([...SALESPERSONS, ...sites.map(s => s.salesperson).filter(Boolean)])]
 
   return (
     <div className="ss">
       <main className="ss-main">
 
-        {/* ── HEADER ── */}
+        {/* ── HEADER (the dark band grows with whatever is in here) ── */}
+        <div className="ss-top">
         <div className="ss-head">
           <div>
             <div className="ss-eyebrow">{new Date().toLocaleDateString('en-MY', { weekday:'long', day:'numeric', month:'long' })}</div>
             <h1>Sites</h1>
-            <p className="ss-sub">Manage and track all site activities · <b>{ongoingCount}</b> ongoing · <b>{upcomingCount}</b> upcoming</p>
+            <p className="ss-sub">
+              Manage and track all site activities · <b>{ongoingCount}</b> ongoing · <b>{upcomingCount}</b> upcoming
+              {attentionCount > 0 && (
+                <> · <button className={`ss-attn${attention ? ' on' : ''}`} onClick={() => setParam({ attention: !attention })}>
+                  <AlertTriangle size={12} /> {attentionCount} need attention
+                </button></>
+              )}
+            </p>
           </div>
           <label className="ss-search">
             <Search size={15} strokeWidth={2.2} />
             <input
               ref={searchRef}
-              placeholder="Search sites…"
+              placeholder="Search sites, clients, people, DO…"
               value={search}
-              onChange={e => { setSearch(e.target.value); setPage(1) }}
+              onChange={e => setParam({ q: e.target.value }, { replace:true })}
             />
-            <kbd>/</kbd>
+            {search
+              ? <button className="clr" title="Clear search" onClick={() => setParam({ q:'' })}><X size={13} /></button>
+              : <kbd>/</kbd>}
           </label>
         </div>
 
-        {/* ── FILTER TABS ── */}
-        <div className="ss-tabs">
-          {TABS.map(t => (
-            <button key={t} className={tab === t ? 'on' : ''} onClick={() => { setTab(t); setPage(1) }}>
-              {t}<i>{counts[t]}</i>
+        {/* ── STATUS TABS + TOOLBAR ── */}
+        <div className="ss-bar">
+          <div className="ss-tabs">
+            {TABS.map(t => (
+              <button key={t} className={tab === t ? 'on' : ''} onClick={() => setParam({ tab: t })}>
+                {t}<i>{counts[t]}</i>
+              </button>
+            ))}
+          </div>
+          <div className="ss-tools">
+            {memberId && (
+              <button className={`ss-tool${mine ? ' on' : ''}`} onClick={() => setParam({ mine: !mine })} title="Only sites where you are PIC or crew">
+                My sites<i>{myCount}</i>
+              </button>
+            )}
+            <button className={`ss-tool${showFilters || filterCount - (mine ? 1 : 0) > 0 ? ' on' : ''}`} onClick={() => setShowFilters(v => !v)}>
+              <Filter size={13} /> Filters{filterCount - (mine ? 1 : 0) > 0 && <i>{filterCount - (mine ? 1 : 0)}</i>}
             </button>
-          ))}
+            <select className="ss-tool sel" value={sort} onChange={e => setParam({ sort: e.target.value })} title="Sort">
+              {SORTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            <button className={`ss-tool${grouped ? ' on' : ''}`} onClick={() => setParam({ group: !grouped }, { replace:true })} title="Group by Today / This week / Later / Past">
+              <Layers size={13} /> Group
+            </button>
+            <button className={`ss-tool${selectMode ? ' on' : ''}`} onClick={() => { setSelectMode(v => !v); setSelected(new Set()) }} title="Select several sites to update at once">
+              <CheckSquare size={13} /> Select
+            </button>
+          </div>
         </div>
+        </div>
+
+        {/* ── MORE FILTERS ── */}
+        {showFilters && (
+          <div className="ss-filters">
+            <label>Type
+              <select value={typeFilter} onChange={e => setParam({ type: e.target.value })}>
+                <option value="">All types</option>
+                {SITE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </label>
+            <label>Report
+              <select value={repFilter} onChange={e => setParam({ report: e.target.value })}>
+                <option value="">Any report status</option>
+                {REPORT_FILTERS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+              </select>
+            </label>
+            <label>Salesperson
+              <select value={spFilter} onChange={e => setParam({ sp: e.target.value })}>
+                <option value="">Anyone</option>
+                {salespeople.map(sp => <option key={sp} value={sp}>{sp}</option>)}
+              </select>
+            </label>
+            <label>From
+              <input type="date" value={dateFrom} max={dateTo || undefined} onChange={e => setParam({ from: e.target.value })} />
+            </label>
+            <label>To
+              <input type="date" value={dateTo} min={dateFrom || undefined} onChange={e => setParam({ to: e.target.value })} />
+            </label>
+            <label className="chk">
+              <input type="checkbox" checked={attention} onChange={e => setParam({ attention: e.target.checked })} />
+              Needs attention only
+            </label>
+            {hasAnyFilter && <button className="ss-clear" onClick={clearFilters}>Clear all</button>}
+          </div>
+        )}
 
         {/* ── CARDS ── */}
         {paginated.length === 0 ? (
           <div className="ss-empty">
             <MapPin size={28} style={{ opacity:0.35 }} />
-            No sites found
+            {sites.length === 0 ? (<>
+              <span>No sites yet</span>
+              <button className="ss-empty-btn" onClick={openAdd}><Plus size={14} /> Add your first site</button>
+            </>) : (<>
+              <span>No sites match{search ? <> “<b>{search}</b>”</> : ''} with these filters</span>
+              <button className="ss-empty-btn" onClick={clearFilters}>Clear filters</button>
+            </>)}
           </div>
-        ) : (
+        ) : groupedPage.map(({ group, sites: groupSites }, gi) => (
+          <section key={group || gi}>
+            {group && <h2 className={`ss-group g-${GROUP_ORDER.indexOf(group)}`}>{group}<i>{groupSites.length}</i></h2>}
           <div className="ss-grid">
-            {paginated.map(site => {
+            {groupSites.map(site => {
               // On a per-day site the card speaks for today (or day one)
               const perDay    = hasDailyCrew(site.site_assignments || [])
               const siteDates = getSiteDates(site)
@@ -627,8 +1046,6 @@ export default function Sites() {
               )
               const typeMeta  = TYPE_META[site.site_type] || TYPE_META.site_scanning
               const statusTone = STATUS_TONE[site.site_status] || STATUS_TONE.upcoming
-              const reportTone = REPORT_TONE[site.report_status] || REPORT_TONE.pending
-              const memberIdx = members.findIndex(m => m.id === pic?.team_members?.id)
               const isExpanded = expandedCard === site.id
               // Per-day rosters travel with the WhatsApp brief so everyone sees the rotation
               const dayRoster = perDay ? siteDates.map(date => ({
@@ -654,91 +1071,105 @@ export default function Sites() {
                 memberDates: memberDatesOn(member.id), dayRoster,
               }))
               const completionMeta = parseCompletionMeta(site.notes || '')
-              const reportDone = site.report_status === 'approved'
+              const doNo = completionMeta.deliveryOrderNumber
+              const rel = relativeLabel(site, today)
+              const stale = staleReason(site, today)
+              const overdue = reportOverdueDays(site, today)
+              const isSel = selected.has(site.id)
+              const moreOpen = moreMenu === site.id
+              const { labels: stepLabels, cur: stepCur } = trackStage(site)
+              const halted = site.site_status === 'cancelled' || site.site_status === 'postponed'
+              const stepColor = overdue > 0 ? '#dc2626' : stale ? '#d97706' : site.site_status === 'completed' ? '#2563eb' : statusTone.text
+              // PIC first (ringed), then crew — each person once
+              const team = [pic, ...crew].filter(a => a?.team_members)
+              const picShort = pic?.team_members?.full_name?.split(' ').slice(0, 2).join(' ')
+              const stopFix = e => { e.stopPropagation(); if (!selectMode) openUpdate(site) }
 
               return (
-                <div key={site.id} className={`ss-card${isExpanded ? ' on' : ''}`}
-                  style={{ '--tg':CARD_GRADIENTS[site.site_type] || CARD_GRADIENTS.site_scanning, '--glow':CARD_GLOW[site.site_type] || CARD_GLOW.site_scanning, '--tt':typeMeta.chipBg, '--tc':typeMeta.color }}>
+                <div key={site.id}
+                  className={`ss-card${isExpanded ? ' on' : ''}${selectMode ? ' selecting' : ''}${isSel ? ' sel' : ''}`}
+                  role="link" tabIndex={0} aria-label={`Open ${getSiteTitle(site)}`}
+                  onClick={e => {
+                    if (selectMode) { toggleSelected(site.id); return }
+                    if (e.target.closest('button, a, .ss-wa-menu')) return
+                    navigate(`/sites/${site.id}`)
+                  }}
+                  onKeyDown={e => { if (e.key === 'Enter' && e.target === e.currentTarget) navigate(`/sites/${site.id}`) }}
+                  style={{ '--tg':CARD_GRADIENTS[site.site_type] || CARD_GRADIENTS.site_scanning, '--glow':CARD_GLOW[site.site_type] || CARD_GLOW.site_scanning, '--tc':typeMeta.color, '--sc2':stepColor }}>
 
-                  {/* ── Banner ── */}
-                  <div className="ss-banner">
+                  {/* ── Full-bleed photo ── */}
+                  <div className="ss-photo">
                     <img src={site.site_photo_url || getSiteHeaderImage(site.site_type)} alt="" loading="lazy" />
-                    <div className="in">
-                      <div className="row">
-                        <span className="ss-loc"><MapPin size={10} strokeWidth={2.4} /><span>{site.location}</span></span>
-                        <span className={`ss-status${site.site_status === 'ongoing' ? ' live' : ''}`} style={{ '--sc':statusTone.text }}>{site.site_status}</span>
-                      </div>
-                      <p className="ss-title" title={getSiteTitle(site)}>
-                        {site.site_name}
-                        {site.client_company_name && <small>{site.client_company_name}</small>}
-                      </p>
+                  </div>
+
+                  <div className="ss-top-row">
+                    {selectMode && <span className="ss-check">{isSel ? <CheckSquare size={18} /> : <Square size={18} />}</span>}
+                    <span className="ss-glass" title={site.location}><MapPin size={11} strokeWidth={2.4} /><span>{shortLocation(site.location)}</span></span>
+                    <span className={`ss-status${site.site_status === 'ongoing' ? ' live' : ''}`} style={{ '--sc':statusTone.text }}>{site.site_status}</span>
+                  </div>
+                  {!selectMode && <span className="ss-open"><ArrowUpRight size={13} strokeWidth={2.4} /> Open</span>}
+                  <div className="ss-spacer" />
+
+                  {/* ── Progress tracker (dark glass on the photo) ── */}
+                  <div className={`ss-track${halted ? ' halt' : ''}`}>
+                    <div className="ss-steps">
+                      {stepLabels.map((label, i) => (
+                        <div key={label} className={`ss-step${i < stepCur ? ' done' : i === stepCur ? ` cur${site.site_status === 'ongoing' ? ' live' : ''}` : ''}`}>
+                          <i>{i < stepCur && <Check size={11} strokeWidth={3.2} />}</i>
+                          <span>{label}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="ss-cap">
+                      {overdue > 0 ? (
+                        <button className="late" onClick={stopFix}><FileWarning size={13} /> Report overdue · {overdue}d <b>Fix →</b></button>
+                      ) : stale ? (
+                        <button className="stl" onClick={stopFix} title={stale}><AlertTriangle size={13} /> {stale.split(' — ')[0]} <b>Fix →</b></button>
+                      ) : halted ? (
+                        <span>{site.site_status === 'cancelled' ? 'Cancelled' : 'Postponed'}</span>
+                      ) : site.report_status === 'not_applicable' ? (
+                        <span>{site.site_status === 'completed' ? 'Done' : site.site_status === 'ongoing' ? `On site · ${rel?.text || ''}` : 'No report needed'}</span>
+                      ) : (
+                        <span><i className="dot" style={{ background:REPORT_TONE[site.report_status]?.dot }} />Report {site.report_status?.replace(/_/g, ' ')}</span>
+                      )}
+                      <span className={`do${doNo ? '' : ' na'}`}>{doNo ? `DO ${doNo}` : 'No DO yet'}</span>
                     </div>
                   </div>
 
-                  {/* ── Body ── */}
-                  <div className="ss-body">
-                    <div className="ss-tags">
-                      <span className="ss-type">{typeMeta.label}</span>
-                      <span className="ss-rep" style={{ '--rc':reportTone.text, '--rb':reportTone.bg }}>
-                        {site.report_status?.replace(/_/g,' ')}
-                        {reportDone && <CheckCircle size={11} />}
-                      </span>
+                  {/* ── Glass panel ── */}
+                  <div className="ss-panel-g">
+                    <div className="ss-eb">{typeMeta.label}</div>
+                    <h3 className="ss-name" title={getSiteTitle(site)}>{site.site_name}</h3>
+                    {site.client_company_name && <p className="ss-client">{site.client_company_name}</p>}
+                    <div className="ss-meta">
+                      <Calendar size={13} />
+                      <span title={formatRange(siteStart(site), siteEnd(site))}>{formatRange(siteStart(site), siteEnd(site))}</span>
+                      <i>·</i><span>{durationLabel(site)}</span>
+                      {rel && <><i>·</i><span className={`r ${rel.tone}`}>{rel.text}</span></>}
                     </div>
 
-                    <div className="ss-facts">
-                      <div className="ss-fact">
-                        <span className="ic"><Calendar size={13} /></span>
-                        <div><small>Date</small><b>{new Date(site.scheduled_date).toLocaleDateString('en-MY',{ day:'numeric', month:'short', year:'numeric' })}</b></div>
-                      </div>
-                      <div className="ss-fact">
-                        <span className="ic"><Clock size={13} /></span>
-                        <div><small>Duration</small><b>{site.site_duration_days}d</b></div>
-                      </div>
-                      <div className="ss-fact do">
-                        <div><small>DO</small><b className={completionMeta.deliveryOrderNumber ? '' : 'na'}>{completionMeta.deliveryOrderNumber || 'N/A'}</b></div>
-                      </div>
-                    </div>
-
-                    {/* PIC + crew */}
-                    <div className="ss-crew">
-                      {pic
-                        ? <MemberAvatar member={pic.team_members} index={memberIdx >= 0 ? memberIdx : 0} className="pic" />
-                        : <span className="ss-av none" />}
-                      <div className="ss-who">
-                        {pic ? (<>
-                          <b>{pic.team_members?.full_name}</b>
-                          <small><em>PIC</em>{site.site_type === 'meeting' ? 'Organizer' : 'Person in charge'}{perDay ? ' · daily crew' : ''}</small>
+                    <div className="ss-foot">
+                      <div className="ss-team" title={pic ? `${site.site_type === 'meeting' ? 'Organizer' : 'PIC'}: ${pic.team_members?.full_name}${perDay ? ' (daily crew)' : ''}${crew.length ? ` · Crew: ${crew.map(c => c.team_members?.full_name).join(', ')}` : ''}` : 'No PIC assigned'}>
+                        {team.length > 0 ? (<>
+                          <div className="ss-stack">
+                            {team.slice(0, 3).map((a, ti) => (
+                              <MemberAvatar key={a.team_members.id || ti} member={a.team_members}
+                                index={Math.max(0, members.findIndex(m => m.id === a.team_members.id))}
+                                className={a === pic ? 'pic' : ''} />
+                            ))}
+                            {team.length > 3 && <span className="more">+{team.length - 3}</span>}
+                          </div>
+                          <b className={pic ? '' : 'na'}>{pic ? picShort : 'No PIC'}</b>
+                          {crew.length > 0 && <small>+{crew.length}</small>}
                         </>) : (<>
-                          <b className="na">No PIC assigned</b>
-                          <small>Assign from Edit</small>
+                          <span className="ss-av none" />
+                          <b className="na">No team yet</b>
                         </>)}
                       </div>
-                      {crew.length > 0 && (
-                        <div className="ss-stack">
-                          {crew.slice(0,3).map((c, ci) => <MemberAvatar key={ci} member={c.team_members} index={ci + 1} />)}
-                          {crew.length > 3 && <span className="more">+{crew.length - 3}</span>}
-                        </div>
-                      )}
-                    </div>
 
-                    {/* Actions — pinned to bottom */}
-                    <div className="ss-acts">
-                      <Link to={`/sites/${site.id}`} className="ss-btn view">
-                        <ArrowUpRight size={13} strokeWidth={2.4} /> View
-                      </Link>
-                      <button className="ss-btn upd"
-                        onClick={() => {
-                          if (isExpanded) { closePanel(); return }
-                          setPanelAnchor({ open: true })
-                          setExpandedCard(site.id)
-                          setDraftStatus({
-                            site_status: site.site_status,
-                            report_status: site.report_status,
-                            delivery_order_number: completionMeta.deliveryOrderNumber,
-                            completion_reason: completionMeta.completionReason,
-                          })
-                        }}>
-                        <Pencil size={13} /> Update
+                      <button className={`ss-ib up${isExpanded ? ' open' : ''}`} title="Update status"
+                        onClick={e => { e.stopPropagation(); if (isExpanded) closePanel(); else openUpdate(site) }}>
+                        <Pencil size={14} />
                       </button>
                       {waTargets.length > 0 && (
                         <div className="ss-wa">
@@ -747,6 +1178,7 @@ export default function Sites() {
                             onClick={e => {
                               e.stopPropagation()
                               if (waTargets.length === 1) { sendBrief(waTargets[0]); return }
+                              setMoreMenu(null)
                               setWaMenu(waOpen ? null : site.id)
                             }}>
                             <MessageCircle size={14} />
@@ -766,19 +1198,29 @@ export default function Sites() {
                           )}
                         </div>
                       )}
-                      <button className="ss-ib ed" title="Edit site" onClick={() => openEdit(site)}>
-                        <SlidersHorizontal size={14} />
-                      </button>
-                      <button className="ss-ib del" title="Delete site" onClick={() => handleDelete(site.id)}>
-                        <Trash2 size={14} />
-                      </button>
+                      <div className="ss-wa">
+                        <button className={`ss-ib more${moreOpen ? ' open' : ''}`} title="More actions"
+                          onClick={e => { e.stopPropagation(); setWaMenu(null); setMoreMenu(moreOpen ? null : site.id) }}>
+                          <MoreHorizontal size={15} />
+                        </button>
+                        {moreOpen && (
+                          <div className="ss-wa-menu ss-more-menu" onClick={e => e.stopPropagation()}>
+                            <button onClick={() => { setMoreMenu(null); navigate(`/sites/${site.id}`) }}><ArrowUpRight size={14} /><span>Open site</span></button>
+                            <button onClick={() => { setMoreMenu(null); openEdit(site) }}><SlidersHorizontal size={14} /><span>Edit site</span></button>
+                            <button onClick={() => { setMoreMenu(null); openDuplicate(site) }}><Copy size={14} /><span>Duplicate</span></button>
+                            <hr />
+                            <button className="danger" onClick={() => handleDelete(site)}><Trash2 size={14} /><span>Delete</span></button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
               )
             })}
           </div>
-        )}
+          </section>
+        ))}
 
         {/* ── PAGINATION ── */}
         {totalPages > 1 && (
@@ -797,6 +1239,38 @@ export default function Sites() {
         )}
 
       </main>
+
+      {/* ── BULK UPDATE BAR ── */}
+      {selectMode && (
+        <div className="ss-bulk">
+          <div className="cnt">
+            <b>{selected.size}</b> selected
+            <button onClick={() => setSelected(new Set(paginated.map(s => s.id)))}>Select page</button>
+            {selected.size > 0 && <button onClick={() => setSelected(new Set())}>Clear</button>}
+          </div>
+          <div className="acts">
+            <span>Set status</span>
+            {BULK_STATUSES.map(s => (
+              <button key={s} disabled={!selected.size || bulkSaving}
+                style={{ '--oc':STATUS_TONE[s].dot, '--ot':STATUS_TONE[s].text, '--ob':STATUS_TONE[s].bg }}
+                onClick={() => handleBulkStatus(s)}>{s}</button>
+            ))}
+          </div>
+          <button className="x" title="Done" onClick={() => { setSelectMode(false); setSelected(new Set()) }}><X size={16} /></button>
+        </div>
+      )}
+
+      {/* ── TOASTS ── */}
+      <div className={`ss-toasts${selectMode ? ' up' : ''}`}>
+        {toasts.map(t => (
+          <div key={t.id} className={`ss-toast ${t.tone}`}>
+            {t.tone === 'err' || t.tone === 'warn' ? <AlertTriangle size={15} /> : <CheckCircle size={15} />}
+            <span>{t.msg}</span>
+            {t.action && <button className="act" onClick={t.action.fn}>{t.action.label}</button>}
+            <button className="x" onClick={() => dismissToast(t.id)}><X size={13} /></button>
+          </div>
+        ))}
+      </div>
 
       {/* ── QUICK UPDATE PANEL ── */}
       {expandedCard && draftStatus && panelAnchor && (() => {
@@ -888,11 +1362,11 @@ export default function Sites() {
       {/* ── MODAL ── */}
       {showForm && (
         <div style={{ position:'fixed', inset:0, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50, padding:'16px', background:'rgba(0,0,0,0.4)' }}
-          onClick={e => e.target===e.currentTarget && setShowForm(false)}>
+          onClick={e => e.target===e.currentTarget && closeForm()}>
           <div style={{ width:'100%', maxWidth:'672px', maxHeight:'92vh', borderRadius:'20px', background:'white', boxShadow:'0 24px 64px rgba(15,23,42,.18)', display:'flex', flexDirection:'column', overflow:'hidden' }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:isMobile ? '16px 18px' : '20px 28px', borderBottom:'1px solid #f1f5f9', flexShrink:0 }}>
-              <h3 style={{ margin:0, fontSize:'17px', fontWeight:'800', color:'#0f172a' }}>{editSite ? 'Edit Site' : 'Add New Site'}</h3>
-              <button onClick={() => setShowForm(false)} style={{ background:'none', border:'none', cursor:'pointer', color:'#94a3b8' }}><X size={18} /></button>
+              <h3 style={{ margin:0, fontSize:'17px', fontWeight:'800', color:'#0f172a', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{formTitle || (editSite ? 'Edit Site' : 'Add New Site')}</h3>
+              <button onClick={closeForm} style={{ background:'none', border:'none', cursor:'pointer', color:'#94a3b8' }}><X size={18} /></button>
             </div>
             <div style={{ overflowY:'auto', padding:isMobile ? '16px 18px' : '20px 28px', display:'flex', flexDirection:'column', gap:'20px' }}>
 
@@ -1174,7 +1648,7 @@ export default function Sites() {
                 <button onClick={handleSave} disabled={saving} style={{ flex:1, padding:'11px', borderRadius:'10px', fontSize:'14px', fontWeight:'800', color:'white', border:'none', cursor:'pointer', fontFamily:'inherit', background:'#2563eb', opacity:saving?0.6:1, boxShadow:'0 2px 8px rgba(37,99,235,.28)' }}>
                   {saving ? 'Saving…' : editSite ? 'Save Changes' : 'Add Site'}
                 </button>
-                <button onClick={() => setShowForm(false)} style={{ flex:1, padding:'11px', borderRadius:'10px', fontSize:'14px', fontWeight:'600', color:'#0f172a', cursor:'pointer', fontFamily:'inherit', background:'#f1f5f9', border:'1px solid #e2e8f0' }}>
+                <button onClick={closeForm} style={{ flex:1, padding:'11px', borderRadius:'10px', fontSize:'14px', fontWeight:'600', color:'#0f172a', cursor:'pointer', fontFamily:'inherit', background:'#f1f5f9', border:'1px solid #e2e8f0' }}>
                   Cancel
                 </button>
               </div>
