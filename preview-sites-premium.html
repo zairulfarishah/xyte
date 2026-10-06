@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sites — Premium</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<style>
+  :root{--ink:#0b1220;--ink-2:#334155;--muted:#64748b;--faint:#94a3b8;--line:#e6ebf2;--line-2:#f1f4f9;--bg:#eef2f7;
+    --card-shadow:0 1px 1px rgba(15,23,42,.03),0 2px 4px rgba(15,23,42,.03),0 12px 28px -8px rgba(15,23,42,.10);
+    --card-shadow-hover:0 2px 4px rgba(15,23,42,.04),0 24px 48px -16px rgba(15,23,42,.22)}
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;font-size:14px;font-feature-settings:'cv11','ss01'}
+  button,input,textarea{font:inherit;color:inherit}
+  button{cursor:pointer;border:0;background:none}
+  svg{display:block;flex-shrink:0}
+
+  .note{position:sticky;top:0;z-index:40;background:rgba(2,6,23,.82);backdrop-filter:blur(8px);color:#cbd5e1;font-size:12.5px;padding:9px 16px;text-align:center}
+  .note b{color:#fff}
+
+  /* ── page: same dark band as today, deeper and calmer ── */
+  .page{min-height:100vh;background:
+    radial-gradient(1200px 260px at 12% 0%,rgba(59,130,246,.22),transparent 60%),
+    radial-gradient(900px 240px at 85% 0%,rgba(139,92,246,.14),transparent 60%),
+    linear-gradient(180deg,#060d1c 0,#0a1428 196px,var(--bg) 196px)}
+  main{max-width:1800px;margin:0 auto;padding:22px 16px 48px}
+  @media(min-width:768px){main{padding:26px 24px 48px}}
+  @media(min-width:1200px){main{padding:30px 40px 56px}}
+
+  /* header */
+  .head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px}
+  .eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:11px;font-weight:700;color:#93c5fd;letter-spacing:.14em;text-transform:uppercase}
+  .eyebrow::before{content:'';width:18px;height:1px;background:currentColor;opacity:.6}
+  h1{margin-top:8px;font-size:30px;font-weight:800;letter-spacing:-.035em;color:#fff;line-height:1}
+  .sub{margin-top:8px;color:#8ea0bd;font-size:13.5px}
+  .sub b{color:#e2e8f0;font-weight:700}
+  .search{position:relative;width:100%}
+  @media(min-width:640px){.search{width:280px}}
+  .search svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:#8ea0bd}
+  .search input{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:10px 46px 10px 38px;color:#fff;outline:none;font-size:13px;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);transition:all .2s}
+  .search input::placeholder{color:#7d8ea9}
+  .search input:focus{background:rgba(255,255,255,.1);border-color:rgba(147,197,253,.5);box-shadow:0 0 0 4px rgba(59,130,246,.15)}
+  .search kbd{position:absolute;right:10px;top:50%;transform:translateY(-50%);font:600 10.5px Inter;color:#7d8ea9;border:1px solid rgba(255,255,255,.14);border-radius:6px;padding:2px 6px}
+
+  /* tabs */
+  .tabs{display:inline-flex;gap:2px;padding:4px;margin:30px 0 22px;background:rgba(255,255,255,.72);backdrop-filter:blur(14px) saturate(1.4);border:1px solid rgba(255,255,255,.8);border-radius:14px;box-shadow:0 1px 2px rgba(15,23,42,.05),0 8px 24px -10px rgba(15,23,42,.18);overflow-x:auto;max-width:100%;scrollbar-width:none}
+  .tabs::-webkit-scrollbar{display:none}
+  .tabs button{display:inline-flex;align-items:center;gap:7px;padding:8px 13px;border-radius:10px;font-size:12.5px;font-weight:650;color:var(--muted);white-space:nowrap;transition:color .15s,background .15s}
+  .tabs button:hover{color:var(--ink);background:rgba(15,23,42,.04)}
+  .tabs button i{font-style:normal;font-size:10.5px;font-weight:700;min-width:20px;padding:1px 6px;border-radius:999px;background:var(--line-2);color:var(--muted);font-variant-numeric:tabular-nums;text-align:center}
+  .tabs button.on{background:linear-gradient(180deg,#1b2537,#0b1220);color:#fff;box-shadow:0 1px 0 rgba(255,255,255,.08) inset,0 6px 14px -6px rgba(11,18,32,.6)}
+  .tabs button.on i{background:rgba(255,255,255,.14);color:#e2e8f0}
+
+  /* grid */
+  .grid{display:grid;grid-template-columns:1fr;gap:20px}
+  @media(min-width:640px){.grid{grid-template-columns:repeat(2,1fr)}}
+  @media(min-width:1024px){.grid{grid-template-columns:repeat(3,1fr)}}
+  @media(min-width:1280px){.grid{grid-template-columns:repeat(4,1fr)}}
+  @media(min-width:1600px){.grid{grid-template-columns:repeat(5,1fr)}}
+
+  /* card */
+  .card{background:#fff;border-radius:20px;overflow:hidden;display:flex;flex-direction:column;position:relative;
+    box-shadow:var(--card-shadow);outline:1px solid rgba(15,23,42,.06);outline-offset:-1px;
+    transition:transform .25s cubic-bezier(.2,.8,.2,1),box-shadow .25s}
+  .card:hover{transform:translateY(-4px);box-shadow:var(--card-shadow-hover),0 18px 40px -22px var(--glow)}
+  .card.on{outline:2px solid #93c5fd;box-shadow:0 0 0 5px rgba(59,130,246,.12),var(--card-shadow-hover)}
+
+  .banner{height:150px;position:relative;overflow:hidden;background:var(--tg)}
+  .banner img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scale(1.01);transition:transform .6s cubic-bezier(.2,.8,.2,1)}
+  .card:hover .banner img{transform:scale(1.06)}
+  .banner::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(3,7,18,.28) 0%,rgba(3,7,18,0) 32%,rgba(3,7,18,.18) 55%,rgba(3,7,18,.82) 100%)}
+  .banner .in{position:absolute;inset:0;z-index:1;display:flex;flex-direction:column;justify-content:space-between;padding:12px 14px 13px}
+  .banner .row{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+  .loc{display:inline-flex;align-items:center;gap:5px;max-width:60%;min-width:0;padding:4px 10px 4px 8px;border-radius:999px;background:rgba(15,23,42,.38);backdrop-filter:blur(12px) saturate(1.4);border:1px solid rgba(255,255,255,.16);color:rgba(255,255,255,.95);font-size:10.5px;font-weight:600}
+  .loc span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .status{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.94);backdrop-filter:blur(8px);color:var(--sc);font-size:10.5px;font-weight:750;text-transform:capitalize;box-shadow:0 4px 12px -4px rgba(0,0,0,.35);white-space:nowrap}
+  .status::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 18%,transparent)}
+  .status.live::before{animation:blink 1.6s infinite}
+  @keyframes blink{50%{opacity:.3}}
+  .title{color:#fff;font-size:16px;font-weight:750;letter-spacing:-.02em;line-height:1.28;text-shadow:0 1px 12px rgba(0,0,0,.45);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .title small{display:block;font-size:11.5px;font-weight:550;color:rgba(255,255,255,.72);letter-spacing:0;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  .body{padding:15px 16px 0;display:flex;flex-direction:column;flex:1}
+  .tags{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .type{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:700;padding:4px 9px;border-radius:7px;background:var(--tt);color:var(--tc);letter-spacing:.01em}
+  .type::before{content:'';width:6px;height:6px;border-radius:2px;background:var(--tc)}
+  .rep{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;padding:4px 9px;border-radius:999px;background:var(--rb);color:var(--rc);text-transform:capitalize}
+  .rep svg{width:11px;height:11px}
+
+  .facts{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-top:13px;padding:10px;border-radius:13px;background:linear-gradient(180deg,#f8fafc,#f3f6fa);border:1px solid var(--line-2)}
+  .fact{display:flex;align-items:center;gap:8px;min-width:0}
+  .fact .ic{width:26px;height:26px;border-radius:8px;background:#fff;display:grid;place-items:center;color:var(--muted);box-shadow:0 1px 2px rgba(15,23,42,.06);flex-shrink:0}
+  .fact small{display:block;font-size:9.5px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.08em}
+  .fact b{display:block;font-size:12px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+  .fact.do{padding-left:10px;border-left:1px solid var(--line);max-width:118px}
+  .fact.do small{color:#16a34a}
+  .fact.do b.na{color:var(--faint);font-weight:600}
+
+  .crew{display:flex;align-items:center;gap:10px;margin-top:13px}
+  .av{border-radius:50%;flex-shrink:0;display:grid;place-items:center;color:#fff;font-weight:700;overflow:hidden;background:var(--c)}
+  .av img{width:100%;height:100%;object-fit:cover}
+  .av.pic{width:34px;height:34px;font-size:12px;box-shadow:0 0 0 2px #fff,0 0 0 3.5px color-mix(in srgb,var(--tc) 45%,#fff)}
+  .av.none{width:34px;height:34px;background:var(--line-2);border:1.5px dashed #cbd5e1}
+  .who{flex:1;min-width:0}
+  .who b{display:block;font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .who b.na{color:var(--faint);font-weight:600}
+  .who small{display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--muted);font-weight:600;margin-top:1px}
+  .who small em{font-style:normal;font-size:9px;font-weight:800;letter-spacing:.06em;padding:1px 6px;border-radius:5px;background:#fef3c7;color:#92400e}
+  .stack{display:flex;align-items:center}
+  .stack .av{width:26px;height:26px;font-size:9.5px;box-shadow:0 0 0 2px #fff;margin-left:-7px}
+  .stack .av:first-child{margin-left:0}
+  .stack .more{width:26px;height:26px;border-radius:50%;margin-left:-7px;background:#eef2f7;box-shadow:0 0 0 2px #fff;display:grid;place-items:center;font-size:9.5px;font-weight:800;color:var(--muted)}
+
+  .acts{display:flex;align-items:center;gap:6px;margin-top:auto;padding:14px 0 16px;border-top:1px solid var(--line-2);margin-top:14px}
+  .btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;border-radius:11px;font-size:12.5px;font-weight:700;transition:all .15s}
+  .btn.view{background:linear-gradient(180deg,#3b82f6,#2563eb);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 6px 14px -6px rgba(37,99,235,.65)}
+  .btn.view:hover{filter:brightness(1.07);box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 10px 20px -8px rgba(37,99,235,.75)}
+  .btn.upd{background:#fff;color:var(--ink-2);box-shadow:inset 0 0 0 1px var(--line),0 1px 2px rgba(15,23,42,.05)}
+  .btn.upd:hover{box-shadow:inset 0 0 0 1px #cbd5e1,0 2px 6px rgba(15,23,42,.08);color:var(--ink)}
+  .card.on .btn.upd{background:#eff6ff;color:#1d4ed8;box-shadow:inset 0 0 0 1px #bfdbfe}
+  .ib{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;color:var(--muted);background:#fff;box-shadow:inset 0 0 0 1px var(--line);transition:all .15s;flex-shrink:0}
+  .ib.wa:hover{color:#15803d;background:#f0fdf4;box-shadow:inset 0 0 0 1px #bbf7d0}
+  .ib.ed:hover{color:#b45309;background:#fffbeb;box-shadow:inset 0 0 0 1px #fde68a}
+  .ib.del:hover{color:#dc2626;background:#fef2f2;box-shadow:inset 0 0 0 1px #fecaca}
+
+  .empty{height:220px;background:#fff;border-radius:20px;box-shadow:var(--card-shadow);display:grid;place-items:center;text-align:center;color:var(--muted);font-weight:600}
+
+  /* pagination */
+  .pager{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:28px}
+  .pager > span{font-size:12.5px;color:var(--muted);font-weight:600}
+  .pager > span b{color:var(--ink)}
+  .pages{display:flex;gap:4px;padding:4px;background:#fff;border-radius:12px;box-shadow:var(--card-shadow)}
+  .pages button{min-width:32px;height:32px;border-radius:9px;font-size:12.5px;font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums}
+  .pages button:hover:not(:disabled){background:var(--line-2);color:var(--ink)}
+  .pages button.on{background:linear-gradient(180deg,#1b2537,#0b1220);color:#fff}
+  .pages button:disabled{color:#cbd5e1;cursor:default}
+
+  /* update panel — same centred panel, refined */
+  .scrim{position:fixed;inset:0;z-index:49;background:rgba(2,6,23,.38);backdrop-filter:blur(3px);animation:fade .2s}
+  .panel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:50;width:calc(100% - 32px);max-width:440px;max-height:calc(100vh - 32px);overflow-y:auto;background:#fff;border-radius:22px;box-shadow:0 30px 80px -20px rgba(2,6,23,.45),0 0 0 1px rgba(15,23,42,.06);animation:pop .22s cubic-bezier(.2,.8,.2,1)}
+  @keyframes fade{from{opacity:0}}
+  @keyframes pop{from{opacity:0;transform:translate(-50%,-47%) scale(.98)}}
+  .p-head{display:flex;gap:12px;align-items:center;padding:16px 16px 14px;border-bottom:1px solid var(--line-2)}
+  .p-head img,.p-head .thumb{width:46px;height:46px;border-radius:12px;object-fit:cover;background:var(--tg);flex-shrink:0}
+  .p-head div{flex:1;min-width:0}
+  .p-head b{display:block;font-size:14px;font-weight:750;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .p-head small{font-size:11.5px;color:var(--muted);font-weight:600}
+  .p-head .x{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;color:var(--faint)}
+  .p-head .x:hover{background:var(--line-2);color:var(--ink)}
+  .p-body{padding:16px;display:flex;flex-direction:column;gap:16px}
+  .p-body label{display:block;font-size:10px;font-weight:800;color:var(--faint);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chips button{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:10px;font-size:12px;font-weight:650;text-transform:capitalize;color:var(--muted);background:#fff;box-shadow:inset 0 0 0 1px var(--line);transition:all .12s}
+  .chips button::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--oc);opacity:.55}
+  .chips button:hover{color:var(--ink);box-shadow:inset 0 0 0 1px #cbd5e1}
+  .chips button.on{color:var(--ot);background:var(--ob);box-shadow:inset 0 0 0 1.5px var(--oc)}
+  .chips button.on::before{opacity:1}
+  .chips button:disabled{opacity:.45;cursor:not-allowed}
+  .p-body input,.p-body textarea{width:100%;padding:10px 12px;border-radius:11px;border:1px solid var(--line);font-size:12.5px;outline:none;resize:vertical;transition:all .15s}
+  .p-body input:focus,.p-body textarea:focus{border-color:#93c5fd;box-shadow:0 0 0 4px rgba(59,130,246,.12)}
+  .p-body .hint{font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:-6px}
+  .p-foot{display:flex;gap:8px;padding:14px 16px 16px;border-top:1px solid var(--line-2)}
+  .p-foot button{flex:1;height:40px;border-radius:12px;font-size:13px;font-weight:700}
+  .p-foot .save{background:linear-gradient(180deg,#1b2537,#0b1220);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 8px 18px -8px rgba(11,18,32,.6)}
+  .p-foot .cancel{background:#fff;color:var(--ink-2);box-shadow:inset 0 0 0 1px var(--line)}
+
+  /* WhatsApp picker */
+  .wa-wrap{position:relative}
+  .wa-menu{position:absolute;bottom:44px;right:0;z-index:30;width:210px;background:#fff;border-radius:14px;box-shadow:0 20px 40px -12px rgba(15,23,42,.3),0 0 0 1px rgba(15,23,42,.06);overflow:hidden;animation:fade .15s}
+  .wa-menu p{padding:9px 12px;font-size:9.5px;font-weight:800;color:var(--faint);letter-spacing:.1em;border-bottom:1px solid var(--line-2)}
+  .wa-menu button{width:100%;display:flex;align-items:center;gap:9px;padding:8px 12px;font-size:12.5px;font-weight:650;text-align:left}
+  .wa-menu button:hover{background:#f0fdf4}
+  .wa-menu button .av{width:24px;height:24px;font-size:9px}
+  .wa-menu button span{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .wa-menu button em{font-style:normal;font-size:9px;font-weight:800;color:var(--faint)}
+  .wa-menu button em.pic{color:#92400e}
+</style>
+</head>
+<body>
+<div class="note"><b>Preview — Sites, premium polish.</b> Same layout as today, just refined. Live data from 6 Oct. Try the tabs, search, Update and the 💬 button.</div>
+<div class="page"><main>
+  <div class="head">
+    <div><div class="eyebrow" id="eyebrow"></div><h1>Sites</h1><p class="sub" id="sub"></p></div>
+    <label class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" placeholder="Search sites…" /><kbd>/</kbd></label>
+  </div>
+  <div class="tabs" id="tabs"></div>
+  <div id="out"></div>
+</main></div>
+<div id="panel"></div>
+
+<script>
+const DATA = {"members":[{"f":"Abu Hafizuddin","a":"https://ipaxoqsoiouzrwjhsvgj.supabase.co/storage/v1/object/public/team-avatars/00e679ea-bba7-4860-8525-0c44ca337ae9_1777206017331.jpg","p":true},{"f":"Kailash Pal Singh","a":"https://ipaxoqsoiouzrwjhsvgj.supabase.co/storage/v1/object/public/team-avatars/80c2b939-55cb-49bb-8098-5462cf637c1b.jpg","p":true},{"f":"Lukmanul Hakim","a":"https://ipaxoqsoiouzrwjhsvgj.supabase.co/storage/v1/object/public/team-avatars/c83abc9d-2d2a-4cea-9486-3cbdf20ea8b6_1791192352450.png","p":true},{"f":"Muhammad Aiman","a":"https://ipaxoqsoiouzrwjhsvgj.supabase.co/storage/v1/object/public/team-avatars/17abbc01-21ab-4ef5-b396-448e99a24f5f_1791192342142.png","p":true},{"f":"Muhammad Nurakmal","a":"https://ipaxoqsoiouzrwjhsvgj.supabase.co/storage/v1/object/public/team-avatars/46536cca-643d-4a31-9f2e-373434852bd2.PNG","p":true},{"f":"Nurul Izni","a":"https://ipaxoqsoiouzrwjhsvgj.supabase.co/storage/v1/object/public/team-avatars/1236228c-3e97-43f7-a983-341b462047f6_1777206010858.jpeg","p":true},{"f":"Zairul Farishah","a":"https://ipaxoqsoiouzrwjhsvgj.supabase.co/storage/v1/object/public/team-avatars/68b60ffb-0dbe-48ad-a19b-e1b6216d095e.jpg","p":true}],"sites":[{"n":"2027 Annual Strategic Meeting ( Offsite )","co":"Sonicon Construction","loc":"Sunway Lagoon, Sunway City, Petaling Jaya, Petaling, Selangor, 46150, Malaysia","type":"meeting","st":"upcoming","rep":"not_applicable","start":"2026-11-13","end":"2026-11-13","ses":"Full Day","dur":1,"notes":"","photo":"https://ipaxoqsoiouzrwjhsvgj.supabase.co/storage/v1/object/public/site-photos/1790838087562-amsvkqfshh.jpg","a":[[6,1,null]]},{"n":"PMU Gurun - Betapac","co":null,"loc":"Gurun, Kuala Muda, Kedah, 08300, Malaysia","type":"site_scanning","st":"postponed","rep":"pending","start":"2026-10-30","end":"2026-10-30","ses":"Full Day","dur":1,"notes":"","photo":"https://ipaxoqsoiouzrwjhsvgj.supabase.co/storage/v1/object/public/site-photos/1790208737665-ac6iff9kt4v.jpg","a":[]},{"n":"Dr Mike Coaching Session","co":"Sonicon Construction","loc":"Sunway, Jalan Ampang, Kampung Hujung Pasir, Kampung Paya, Kampung Cendana, Kuala Lumpur, 50250, Malaysia","type":"meeting","st":"upcoming","rep":"not_applicable","start":"2026-10-23","end":"2026-10-23","ses":"Full Day","dur":1,"notes":"","photo":"https://ipaxoqsoiouzrwjhsvgj.supabase.co/storage/v1/object/public/site-photos/1791161834104-e1oay1kt9wt.jpg","a":[[6,1,null]]},{"n":"PMU Bintang","co":"Orasko","loc":"Cameron Highlands, Pahang, Malaysia","type":"site_scanning","st":"upcoming","rep":"pending","start":"2026-10-08","end":"2026-10-09","ses":null,"dur":2,"notes":"","photo":"https://ipaxoqsoiouzrwjhsvgj.supabase.co/storage/v1/object/public/site-photos/1790743616240-7see24jhq2s.jpg","a":[[6,1,null],[5,0,null],[4,0,null]]},{"n":"Pavilion Bukit Jalil","co":"CCK","loc":"Pavilion Bukit Jalil, 2, Persiaran Jalil 8, Bukit Jalil City, Bukit Jalil, Kuala Lumpur, 57000, Malaysia","type":"site_scanning","st":"upcoming","rep":"pending","start":"2026-10-07","end":"2026-10-07","ses":"AM","dur":0.5,"notes":"","photo":"https://ipaxoqsoiouzrwjhsvgj.supabase.co/storage/v1/object/public/site-photos/1791185083803-qxm2u596o.jpg","a":[[6,1,null],[5,0,null]]},{"n":"Bangunan Public Bank","co":"Syarikat Ong Yok Lin","loc":"Kuala Lumpur, Malaysia","type":"site_scanning","st":"upcoming","rep":"pending","start":"2026-10-07","end":"2026-10-07","ses":"Full Day","dur":1,"notes":"","photo":"https://ipaxoqsoiouzrwjhsvgj.supabase.co/storage/v1/object/public/site-photos/1790932259710-c51rjodcgut.jpg","a":[[1,1,null],[4,0,null],[2,0,null],[3,0,null]]},{"n":"Jotun Paints (Nilai Factory)","co":"Laison Engineering Sdn Bhd","loc":"Nilai, Seremban, Negeri Sembilan, 71800, Malaysia","type":"site_scanning","st":"upcoming","rep":"pending","start":"2026-10-06","end":"2026-10-06","ses":"Full Day","dur":1,"notes":"","photo":"https://ipaxoqsoiouzrwjhsvgj.supabase.co/storage/v1/object/public/site-photos/1790922843838-ned16alscyr.jpg","a":[[4,1,"2026-10-06"],[6,0,"2026-10-06"],[5,0,"2026-10-06"]]},{"n":"Plaza Sentral Kuala Lumpur","co":null,"loc":"Plaza Sentral, Tower 1B, Blok 1B, Jalan Stesen Sentral, KL Sentral, Bangsar, Kuala Lumpur, 50470, Malaysia","type":"site_visit","st":"upcoming","rep":"not_applicable","start":"2026-10-06","end":"2026-10-06","ses":"PM","dur":0.5,"notes":"","photo":"https://ipaxoqsoiouzrwjhsvgj.supabase.co/storage/v1/object/public/site-photos/1791185238516-8m305cedcat.jpg","a":[[1,1,null],[2,0,null],[3,0,null]]},{"n":"Nestle Chembong","co":"YS Jaya Construction Sdn Bhd","loc":"Kawasan Perindustrian Chembong, Chembong, Rembau, Negeri Sembilan, Malaysia","type":"site_scanning","st":"upcoming","rep":"in_progress","start":"2026-10-05","end":"2026-10-05","ses":"Full Day","dur":1,"notes":"","photo":"https://ipaxoqsoiouzrwjhsvgj.supabase.co/storage/v1/object/public/site-photos/1790753432143-udcudfvisck.jpg","a":[[5,1,null],[4,0,null]]},{"n":"Seminar on Integrated Structural Refurbishment Engineering","co":"Sonicon Construction Sdn Bhd","loc":"Holiday Villa, Jalan Dato Sulaiman, Century Garden, Johor Bahru, Johor, 80250, Malaysia","type":"meeting","st":"completed","rep":"not_applicable","start":"2026-10-03","end":"2026-10-03","ses":"AM","dur":0.5,"notes":"This seminar provides civil and structural engineers with practical insights into total demolition, structural assessment, repair, and strengthening; all increasingly relevant in refurbishment, site clearance, and infrastructure upgrade projects.\n\n--- Completion Details ---\nDelivery Order Number: -\n--- End Completion Details ---","photo":"https://ipaxoqsoiouzrwjhsvgj.supabase.co/storage/v1/object/public/site-photos/1790061655507-hb6j9m4az3u.avif","a":[[0,1,null]]},{"n":"Prima 10 Cyberjaya","co":"Perunding SSE","loc":"Prima Avenue, Cyber 6, Cyberjaya, Sepang, Selangor, Malaysia","type":"site_scanning","st":"completed","rep":"approved","start":"2026-10-02","end":"2026-10-02","ses":"Full Day","dur":1,"notes":"--- Completion Details ---\nDelivery Order Number: 10742\n--- End Completion Details ---","photo":"https://ipaxoqsoiouzrwjhsvgj.supabase.co/storage/v1/object/public/site-photos/1790845317812-l533yfdfjh.webp","a":[[4,1,null],[1,0,null],[5,0,null],[6,0,null],[2,0,null],[3,0,null]]},{"n":"Miranda Hill","co":"Evergreen Venture Engineering Sdn Bhd","loc":"Miranda Hill North Kiara (U/C), Segambut, Kepong, Kuala Lumpur, Malaysia","type":"site_scanning","st":"ongoing","rep":"not_applicable","start":"2026-10-01","end":"2026-10-10","ses":null,"dur":10,"notes":"No Need Report only marking on site","photo":"https://ipaxoqsoiouzrwjhsvgj.supabase.co/storage/v1/object/public/site-photos/1790753688814-ys516u4m6lb.jpg","a":[[6,0,"2026-10-02"],[4,0,"2026-10-02"],[5,0,"2026-10-02"],[0,0,"2026-10-02"],[6,1,"2026-10-01"],[0,0,"2026-10-01"],[4,0,"2026-10-01"],[5,0,"2026-10-01"],[1,1,"2026-10-08"],[3,0,"2026-10-08"],[2,0,"2026-10-08"],[1,1,"2026-10-09"],[2,0,"2026-10-09"],[3,0,"2026-10-09"]]},{"n":"MOF Inc Tower","co":"Cubebee Design Sdn bhd","loc":"Kuala Lumpur, Malaysia","type":"site_scanning","st":"completed","rep":"approved","start":"2026-10-01","end":"2026-10-01","ses":"Full Day","dur":1,"notes":"--- Completion Details ---\nDelivery Order Number: 10760\n--- End Completion Details ---","photo":"https://ipaxoqsoiouzrwjhsvgj.supabase.co/storage/v1/object/public/site-photos/1790833376417-40fsc708z7u.webp","a":[[1,1,null]]},{"n":"Pavilion Damansara Height","co":"DC Plumbing","loc":"Pavilion Damansara Heights, 3, Jalan Damanlela, Pusat Bandar Damansara, Damansara Heights, Kuala Lumpur, 50490, Malaysia","type":"site_scanning","st":"completed","rep":"approved","start":"2026-09-30","end":"2026-09-30","ses":"Full Day","dur":1,"notes":"--- Completion Details ---\nDelivery Order Number: 10741\n--- End Completion Details ---","photo":"https://ipaxoqsoiouzrwjhsvgj.supabase.co/storage/v1/object/public/site-photos/1790729260729-ugnizu7usj.jpg","a":[[5,1,null],[4,0,null],[6,0,null]]},{"n":"Selayang Mulia","co":"CPI Land","loc":"Jalan Selayang Mulia 1/2, Batu Caves, Selayang Municipal Council, Gombak, Selangor, 68100, Malaysia","type":"meeting","st":"completed","rep":"not_applicable","start":"2026-09-30","end":"2026-09-30","ses":"AM","dur":0.25,"notes":"--- Completion Details ---\nDelivery Order Number: 10740\n--- End Completion Details ---","photo":"https://ipaxoqsoiouzrwjhsvgj.supabase.co/storage/v1/object/public/site-photos/1790745834054-vmtrfs8rgtl.jpg","a":[[1,1,null]]},{"n":"Bridge Data Centre Malaysia","co":"Bond M&E Sdn Bhd","loc":"Bukit Jalil, Kuala Lumpur, 57000, Malaysia","type":"site_scanning","st":"completed","rep":"approved","start":"2026-09-29","end":"2026-09-29","ses":"Full Day","dur":1,"notes":"--- Completion Details ---\nDelivery Order Number: 10739\n--- End Completion Details ---","photo":"https://ipaxoqsoiouzrwjhsvgj.supabase.co/storage/v1/object/public/site-photos/1790581998599-sh78sjg83nh.jpg","a":[[4,1,null],[1,0,null],[5,0,null]]}]}
+const TODAY = '2026-10-06'
+// Always three rows: columns follow the CSS breakpoints; one column on phones shows 8
+const colsNow = () => { const w=innerWidth; return w>=1600?5:w>=1280?4:w>=1024?3:w>=640?2:1 }
+let cols = colsNow()
+const perPage = () => cols===1 ? 8 : cols*3
+const M_COLORS = ['#2563eb','#7c3aed','#db2777','#059669','#d97706','#dc2626']
+const I = {
+  pin:'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>',
+  cal:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+  clock:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  up:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M8 7h9v9"/></svg>',
+  pen:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+  sliders:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>',
+  wa:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>',
+  trash:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+  check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+  x:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
+}
+const TYPE = {
+  site_scanning:{ l:'Site Scanning', c:'#1d4ed8', t:'#eff6ff', g:'linear-gradient(135deg,#0f2460,#1a4b8c 55%,#0891b2)', glow:'rgba(37,99,235,.45)' },
+  site_visit:   { l:'Site Visit',    c:'#047857', t:'#ecfdf5', g:'linear-gradient(135deg,#042f2e,#065f46 55%,#0d9488)', glow:'rgba(13,148,136,.4)' },
+  meeting:      { l:'Meeting',       c:'#6d28d9', t:'#f5f3ff', g:'linear-gradient(135deg,#1e0a3c,#4c1d95 55%,#7c3aed)', glow:'rgba(124,58,237,.4)' },
+}
+const STATUS = {
+  upcoming:{ c:'#b45309', b:'#fffbeb', o:'#f59e0b' }, ongoing:{ c:'#c2410c', b:'#fff7ed', o:'#f97316' },
+  completed:{ c:'#15803d', b:'#f0fdf4', o:'#22c55e' }, cancelled:{ c:'#b91c1c', b:'#fef2f2', o:'#ef4444' },
+  postponed:{ c:'#475569', b:'#f8fafc', o:'#94a3b8' },
+}
+const REPORT = {
+  pending:{ c:'#b91c1c', b:'#fef2f2', o:'#ef4444' }, in_progress:{ c:'#b45309', b:'#fffbeb', o:'#f59e0b' },
+  submitted:{ c:'#1d4ed8', b:'#eff6ff', o:'#3b82f6' }, approved:{ c:'#15803d', b:'#f0fdf4', o:'#22c55e' },
+  not_applicable:{ c:'#64748b', b:'#f1f5f9', o:'#94a3b8' },
+}
+const TABS = ['All','Upcoming','Ongoing','Completed','Cancelled','Postponed']
+
+const members = DATA.members.map((m,i)=>({ ...m, i, s:m.f.split(' ')[0], c:M_COLORS[i%M_COLORS.length] }))
+const sites = DATA.sites.map((s,i)=>({ ...s, i }))
+const $ = s => document.querySelector(s)
+const esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))
+const ini = m => m.f.split(' ').filter(Boolean).map(p=>p[0]).join('').slice(0,2).toUpperCase()
+const av = (m,cls='') => `<span class="av ${cls}" title="${esc(m.f)}" style="--c:${m.c}">${m.a?`<img src="${m.a}" alt="">`:ini(m)}</span>`
+const fmtDate = d => new Date(d+'T00:00:00').toLocaleDateString('en-MY',{ day:'numeric', month:'short', year:'numeric' })
+const doOf = notes => (String(notes).match(/Delivery Order Number:\s*(.*)/)||[])[1]?.trim() || ''
+const perDay = s => s.a.some(a=>a[2])
+function crewOf(s){
+  // A per-day site speaks for today while it runs, otherwise its first day
+  let rows = s.a.filter(a=>!a[2])
+  if(perDay(s)){ const days=[...new Set(s.a.map(a=>a[2]))].sort(); const d=days.includes(TODAY)?TODAY:days[0]; rows=s.a.filter(a=>a[2]===d) }
+  const uniq = [...new Map(rows.map(r=>[r[0]+'|'+r[1],r])).values()]
+  const pic = uniq.find(r=>r[1]); const picM = pic?members[pic[0]]:null
+  const crew = [...new Set(uniq.filter(r=>!r[1]).map(r=>r[0]))].map(i=>members[i]).filter(m=>m!==picM)
+  return { pic:picM, crew }
+}
+
+let tab='All', q='', page=1, openId=null, draft=null, waOpen=null
+
+function card(s){
+  const t = TYPE[s.type]||TYPE.site_scanning, st = STATUS[s.st], r = REPORT[s.rep]
+  const { pic, crew } = crewOf(s), DO = doOf(s.notes)
+  const lead = s.type==='meeting' ? 'Organizer' : 'Person in charge'
+  const targets = [...(pic?[[pic,'PIC']]:[]), ...crew.map(m=>[m,'CREW'])].filter(([m])=>m.p)
+  return `<article class="card ${openId===s.i?'on':''}" style="--tg:${t.g};--glow:${t.glow};--tt:${t.t};--tc:${t.c}">
+    <div class="banner">${s.photo?`<img src="${s.photo}" alt="" loading="lazy">`:''}
+      <div class="in">
+        <div class="row"><span class="loc">${I.pin}<span>${esc(s.loc)}</span></span><span class="status ${s.st==='ongoing'?'live':''}" style="--sc:${st.c}">${s.st}</span></div>
+        <div class="title" title="${esc(s.n)}">${esc(s.n)}${s.co?`<small>${esc(s.co)}</small>`:''}</div>
+      </div>
+    </div>
+    <div class="body">
+      <div class="tags"><span class="type">${t.l}</span><span class="rep" style="--rc:${r.c};--rb:${r.b}">${s.rep.replace(/_/g,' ')}${['completed','approved'].includes(s.rep)?I.check:''}</span></div>
+      <div class="facts">
+        <div class="fact"><span class="ic">${I.cal}</span><div style="min-width:0"><small>Date</small><b>${fmtDate(s.start)}</b></div></div>
+        <div class="fact"><span class="ic">${I.clock}</span><div><small>Duration</small><b>${s.dur}d</b></div></div>
+        <div class="fact do"><div style="min-width:0"><small>DO</small><b class="${DO?'':'na'}">${esc(DO)||'N/A'}</b></div></div>
+      </div>
+      <div class="crew">
+        ${pic?av(pic,'pic'):'<span class="av none"></span>'}
+        <div class="who">${pic?`<b>${esc(pic.f)}</b><small><em>PIC</em>${lead}${perDay(s)?' · daily crew':''}</small>`:'<b class="na">No PIC assigned</b><small>Assign from Edit</small>'}</div>
+        ${crew.length?`<div class="stack">${crew.slice(0,3).map(m=>av(m)).join('')}${crew.length>3?`<span class="more">+${crew.length-3}</span>`:''}</div>`:''}
+      </div>
+      <div class="acts">
+        <button class="btn view">${I.up} View</button>
+        <button class="btn upd" data-upd="${s.i}">${I.pen} Update</button>
+        ${targets.length?`<div class="wa-wrap"><button class="ib wa" data-wa="${s.i}" title="WhatsApp the team">${I.wa}</button>${waOpen===s.i?`<div class="wa-menu"><p>SEND BRIEF TO</p>${targets.map(([m,role])=>`<button>${av(m)}<span>${esc(m.f)}</span><em class="${role==='PIC'?'pic':''}">${role}</em></button>`).join('')}</div>`:''}</div>`:''}
+        <button class="ib ed" title="Edit site">${I.sliders}</button>
+        <button class="ib del" title="Delete site">${I.trash}</button>
+      </div>
+    </div>
+  </article>`
+}
+
+function pageNums(cur,total){
+  if(total<=7) return Array.from({length:total},(_,i)=>i+1)
+  if(cur<=4) return [1,2,3,4,5,'…',total]
+  if(cur>=total-3) return [1,'…',...Array.from({length:5},(_,i)=>total-4+i)]
+  return [1,'…',cur-1,cur,cur+1,'…',total]
+}
+
+function render(){
+  const needle = q.toLowerCase()
+  const counts = Object.fromEntries(TABS.map(t=>[t, t==='All'?sites.length:sites.filter(s=>s.st===t.toLowerCase()).length]))
+  $('#tabs').innerHTML = TABS.map(t=>`<button data-tab="${t}" class="${tab===t?'on':''}">${t}<i>${counts[t]}</i></button>`).join('')
+  const list = sites.filter(s=>tab==='All'||s.st===tab.toLowerCase()).filter(s=>!needle||[s.n,s.loc,s.co].some(f=>String(f||'').toLowerCase().includes(needle)))
+  const total = Math.ceil(list.length/perPage()); if(page>total) page=Math.max(1,total)
+  const shown = list.slice((page-1)*perPage(), page*perPage())
+  $('#out').innerHTML = !shown.length ? '<div class="empty"><div>No sites found</div></div>' :
+    `<div class="grid">${shown.map(card).join('')}</div>` +
+    (total>1?`<div class="pager"><span>Showing <b>${(page-1)*perPage()+1}–${Math.min(page*perPage(),list.length)}</b> of <b>${list.length}</b> sites</span><div class="pages"><button data-pg="${page-1}" ${page===1?'disabled':''}>‹</button>${pageNums(page,total).map(p=>p==='…'?'<button disabled>…</button>':`<button data-pg="${p}" class="${p===page?'on':''}">${p}</button>`).join('')}<button data-pg="${page+1}" ${page===total?'disabled':''}>›</button></div></div>`:'')
+  renderPanel()
+}
+
+function renderPanel(){
+  if(openId===null){ $('#panel').innerHTML=''; return }
+  const s = sites[openId], t = TYPE[s.type]||TYPE.site_scanning
+  const chips = (map,key,keys) => keys.map(k=>`<button data-${key}="${k}" class="${draft[key]===k?'on':''}" style="--oc:${map[k].o};--ot:${map[k].c};--ob:${map[k].b}" ${key==='rep'&&k==='approved'?'title="Only Zairul can approve"':''}>${k.replace(/_/g,' ')}</button>`).join('')
+  $('#panel').innerHTML = `<div class="scrim" data-close></div><div class="panel" style="--tg:${t.g}">
+    <div class="p-head">${s.photo?`<img src="${s.photo}" alt="">`:'<span class="thumb"></span>'}<div><b>${esc(s.n)}${s.co?` - ${esc(s.co)}`:''}</b><small>Update status</small></div><button class="x" data-close>${I.x}</button></div>
+    <div class="p-body">
+      <div><label>Site status</label><div class="chips">${chips(STATUS,'st',['upcoming','ongoing','completed','cancelled','postponed'])}</div></div>
+      ${['site_scanning','site_visit'].includes(s.type)?`<div><label>Report status</label><div class="chips">${chips(REPORT,'rep',['pending','in_progress','submitted','approved','not_applicable'])}</div></div>`:''}
+      ${draft.st==='completed'?`<div><label>Delivery order number</label><input id="do" value="${esc(draft.do)}" placeholder="Key in DO number"></div>
+      <div><label>Reason if no DO</label><textarea id="why" rows="3" placeholder="State the reason if there is no delivery order number">${esc(draft.why)}</textarea></div>
+      <p class="hint">Completed status requires either a delivery order number or a stated reason.</p>`:''}
+    </div>
+    <div class="p-foot"><button class="save" data-save>Save Changes</button><button class="cancel" data-close>Cancel</button></div>
+  </div>`
+}
+
+document.addEventListener('click', e=>{
+  const b = e.target.closest('button,[data-close]')
+  // Any click outside the WhatsApp picker closes it
+  const hadWa = waOpen!==null
+  if(hadWa && !e.target.closest('.wa-wrap')) waOpen = null
+  if(!b) return hadWa && waOpen===null ? render() : undefined
+  const d = b.dataset
+  if(d.tab){ tab=d.tab; page=1 }
+  else if(d.pg){ page=+d.pg }
+  else if(d.wa){ waOpen = waOpen===+d.wa ? null : +d.wa }
+  else if(d.upd){ const s=sites[+d.upd]; if(openId===s.i){ openId=null } else { openId=s.i; draft={ st:s.st, rep:s.rep, do:doOf(s.notes), why:'' } } }
+  else if(d.st){ draft.st=d.st }
+  else if(d.rep){ draft.rep=d.rep }
+  else if('close' in d){ openId=null }
+  else if('save' in d){
+    if(draft.st==='completed' && !draft.do.trim() && !draft.why.trim()){ alert('Enter a DO number or a reason to mark this site completed.'); return }
+    Object.assign(sites[openId],{ st:draft.st, rep:draft.rep, notes: draft.do?`Delivery Order Number: ${draft.do}`:sites[openId].notes }); openId=null
+  } else return
+  render()
+})
+document.addEventListener('input', e=>{ if(e.target.id==='q'){ q=e.target.value; page=1; render(); $('#q').focus() } if(e.target.id==='do') draft.do=e.target.value; if(e.target.id==='why') draft.why=e.target.value })
+document.addEventListener('keydown', e=>{ if(e.key==='/' && document.activeElement.tagName!=='INPUT' && document.activeElement.tagName!=='TEXTAREA'){ e.preventDefault(); $('#q').focus() } if(e.key==='Escape' && openId!==null){ openId=null; render() } })
+
+$('#eyebrow').textContent = new Date(TODAY+'T00:00:00').toLocaleDateString('en-MY',{ weekday:'long', day:'numeric', month:'long' })
+const live = sites.filter(s=>s.st==='ongoing').length, up = sites.filter(s=>s.st==='upcoming').length
+$('#sub').innerHTML = `Manage and track all site activities · <b>${live}</b> ongoing · <b>${up}</b> upcoming`
+render()
+// Keep the first card on screen in view when the column count changes
+addEventListener('resize', () => { const c=colsNow(); if(c===cols) return; const first=(page-1)*perPage(); cols=c; page=Math.floor(first/perPage())+1; render() })
+</script>
+</body>
+</html>

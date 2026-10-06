@@ -4,7 +4,7 @@ import { MapContainer, TileLayer, CircleMarker, useMapEvents } from 'react-leafl
 import { supabase } from '../supabase'
 import {
   Pencil, Trash2, Search, ArrowUpRight, MapPin, MessageCircle, X, Camera,
-  Calendar, Clock, CheckCircle,
+  Calendar, Clock, CheckCircle, SlidersHorizontal,
 } from 'lucide-react'
 import { memberSchedule, notify, notifyMany, notifyScheduleChanges, siteRoleIds } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
@@ -20,22 +20,9 @@ import {
   isPic, picForDate, siteCrew, sitePic, uniqueAssignments,
 } from '../utils/siteDays'
 import 'leaflet/dist/leaflet.css'
+import './Sites.css'
 
 /* ── Design tokens (Dashboard light-mode parity) ── */
-const STATUS_COLORS = {
-  upcoming:  { bg:'#fef3c7', text:'#92400e', border:'#facc15' },
-  ongoing:   { bg:'#ffedd5', text:'#9a3412', border:'#fb923c' },
-  completed: { bg:'#dcfce7', text:'#166534', border:'#4ade80' },
-  cancelled: { bg:'#fee2e2', text:'#991b1b', border:'#f87171' },
-  postponed: { bg:'#f1f5f9', text:'#475569', border:'#cbd5e1' },
-}
-const REPORT_COLORS = {
-  pending:        { bg:'#fee2e2', text:'#991b1b', border:'#fecaca'  },
-  in_progress:    { bg:'#fef3c7', text:'#92400e', border:'#fde68a'  },
-  submitted:      { bg:'#dbeafe', text:'#1d4ed8', border:'#bfdbfe'  },
-  approved:       { bg:'#dcfce7', text:'#166534', border:'#bbf7d0'  },
-  not_applicable: { bg:'#f1f5f9', text:'#475569', border:'#cbd5e1'  },
-}
 const TYPE_META = {
   site_scanning: { label:'Site Scanning', color:'#1d4ed8', chipBg:'#eff6ff', chipBorder:'#93c5fd' },
   site_visit:    { label:'Site Visit',    color:'#166534', chipBg:'#f0fdf4', chipBorder:'#4ade80'  },
@@ -47,9 +34,24 @@ const CARD_GRADIENTS = {
   meeting:       'linear-gradient(135deg,#1e0a3c 0%,#4c1d95 55%,#7c3aed 100%)',
 }
 const CARD_GLOW = {
-  site_scanning: 'rgba(37,99,235,.18)',
-  site_visit:    'rgba(13,148,136,.15)',
-  meeting:       'rgba(124,58,237,.15)',
+  site_scanning: 'rgba(37,99,235,.45)',
+  site_visit:    'rgba(13,148,136,.4)',
+  meeting:       'rgba(124,58,237,.4)',
+}
+// Soft tones for the card pills and the quick-update chips
+const STATUS_TONE = {
+  upcoming:  { text:'#b45309', bg:'#fffbeb', dot:'#f59e0b' },
+  ongoing:   { text:'#c2410c', bg:'#fff7ed', dot:'#f97316' },
+  completed: { text:'#15803d', bg:'#f0fdf4', dot:'#22c55e' },
+  cancelled: { text:'#b91c1c', bg:'#fef2f2', dot:'#ef4444' },
+  postponed: { text:'#475569', bg:'#f8fafc', dot:'#94a3b8' },
+}
+const REPORT_TONE = {
+  pending:        { text:'#b91c1c', bg:'#fef2f2', dot:'#ef4444' },
+  in_progress:    { text:'#b45309', bg:'#fffbeb', dot:'#f59e0b' },
+  submitted:      { text:'#1d4ed8', bg:'#eff6ff', dot:'#3b82f6' },
+  approved:       { text:'#15803d', bg:'#f0fdf4', dot:'#22c55e' },
+  not_applicable: { text:'#64748b', bg:'#f1f5f9', dot:'#94a3b8' },
 }
 const SITE_PROGRESS = {
   upcoming:  { pct:15,  color:'#f59e0b' },
@@ -83,33 +85,12 @@ const EMPTY = {
   site_photo:null, site_photo_preview:null, site_photo_url:'',
 }
 
-function Avatar({ name, size = 28, index = 0, avatarUrl = null }) {
-  const initials = name?.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase() || '?'
+function MemberAvatar({ member, index = 0, className = '' }) {
+  const name = member?.full_name || '?'
+  const initials = name.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0,2).toUpperCase() || '?'
   return (
-    <div style={{
-      width:size, height:size, borderRadius:'50%', flexShrink:0, overflow:'hidden',
-      background: avatarUrl ? '#e2e8f0' : AVATAR_COLORS[index % AVATAR_COLORS.length],
-      display:'flex', alignItems:'center', justifyContent:'center',
-      color:'white', fontWeight:'700', fontSize:size * 0.35,
-      boxShadow:'0 2px 6px rgba(15,23,42,.18)',
-    }}>
-      {avatarUrl ? <img src={avatarUrl} alt={name} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : initials}
-    </div>
-  )
-}
-
-function Pill({ status, colors }) {
-  const c = colors[status] || colors[Object.keys(colors)[0]]
-  const done = status === 'completed' || status === 'approved'
-  return (
-    <span style={{
-      display:'inline-flex', alignItems:'center', gap:'4px',
-      background:c.bg, color:c.text, border:`1px solid ${c.border}`,
-      padding:'4px 9px', borderRadius:'999px', fontSize:'10px',
-      fontWeight:'800', textTransform:'capitalize', whiteSpace:'nowrap', flexShrink:0,
-    }}>
-      {status?.replace(/_/g,' ')}
-      {done && <CheckCircle size={9} />}
+    <span className={`ss-av ${className}`} title={name} style={{ '--c':AVATAR_COLORS[Math.max(0, index) % AVATAR_COLORS.length] }}>
+      {member?.avatar_url ? <img src={member.avatar_url} alt={name} /> : initials}
     </span>
   )
 }
@@ -188,7 +169,7 @@ let sitesCache = null
 
 export default function Sites() {
   const { fullName, isZairul, memberId } = useAuth()
-  const { isMobile, isTablet } = useViewport()
+  const { width, isMobile } = useViewport()
   const [sites, setSites]             = useState(() => sitesCache?.sites || [])
   const [members, setMembers]         = useState(() => sitesCache?.members || [])
   const [loading, setLoading]         = useState(!sitesCache)
@@ -207,7 +188,30 @@ export default function Sites() {
   const [leaves, setLeaves]             = useState(() => sitesCache?.leaves || [])
   const [waMenu, setWaMenu]             = useState(null)
   const photoInputRef = useRef(null)
-  const PER_PAGE = 8
+  const searchRef = useRef(null)
+  // Always three rows: columns follow the Sites.css grid breakpoints; one column on phones shows 8
+  const columns = width >= 1600 ? 5 : width >= 1280 ? 4 : width >= 1024 ? 3 : width >= 640 ? 2 : 1
+  const perPage = columns === 1 ? 8 : columns * 3
+
+  // Keep the first card on screen in view when the column count changes
+  const prevPerPage = useRef(perPage)
+  useEffect(() => {
+    if (prevPerPage.current === perPage) return
+    const from = prevPerPage.current
+    setPage(p => Math.floor(((p - 1) * from) / perPage) + 1)
+    prevPerPage.current = perPage
+  }, [perPage])
+
+  // '/' jumps to search, Esc closes the update panel
+  useEffect(() => {
+    const onKey = e => {
+      const typing = ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)
+      if (e.key === '/' && !typing) { e.preventDefault(); searchRef.current?.focus() }
+      if (e.key === 'Escape') { setExpandedCard(null); setDraftStatus(null); setPanelAnchor(null) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const location = useLocation()
   useEffect(() => { fetchAll() }, [])
@@ -543,8 +547,8 @@ export default function Sites() {
         .some(field => String(field || '').toLowerCase().includes(needle))
     })
 
-  const totalPages = Math.ceil(filtered.length / PER_PAGE)
-  const paginated  = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE)
+  const totalPages = Math.ceil(filtered.length / perPage)
+  const paginated  = filtered.slice((page-1)*perPage, page*perPage)
 
 
   const lightInput = {
@@ -560,73 +564,58 @@ export default function Sites() {
   }, {})
 
   if (loading) return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'calc(100vh - 54px)', background:'#eef3f8' }}>
-      <div style={{ display:'flex', alignItems:'center', gap:'10px', color:'#64748b', fontSize:'14px', fontWeight:'600' }}>
-        <div className="w-4 h-4 rounded-full border-2 border-slate-300 border-t-blue-500 animate-spin" />
+    <div className="ss" style={{ display:'flex', alignItems:'center', justifyContent:'center' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:'10px', color:'#94a3b8', fontSize:'14px', fontWeight:'600' }}>
+        <div className="w-4 h-4 rounded-full border-2 border-slate-500 border-t-blue-400 animate-spin" />
         Loading sites…
       </div>
     </div>
   )
 
-  return (
-    <div style={{ minHeight:'calc(100vh - 54px)', overflowY:'auto', background:'radial-gradient(circle at 18% 5%,rgba(59,130,246,.18),transparent 26%),radial-gradient(circle at 70% 0%,rgba(14,165,233,.10),transparent 30%),linear-gradient(180deg,#071226 0 88px,#dde4ed 88px 100%)' }}>
+  const closePanel = () => { setExpandedCard(null); setDraftStatus(null); setPanelAnchor(null) }
+  const ongoingCount  = sites.filter(s => s.site_status === 'ongoing').length
+  const upcomingCount = sites.filter(s => s.site_status === 'upcoming').length
 
-      <main style={{ maxWidth:'1800px', margin:'0 auto', padding:isMobile ? '16px 14px 28px' : isTablet ? '18px 20px 40px' : '18px 40px 48px' }}>
+  return (
+    <div className="ss">
+      <main className="ss-main">
 
         {/* ── HEADER ── */}
-        <div style={{ display:'flex', flexDirection:isMobile ? 'column' : 'row', alignItems:isMobile ? 'stretch' : 'center', justifyContent:'space-between', gap:'16px', marginBottom:'14px' }}>
-          <div style={{ color:'white' }}>
-            <h1 style={{ margin:0, fontSize:'28px', fontWeight:'850', letterSpacing:'-.05em', lineHeight:1 }}>Sites</h1>
-            <p style={{ margin:'7px 0 0', color:'#b8c7dd', fontSize:'14px', lineHeight:1.5 }}>Manage and track all site activities</p>
+        <div className="ss-head">
+          <div>
+            <div className="ss-eyebrow">{new Date().toLocaleDateString('en-MY', { weekday:'long', day:'numeric', month:'long' })}</div>
+            <h1>Sites</h1>
+            <p className="ss-sub">Manage and track all site activities · <b>{ongoingCount}</b> ongoing · <b>{upcomingCount}</b> upcoming</p>
           </div>
-          <div style={{ display:'flex', alignItems:'center', gap:'10px', width:isMobile ? '100%' : undefined }}>
-            <div style={{ position:'relative' }}>
-              <Search size={13} style={{ position:'absolute', left:'12px', top:'50%', transform:'translateY(-50%)', color:'#94a3b8', pointerEvents:'none' }} />
-              <input
-                placeholder="Search sites…"
-                value={search}
-                onChange={e => { setSearch(e.target.value); setPage(1) }}
-                style={{
-                  background:'rgba(255,255,255,.12)', border:'1px solid rgba(255,255,255,.18)',
-                  borderRadius:'10px', fontSize:'13px', fontFamily:'inherit',
-                  padding:'9px 14px 9px 34px', width:isMobile ? '100%' : '220px', color:'white', outline:'none',
-                }}
-                onFocus={e => { e.target.style.background='rgba(255,255,255,.18)'; e.target.style.borderColor='rgba(255,255,255,.35)' }}
-                onBlur={e => { e.target.style.background='rgba(255,255,255,.12)'; e.target.style.borderColor='rgba(255,255,255,.18)' }}
-              />
-            </div>
-          </div>
+          <label className="ss-search">
+            <Search size={15} strokeWidth={2.2} />
+            <input
+              ref={searchRef}
+              placeholder="Search sites…"
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1) }}
+            />
+            <kbd>/</kbd>
+          </label>
         </div>
 
-
         {/* ── FILTER TABS ── */}
-        <div style={{ display:'flex', alignItems:isMobile ? 'stretch' : 'center', justifyContent:'space-between', flexDirection:isMobile ? 'column' : 'row', gap:'12px', marginBottom:'20px', marginTop:'28px' }}>
-          <div style={{ display:'inline-flex', gap:'4px', padding:'5px', background:'rgba(255,255,255,.9)', backdropFilter:'blur(12px)', borderRadius:'999px', boxShadow:'0 1px 4px rgba(15,23,42,.08)', border:'1px solid rgba(226,232,240,.9)', overflowX:'auto', maxWidth:'100%' }}>
-            {TABS.map(t => {
-              const active = tab === t
-              return (
-                <button key={t} onClick={() => { setTab(t); setPage(1) }}
-                  style={{
-                    border:0, background: active ? '#0f172a' : 'transparent',
-                    color: active ? 'white' : '#64748b',
-                    padding:'7px 14px', borderRadius:'999px', fontWeight:'750',
-                    cursor:'pointer', fontSize:'12px', fontFamily:'inherit', transition:'all .15s',
-                  }}>
-                  {t} <span style={{ opacity:0.65, fontSize:'10px', marginLeft:'1px' }}>({counts[t]})</span>
-                </button>
-              )
-            })}
-          </div>
+        <div className="ss-tabs">
+          {TABS.map(t => (
+            <button key={t} className={tab === t ? 'on' : ''} onClick={() => { setTab(t); setPage(1) }}>
+              {t}<i>{counts[t]}</i>
+            </button>
+          ))}
         </div>
 
         {/* ── CARDS ── */}
         {paginated.length === 0 ? (
-          <div style={{ height:200, border:'1px solid rgba(226,232,240,.9)', background:'white', borderRadius:'16px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', color:'#94a3b8', boxShadow:'0 1px 4px rgba(15,23,42,.06)' }}>
-            <MapPin size={28} style={{ marginBottom:'12px', opacity:0.35 }} />
-            <p style={{ margin:0, fontSize:'14px', fontWeight:'600', color:'#64748b' }}>No sites found</p>
+          <div className="ss-empty">
+            <MapPin size={28} style={{ opacity:0.35 }} />
+            No sites found
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" style={{ gap:'16px', paddingBottom:'8px' }}>
+          <div className="ss-grid">
             {paginated.map(site => {
               // On a per-day site the card speaks for today (or day one)
               const perDay    = hasDailyCrew(site.site_assignments || [])
@@ -637,9 +626,10 @@ export default function Sites() {
                 new Map(siteCrew(site).map(a => [a.team_members?.id, a])).values()
               )
               const typeMeta  = TYPE_META[site.site_type] || TYPE_META.site_scanning
+              const statusTone = STATUS_TONE[site.site_status] || STATUS_TONE.upcoming
+              const reportTone = REPORT_TONE[site.report_status] || REPORT_TONE.pending
               const memberIdx = members.findIndex(m => m.id === pic?.team_members?.id)
               const isExpanded = expandedCard === site.id
-              const glow = CARD_GLOW[site.site_type] || CARD_GLOW.site_scanning
               // Per-day rosters travel with the WhatsApp brief so everyone sees the rotation
               const dayRoster = perDay ? siteDates.map(date => ({
                 date,
@@ -658,210 +648,131 @@ export default function Sites() {
                   ]
               ).filter(t => t.member?.phone)
               const waOpen = waMenu === site.id
+              const sendBrief = ({ role, member }) => openWhatsApp(member.phone, buildAssignmentMessage({
+                role, memberName: shortNameOf(member), site,
+                pic: pic?.team_members, crew: crew.map(c => c.team_members),
+                memberDates: memberDatesOn(member.id), dayRoster,
+              }))
               const completionMeta = parseCompletionMeta(site.notes || '')
+              const reportDone = site.report_status === 'approved'
 
               return (
-                <div key={site.id}
-                  style={{
-                    background:'white', borderRadius:'16px', overflow:'hidden',
-                    border: isExpanded ? '1px solid #93c5fd' : '1px solid rgba(203,213,225,.85)',
-                    boxShadow: isExpanded ? `0 0 0 3px rgba(59,130,246,.12),0 8px 28px rgba(15,23,42,.12)` : '0 1px 4px rgba(15,23,42,.06),0 4px 16px rgba(15,23,42,.06)',
-                    display:'flex', flexDirection:'column',
-                    transition:'transform .18s ease,box-shadow .18s ease,border-color .18s ease',
-                  }}
-                  onMouseEnter={e => {
-                    if (isExpanded) return
-                    e.currentTarget.style.transform = 'translateY(-3px)'
-                    e.currentTarget.style.boxShadow = `0 12px 32px ${glow},0 4px 12px rgba(15,23,42,.08)`
-                  }}
-                  onMouseLeave={e => {
-                    if (isExpanded) return
-                    e.currentTarget.style.transform = 'none'
-                    e.currentTarget.style.boxShadow = '0 1px 4px rgba(15,23,42,.06),0 4px 16px rgba(15,23,42,.06)'
-                  }}
-                >
+                <div key={site.id} className={`ss-card${isExpanded ? ' on' : ''}`}
+                  style={{ '--tg':CARD_GRADIENTS[site.site_type] || CARD_GRADIENTS.site_scanning, '--glow':CARD_GLOW[site.site_type] || CARD_GLOW.site_scanning, '--tt':typeMeta.chipBg, '--tc':typeMeta.color }}>
+
                   {/* ── Banner ── */}
-                  <div style={{ height:130, flexShrink:0, position:'relative', overflow:'hidden', background:CARD_GRADIENTS[site.site_type]||CARD_GRADIENTS.site_scanning }}>
-                    {(site.site_photo_url || getSiteHeaderImage(site.site_type)) && (
-                      <img src={site.site_photo_url||getSiteHeaderImage(site.site_type)} alt=""
-                        style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }} />
-                    )}
-                    <div style={{ position:'absolute', inset:0, background:'linear-gradient(to bottom, transparent 30%, rgba(0,0,0,0.62) 100%)' }} />
-                    <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column', justifyContent:'space-between', padding:'12px 14px' }}>
-                      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:'8px' }}>
-                        <div style={{ display:'flex', alignItems:'center', gap:'5px', background:'rgba(0,0,0,0.45)', backdropFilter:'blur(10px)', border:'1px solid rgba(255,255,255,.18)', padding:'3px 9px', borderRadius:'999px', fontSize:'10px', color:'rgba(255,255,255,.92)', fontWeight:'500', maxWidth:'58%', minWidth:0 }}>
-                          <MapPin size={9} style={{ flexShrink:0 }} />
-                          <span style={{ whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{site.location}</span>
-                        </div>
-                        <Pill status={site.site_status} colors={STATUS_COLORS} />
+                  <div className="ss-banner">
+                    <img src={site.site_photo_url || getSiteHeaderImage(site.site_type)} alt="" loading="lazy" />
+                    <div className="in">
+                      <div className="row">
+                        <span className="ss-loc"><MapPin size={10} strokeWidth={2.4} /><span>{site.location}</span></span>
+                        <span className={`ss-status${site.site_status === 'ongoing' ? ' live' : ''}`} style={{ '--sc':statusTone.text }}>{site.site_status}</span>
                       </div>
-                      <p title={getSiteTitle(site)} style={{ margin:0, fontSize:'15px', fontWeight:'800', color:'white', letterSpacing:'-.02em', textShadow:'0 2px 10px rgba(0,0,0,.7)', lineHeight:1.25, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>
-                        {getSiteTitle(site)}
+                      <p className="ss-title" title={getSiteTitle(site)}>
+                        {site.site_name}
+                        {site.client_company_name && <small>{site.client_company_name}</small>}
                       </p>
                     </div>
                   </div>
 
                   {/* ── Body ── */}
-                  <div style={{ padding:'16px 18px', display:'flex', flexDirection:'column', flex:1 }}>
-
-                    {/* Type + report */}
-                    <div style={{ display:'flex', alignItems:'center', gap:'6px', marginBottom:'12px' }}>
-                      <span style={{ fontSize:'10px', fontWeight:'700', padding:'3px 9px', borderRadius:'6px', background:typeMeta.chipBg, color:typeMeta.color, border:`1px solid ${typeMeta.chipBorder}`, flexShrink:0 }}>
-                        {typeMeta.label}
+                  <div className="ss-body">
+                    <div className="ss-tags">
+                      <span className="ss-type">{typeMeta.label}</span>
+                      <span className="ss-rep" style={{ '--rc':reportTone.text, '--rb':reportTone.bg }}>
+                        {site.report_status?.replace(/_/g,' ')}
+                        {reportDone && <CheckCircle size={11} />}
                       </span>
-                      <Pill status={site.report_status} colors={REPORT_COLORS} />
                     </div>
 
-
-                    {/* Info bar */}
-                    <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:'12px', marginBottom:'12px', paddingBottom:'12px', borderBottom:'1px solid #f1f5f9' }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:'16px', minWidth:0 }}>
-                        <div style={{ display:'flex', alignItems:'center', gap:'5px' }}>
-                          <Calendar size={12} color="#94a3b8" />
-                          <span style={{ fontSize:'12px', color:'#64748b', fontWeight:'500' }}>
-                            {new Date(site.scheduled_date).toLocaleDateString('en-MY',{ day:'numeric', month:'short', year:'numeric' })}
-                          </span>
-                        </div>
-                        <div style={{ display:'flex', alignItems:'center', gap:'5px' }}>
-                          <Clock size={12} color="#94a3b8" />
-                          <span style={{ fontSize:'12px', color:'#64748b', fontWeight:'500' }}>{site.site_duration_days}d</span>
-                        </div>
+                    <div className="ss-facts">
+                      <div className="ss-fact">
+                        <span className="ic"><Calendar size={13} /></span>
+                        <div><small>Date</small><b>{new Date(site.scheduled_date).toLocaleDateString('en-MY',{ day:'numeric', month:'short', year:'numeric' })}</b></div>
                       </div>
-
-                      <div style={{ display:'flex', alignItems:'center', gap:'6px', minWidth:0, flexShrink:0, maxWidth:'140px' }}>
-                        <span style={{ fontSize:'10px', fontWeight:'800', color:'#16a34a', textTransform:'uppercase', letterSpacing:'.06em', flexShrink:0 }}>DO :</span>
-                        <span style={{ fontSize:'12px', color:completionMeta.deliveryOrderNumber ? '#0f172a' : '#94a3b8', fontWeight:'700', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-                          {completionMeta.deliveryOrderNumber || 'N/A'}
-                        </span>
+                      <div className="ss-fact">
+                        <span className="ic"><Clock size={13} /></span>
+                        <div><small>Duration</small><b>{site.site_duration_days}d</b></div>
+                      </div>
+                      <div className="ss-fact do">
+                        <div><small>DO</small><b className={completionMeta.deliveryOrderNumber ? '' : 'na'}>{completionMeta.deliveryOrderNumber || 'N/A'}</b></div>
                       </div>
                     </div>
 
                     {/* PIC + crew */}
-                    <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'12px' }}>
+                    <div className="ss-crew">
                       {pic
-                        ? <Avatar name={pic.team_members?.full_name} size={28} index={memberIdx>=0?memberIdx:0} avatarUrl={pic.team_members?.avatar_url} />
-                        : <div style={{ width:28, height:28, borderRadius:'50%', background:'#f1f5f9', border:'1px solid #e2e8f0', flexShrink:0 }} />
-                      }
-                      <div style={{ display:'flex', alignItems:'center', gap:'5px', flex:1, minWidth:0 }}>
-                        <span style={{ fontSize:'13px', fontWeight:'700', color:'#0f172a', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-                          {pic?.team_members?.full_name || <span style={{ color:'#94a3b8', fontWeight:'500' }}>No PIC</span>}
-                        </span>
-                        {pic && (
-                          <span style={{ fontSize:'9px', fontWeight:'800', padding:'2px 7px', borderRadius:'5px', background:'#eff6ff', color:'#1d4ed8', border:'1px solid #bfdbfe', flexShrink:0, letterSpacing:'.02em' }}>PIC</span>
-                        )}
+                        ? <MemberAvatar member={pic.team_members} index={memberIdx >= 0 ? memberIdx : 0} className="pic" />
+                        : <span className="ss-av none" />}
+                      <div className="ss-who">
+                        {pic ? (<>
+                          <b>{pic.team_members?.full_name}</b>
+                          <small><em>PIC</em>{site.site_type === 'meeting' ? 'Organizer' : 'Person in charge'}{perDay ? ' · daily crew' : ''}</small>
+                        </>) : (<>
+                          <b className="na">No PIC assigned</b>
+                          <small>Assign from Edit</small>
+                        </>)}
                       </div>
                       {crew.length > 0 && (
-                        <div style={{ display:'flex', flexShrink:0 }}>
-                          {crew.slice(0,3).map((c,ci) => (
-                            <div key={ci} title={c.team_members?.full_name} style={{ marginLeft:ci>0?'-6px':0 }}>
-                              <Avatar name={c.team_members?.full_name||'?'} size={22} index={ci+1} avatarUrl={c.team_members?.avatar_url} />
-                            </div>
-                          ))}
-                          {crew.length > 3 && (
-                            <div style={{ width:22,height:22,borderRadius:'50%',marginLeft:'-6px',background:'#f1f5f9',border:'2px solid white',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'8px',fontWeight:'800',color:'#64748b' }}>
-                              +{crew.length-3}
-                            </div>
-                          )}
+                        <div className="ss-stack">
+                          {crew.slice(0,3).map((c, ci) => <MemberAvatar key={ci} member={c.team_members} index={ci + 1} />)}
+                          {crew.length > 3 && <span className="more">+{crew.length - 3}</span>}
                         </div>
                       )}
                     </div>
 
                     {/* Actions — pinned to bottom */}
-                    <div style={{ display:'flex', alignItems:'center', gap:'6px', marginTop:'auto', paddingTop:'12px', borderTop:'1px solid #f1f5f9' }}>
-                      <Link to={`/sites/${site.id}`}
-                        style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:'5px', padding:'8px 0', borderRadius:'8px', fontSize:'12px', fontWeight:'750', color:'white', background:'#2563eb', textDecoration:'none', boxShadow:'0 2px 8px rgba(37,99,235,.28)' }}
-                        onMouseEnter={e => e.currentTarget.style.background='#1d4ed8'}
-                        onMouseLeave={e => e.currentTarget.style.background='#2563eb'}>
-                        <ArrowUpRight size={12} /> View
+                    <div className="ss-acts">
+                      <Link to={`/sites/${site.id}`} className="ss-btn view">
+                        <ArrowUpRight size={13} strokeWidth={2.4} /> View
                       </Link>
-                      <button
+                      <button className="ss-btn upd"
                         onClick={() => {
-                          if (isExpanded) {
-                            setExpandedCard(null); setDraftStatus(null); setPanelAnchor(null)
-                          } else {
-                            setPanelAnchor({ open: true })
-                            setExpandedCard(site.id)
-                            const completionMeta = parseCompletionMeta(site.notes || '')
-                            setDraftStatus({
-                              site_status: site.site_status,
-                              report_status: site.report_status,
-                              delivery_order_number: completionMeta.deliveryOrderNumber,
-                              completion_reason: completionMeta.completionReason,
-                            })
-                          }
-                        }}
-                        style={{
-                          flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:'5px',
-                          padding:'8px 0', borderRadius:'8px', fontSize:'12px', fontWeight:'750', cursor:'pointer', fontFamily:'inherit',
-                          background: isExpanded ? '#eff6ff' : '#0891b2',
-                          border: `1px solid ${isExpanded ? '#bfdbfe' : '#0891b2'}`,
-                          color: isExpanded ? '#2563eb' : 'white',
-                          boxShadow: isExpanded ? 'none' : '0 2px 8px rgba(8,145,178,.28)',
+                          if (isExpanded) { closePanel(); return }
+                          setPanelAnchor({ open: true })
+                          setExpandedCard(site.id)
+                          setDraftStatus({
+                            site_status: site.site_status,
+                            report_status: site.report_status,
+                            delivery_order_number: completionMeta.deliveryOrderNumber,
+                            completion_reason: completionMeta.completionReason,
+                          })
                         }}>
-                        <Pencil size={11} /> Update
+                        <Pencil size={13} /> Update
                       </button>
                       {waTargets.length > 0 && (
-                        <div style={{ position:'relative', flexShrink:0 }}>
-                          <button
+                        <div className="ss-wa">
+                          <button className={`ss-ib wa${waOpen ? ' open' : ''}`}
                             title={waTargets.length === 1 ? `WhatsApp ${waTargets[0].member.full_name}` : 'WhatsApp the team'}
                             onClick={e => {
                               e.stopPropagation()
-                              if (waTargets.length === 1) {
-                                const { role, member } = waTargets[0]
-                                openWhatsApp(member.phone, buildAssignmentMessage({
-                                  role, memberName: shortNameOf(member), site,
-                                  pic: pic?.team_members, crew: crew.map(c => c.team_members),
-                                  memberDates: memberDatesOn(member.id), dayRoster,
-                                }))
-                                return
-                              }
+                              if (waTargets.length === 1) { sendBrief(waTargets[0]); return }
                               setWaMenu(waOpen ? null : site.id)
-                            }}
-                            style={{ width:34,height:34,borderRadius:'8px',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',background: waOpen ? '#dcfce7' : '#f0fdf4',border:'1px solid #86efac',color:'#15803d',transition:'all .15s' }}
-                            onMouseEnter={e => { e.currentTarget.style.background='#dcfce7' }}
-                            onMouseLeave={e => { e.currentTarget.style.background = waOpen ? '#dcfce7' : '#f0fdf4' }}>
-                            <MessageCircle size={12} />
+                            }}>
+                            <MessageCircle size={14} />
                           </button>
                           {waOpen && (
-                            <div style={{ position:'absolute', bottom:'40px', right:0, zIndex:30, width:'200px', background:'white', border:'1px solid #e2e8f0', borderRadius:'10px', boxShadow:'0 12px 30px rgba(15,23,42,.16)', overflow:'hidden' }}>
-                              <div style={{ padding:'8px 12px', borderBottom:'1px solid #f1f5f9', fontSize:'10px', fontWeight:'800', color:'#94a3b8', letterSpacing:'.06em' }}>SEND BRIEF TO</div>
-                              {waTargets.map(({ role, member }) => (
-                                <button key={member.id}
-                                  onClick={e => {
-                                    e.stopPropagation()
-                                    openWhatsApp(member.phone, buildAssignmentMessage({
-                                  role, memberName: shortNameOf(member), site,
-                                  pic: pic?.team_members, crew: crew.map(c => c.team_members),
-                                  memberDates: memberDatesOn(member.id), dayRoster,
-                                }))
-                                    setWaMenu(null)
-                                  }}
-                                  style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px', padding:'9px 12px', background:'white', border:'none', borderBottom:'1px solid #f8fafc', cursor:'pointer', fontFamily:'inherit', fontSize:'12px', fontWeight:'700', color:'#0f172a', textAlign:'left' }}
-                                  onMouseEnter={e => { e.currentTarget.style.background='#f0fdf4' }}
-                                  onMouseLeave={e => { e.currentTarget.style.background='white' }}>
-                                  <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{member.full_name}</span>
-                                  <span style={{ fontSize:'9px', fontWeight:'800', color: role === 'PIC' ? '#1d4ed8' : '#64748b', flexShrink:0 }}>{role === 'PIC' ? 'PIC' : 'CREW'}</span>
+                            <div className="ss-wa-menu">
+                              <p>SEND BRIEF TO</p>
+                              {waTargets.map(target => (
+                                <button key={target.member.id}
+                                  onClick={e => { e.stopPropagation(); sendBrief(target); setWaMenu(null) }}>
+                                  <MemberAvatar member={target.member} index={members.findIndex(m => m.id === target.member.id)} />
+                                  <span>{target.member.full_name}</span>
+                                  <em className={target.role === 'PIC' ? 'pic' : ''}>{target.role === 'PIC' ? 'PIC' : 'CREW'}</em>
                                 </button>
                               ))}
                             </div>
                           )}
                         </div>
                       )}
-                      <button onClick={() => openEdit(site)}
-                        style={{ width:34,height:34,borderRadius:'8px',cursor:'pointer',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',background:'#fff7ed',border:'1px solid #fed7aa',color:'#d97706',transition:'all .15s' }}
-                        onMouseEnter={e => { e.currentTarget.style.background='#ffedd5' }}
-                        onMouseLeave={e => { e.currentTarget.style.background='#fff7ed' }}>
-                        <Pencil size={12} />
+                      <button className="ss-ib ed" title="Edit site" onClick={() => openEdit(site)}>
+                        <SlidersHorizontal size={14} />
                       </button>
-                      <button onClick={() => handleDelete(site.id)}
-                        style={{ width:34,height:34,borderRadius:'8px',cursor:'pointer',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',background:'#fee2e2',border:'1px solid #fecaca',color:'#dc2626',transition:'all .15s' }}
-                        onMouseEnter={e => { e.currentTarget.style.background='#fecaca' }}
-                        onMouseLeave={e => { e.currentTarget.style.background='#fee2e2' }}>
-                        <Trash2 size={12} />
+                      <button className="ss-ib del" title="Delete site" onClick={() => handleDelete(site.id)}>
+                        <Trash2 size={14} />
                       </button>
                     </div>
-
-
                   </div>
                 </div>
               )
@@ -871,127 +782,103 @@ export default function Sites() {
 
         {/* ── PAGINATION ── */}
         {totalPages > 1 && (
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:'24px' }}>
-            <span style={{ fontSize:'12px', color:'#64748b', fontWeight:'600' }}>
-              Showing {(page-1)*PER_PAGE+1}–{Math.min(page*PER_PAGE, filtered.length)} of {filtered.length} sites
-            </span>
-            <div style={{ display:'flex', gap:'6px' }}>
-              <button onClick={() => setPage(p => Math.max(1,p-1))} disabled={page===1}
-                style={{ padding:'6px 14px', borderRadius:'8px', fontSize:'12px', fontWeight:'600', background:'white', border:'1px solid #e2e8f0', color:page===1?'#cbd5e1':'#64748b', cursor:page===1?'default':'pointer', fontFamily:'inherit' }}>‹</button>
+          <div className="ss-pager">
+            <span>Showing <b>{(page-1)*perPage+1}–{Math.min(page*perPage, filtered.length)}</b> of <b>{filtered.length}</b> sites</span>
+            <div className="ss-pages">
+              <button onClick={() => setPage(p => Math.max(1,p-1))} disabled={page===1}>‹</button>
               {getPageNumbers(page, totalPages).map((p, i) => (
                 p === '…'
-                  ? <span key={`gap-${i}`} style={{ padding:'6px 4px', fontSize:'12px', fontWeight:'700', color:'#cbd5e1' }}>…</span>
-                  : <button key={p} onClick={() => setPage(p)}
-                      style={{ padding:'6px 12px', borderRadius:'8px', fontSize:'12px', fontWeight:'700', background:page===p?'#0f172a':'white', border:`1px solid ${page===p?'#0f172a':'#e2e8f0'}`, color:page===p?'white':'#64748b', cursor:'pointer', fontFamily:'inherit' }}>
-                      {p}
-                    </button>
+                  ? <span key={`gap-${i}`}>…</span>
+                  : <button key={p} className={page===p ? 'on' : ''} onClick={() => setPage(p)}>{p}</button>
               ))}
-              <button onClick={() => setPage(p => Math.min(totalPages,p+1))} disabled={page===totalPages}
-                style={{ padding:'6px 14px', borderRadius:'8px', fontSize:'12px', fontWeight:'600', background:'white', border:'1px solid #e2e8f0', color:page===totalPages?'#cbd5e1':'#64748b', cursor:page===totalPages?'default':'pointer', fontFamily:'inherit' }}>›</button>
+              <button onClick={() => setPage(p => Math.min(totalPages,p+1))} disabled={page===totalPages}>›</button>
             </div>
           </div>
         )}
 
       </main>
 
-      {/* ── FLOATING UPDATE PANEL ── */}
+      {/* ── QUICK UPDATE PANEL ── */}
       {expandedCard && draftStatus && panelAnchor && (() => {
         const site = paginated.find(s => s.id === expandedCard)
         if (!site) return null
-        const close = () => { setExpandedCard(null); setDraftStatus(null); setPanelAnchor(null) }
         return (
           <>
-            <div style={{ position:'fixed', inset:0, zIndex:49 }} onClick={close} />
-            <div style={{
-              position:'fixed', top:'50%', left:'50%', transform:'translate(-50%, -50%)',
-              zIndex:50, width:'100%', maxWidth:'420px', maxHeight:'calc(100vh - 32px)',
-              background:'white', border:'1px solid #e2e8f0', borderRadius:'16px',
-              boxShadow:'0 24px 64px rgba(15,23,42,.18),0 4px 16px rgba(15,23,42,.08)',
-              padding:'18px', overflowY:'auto',
-              animation:'fadeSlideIn .15s ease',
-            }}>
-              <style>{`@keyframes fadeSlideIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}`}</style>
-
-              {/* Header */}
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'14px' }}>
+            <div className="ss-scrim" onClick={closePanel} />
+            <div className="ss-panel" style={{ '--tg':CARD_GRADIENTS[site.site_type] || CARD_GRADIENTS.site_scanning }}>
+              <div className="ss-p-head">
+                <img className="thumb" src={site.site_photo_url || getSiteHeaderImage(site.site_type)} alt="" />
                 <div>
-                  <p style={{ margin:0, fontSize:'13px', fontWeight:'800', color:'#0f172a', lineHeight:1.3 }}>{getSiteTitle(site)}</p>
-                  <p style={{ margin:'2px 0 0', fontSize:'11px', color:'#94a3b8', fontWeight:'500' }}>Update status</p>
+                  <b title={getSiteTitle(site)}>{getSiteTitle(site)}</b>
+                  <small>Update status</small>
                 </div>
-                <button onClick={close} style={{ background:'none', border:'none', cursor:'pointer', color:'#94a3b8', padding:'4px', borderRadius:'6px' }}>
-                  <X size={14} />
-                </button>
+                <button className="x" onClick={closePanel}><X size={15} /></button>
               </div>
 
-              <p style={{ fontSize:'9px', fontWeight:'800', color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.08em', margin:'0 0 8px' }}>Site Status</p>
-              <div style={{ display:'flex', flexWrap:'wrap', gap:'6px', marginBottom:'14px' }}>
-                {['upcoming','ongoing','completed','cancelled','postponed'].map(s => {
-                  const c = STATUS_COLORS[s]; const active = draftStatus.site_status === s
-                  return (
-                    <button key={s} onClick={() => setDraftStatus(d => ({...d, site_status:s}))}
-                      style={{ padding:'5px 11px', borderRadius:'999px', fontSize:'11px', fontWeight:'700', cursor:'pointer', textTransform:'capitalize', fontFamily:'inherit', border:`1px solid ${active?c.border:'#e2e8f0'}`, background:active?c.bg:'#f8fafc', color:active?c.text:'#64748b', transition:'all .12s' }}>
-                      {s}
-                    </button>
-                  )
-                })}
-              </div>
-
-              {(site.site_type === 'site_scanning' || site.site_type === 'site_visit') && (<>
-                <p style={{ fontSize:'9px', fontWeight:'800', color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.08em', margin:'0 0 8px' }}>Report Status</p>
-                <div style={{ display:'flex', flexWrap:'wrap', gap:'6px', marginBottom:'14px' }}>
-                  {['pending','in_progress','submitted','approved','not_applicable'].map(s => {
-                    const c = REPORT_COLORS[s]; const active = draftStatus.report_status === s
-                    const locked = s === 'approved' && !isZairul
-                    return (
-                      <button key={s} disabled={locked} onClick={() => !locked && setDraftStatus(d => ({...d, report_status:s}))} title={locked?'Only Zairul can approve':undefined}
-                        style={{ padding:'5px 11px', borderRadius:'999px', fontSize:'11px', fontWeight:'700', cursor:locked?'not-allowed':'pointer', textTransform:'capitalize', fontFamily:'inherit', border:`1px solid ${active?c.border:'#e2e8f0'}`, background:active?c.bg:'#f8fafc', color:active?c.text:locked?'#cbd5e1':'#64748b', opacity:locked?0.5:1, transition:'all .12s' }}>
-                        {s.replace(/_/g,' ')}
-                      </button>
-                    )
-                  })}
+              <div className="ss-p-body">
+                <div>
+                  <label>Site status</label>
+                  <div className="ss-chips">
+                    {['upcoming','ongoing','completed','cancelled','postponed'].map(s => {
+                      const c = STATUS_TONE[s]
+                      return (
+                        <button key={s} className={draftStatus.site_status === s ? 'on' : ''}
+                          style={{ '--oc':c.dot, '--ot':c.text, '--ob':c.bg }}
+                          onClick={() => setDraftStatus(d => ({...d, site_status:s}))}>
+                          {s}
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
-              </>)}
 
-              {draftStatus.site_status === 'completed' && (
-                <div style={{ display:'grid', gap:'10px', marginBottom:'14px' }}>
+                {(site.site_type === 'site_scanning' || site.site_type === 'site_visit') && (
                   <div>
-                    <label style={{ fontSize:'10px', fontWeight:'800', color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.08em', display:'block', marginBottom:'6px' }}>
-                      Delivery Order Number
-                    </label>
+                    <label>Report status</label>
+                    <div className="ss-chips">
+                      {['pending','in_progress','submitted','approved','not_applicable'].map(s => {
+                        const c = REPORT_TONE[s]
+                        const locked = s === 'approved' && !isZairul
+                        return (
+                          <button key={s} disabled={locked} title={locked ? 'Only Zairul can approve' : undefined}
+                            className={draftStatus.report_status === s ? 'on' : ''}
+                            style={{ '--oc':c.dot, '--ot':c.text, '--ob':c.bg }}
+                            onClick={() => !locked && setDraftStatus(d => ({...d, report_status:s}))}>
+                            {s.replace(/_/g,' ')}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {draftStatus.site_status === 'completed' && (<>
+                  <div>
+                    <label>Delivery order number</label>
                     <input
                       value={draftStatus.delivery_order_number || ''}
                       onChange={event => setDraftStatus(current => ({ ...current, delivery_order_number: event.target.value }))}
                       placeholder="Key in DO number"
-                      style={{ width:'100%', padding:'9px 10px', borderRadius:'10px', border:'1px solid #e2e8f0', fontSize:'12px', color:'#0f172a', outline:'none', boxSizing:'border-box' }}
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize:'10px', fontWeight:'800', color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.08em', display:'block', marginBottom:'6px' }}>
-                      Reason If No DO
-                    </label>
+                    <label>Reason if no DO</label>
                     <textarea
                       value={draftStatus.completion_reason || ''}
                       onChange={event => setDraftStatus(current => ({ ...current, completion_reason: event.target.value }))}
                       placeholder="State the reason if there is no delivery order number"
                       rows={3}
-                      style={{ width:'100%', padding:'9px 10px', borderRadius:'10px', border:'1px solid #e2e8f0', fontSize:'12px', color:'#0f172a', outline:'none', boxSizing:'border-box', resize:'vertical', fontFamily:'inherit' }}
                     />
                   </div>
-                  <p style={{ margin:0, fontSize:'11px', color:'#64748b', lineHeight:1.5 }}>
-                    Completed status requires either a delivery order number or a stated reason.
-                  </p>
-                </div>
-              )}
+                  <p className="hint">Completed status requires either a delivery order number or a stated reason.</p>
+                </>)}
+              </div>
 
-              <div style={{ display:'flex', gap:'8px', borderTop:'1px solid #f1f5f9', paddingTop:'14px' }}>
-                <button onClick={() => handleQuickSave(site)} disabled={!!quickSaving}
-                  style={{ flex:1, padding:'9px 0', borderRadius:'9px', fontSize:'13px', fontWeight:'750', color:'white', cursor:'pointer', border:'none', fontFamily:'inherit', background:'#0f172a', opacity:quickSaving?0.6:1 }}>
+              <div className="ss-p-foot">
+                <button className="save" onClick={() => handleQuickSave(site)} disabled={!!quickSaving}>
                   {quickSaving === site.id ? 'Saving…' : 'Save Changes'}
                 </button>
-                <button onClick={close}
-                  style={{ flex:1, padding:'9px 0', borderRadius:'9px', fontSize:'13px', fontWeight:'600', color:'#475569', cursor:'pointer', fontFamily:'inherit', background:'#f8fafc', border:'1px solid #e2e8f0' }}>
-                  Cancel
-                </button>
+                <button className="cancel" onClick={closePanel}>Cancel</button>
               </div>
             </div>
           </>
