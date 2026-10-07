@@ -197,6 +197,7 @@ export default function Dashboard() {
       supabase
         .from('sites')
         .select('*, site_assignments(assignment_role, member_id, work_date, team_members(id, full_name, avatar_url))')
+        .eq('is_hidden', false)
         .order('scheduled_date', { ascending: true }),
       fetchTeamLeaves().catch(() => []),
     ])

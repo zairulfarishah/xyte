@@ -89,6 +89,7 @@ export default function SiteDetail() {
       supabase
         .from('sites')
         .select('id')
+        .eq('is_hidden', false)
         .order('scheduled_date', { ascending: true }),
     ])
     setSite(siteData)

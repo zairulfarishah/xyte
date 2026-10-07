@@ -73,6 +73,7 @@ export default function Reports() {
     const [{ data: s }, { data: m }] = await Promise.all([
       supabase.from('sites')
         .select(`*, site_assignments(assignment_role, work_date, member_id, team_members(id, full_name, avatar_url))`)
+        .eq('is_hidden', false)
         .order('scheduled_date', { ascending: false }),
       supabase.from('team_members').select('*').order('full_name'),
     ])

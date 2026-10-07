@@ -5,7 +5,7 @@ import { supabase } from '../supabase'
 import {
   Pencil, Trash2, Search, ArrowUpRight, MapPin, MessageCircle, X, Camera,
   Calendar, Check, CheckCircle, SlidersHorizontal, MoreHorizontal, Copy,
-  AlertTriangle, FileWarning, Filter, Plus, CheckSquare, Square, Layers,
+  AlertTriangle, FileWarning, Filter, Plus, CheckSquare, Square, Layers, EyeOff, Eye,
 } from 'lucide-react'
 import { memberSchedule, notify, notifyMany, notifyScheduleChanges, siteRoleIds } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
@@ -322,6 +322,8 @@ export default function Sites() {
   const dateFrom   = params.get('from') || ''
   const dateTo     = params.get('to') || ''
   const grouped    = params.get('group') === '1'
+  // Admin only: look at the hidden sites instead of the visible ones
+  const showHidden = isZairul && params.get('hidden') === '1'
   const sort       = params.get('sort') || (tab === 'Upcoming' ? 'soonest' : 'newest')
 
   // Any change other than the page number goes back to page 1
@@ -790,6 +792,20 @@ export default function Sites() {
     pendingDeletes.current.set(site.id, { timer: setTimeout(commit, UNDO_MS), commit })
   }
 
+  // Admin hides a site from this page (any status), or brings it back
+  async function handleHide(site, hide) {
+    setMoreMenu(null)
+    const { error } = await supabase.from('sites').update({ is_hidden: hide }).eq('id', site.id)
+    if (error) { toast(`Couldn't ${hide ? 'hide' : 'unhide'}: ${error.message}`, { tone:'err', ms:7000 }); return }
+    const patch = list => list.map(s => s.id === site.id ? { ...s, is_hidden: hide } : s)
+    setSites(patch)
+    if (sitesCache) sitesCache.sites = patch(sitesCache.sites)
+    const toastId = toast(`${hide ? 'Hidden' : 'Unhid'} "${site.site_name}"`, {
+      ms: UNDO_MS,
+      action: { label:'Undo', fn: () => { dismissToast(toastId); handleHide(site, !hide) } },
+    })
+  }
+
   const today = todayStr()
   const needsAttention = s => !!staleReason(s, today) || reportOverdueDays(s, today) > 0
   const isMine = s => {
@@ -800,7 +816,9 @@ export default function Sites() {
   const doNumber = s => parseCompletionMeta(s.notes || '').deliveryOrderNumber
 
   // Everything except the status tab, so the tab counts follow the other filters
-  const baseFiltered = sites.filter(s => {
+  const viewSites = sites.filter(s => !!s.is_hidden === showHidden)
+  const hiddenCount = isZairul ? sites.filter(s => s.is_hidden).length : 0
+  const baseFiltered = viewSites.filter(s => {
     if (mine && !isMine(s)) return false
     if (attention && !needsAttention(s)) return false
     if (typeFilter && s.site_type !== typeFilter) return false
@@ -848,8 +866,8 @@ export default function Sites() {
   const filterCount = [mine, attention, typeFilter, repFilter, spFilter, dateFrom, dateTo].filter(Boolean).length
   const hasAnyFilter = filterCount > 0 || !!search || tab !== 'All'
   const clearFilters = () => setParam({ tab:'', q:'', mine:'', attention:'', type:'', report:'', sp:'', from:'', to:'' })
-  const attentionCount = sites.filter(needsAttention).length
-  const myCount = memberId ? sites.filter(isMine).length : 0
+  const attentionCount = viewSites.filter(needsAttention).length
+  const myCount = memberId ? viewSites.filter(isMine).length : 0
 
 
   const lightInput = {
@@ -895,8 +913,8 @@ export default function Sites() {
   )
 
   const closePanel = () => { setExpandedCard(null); setDraftStatus(null); setPanelAnchor(null) }
-  const ongoingCount  = sites.filter(s => s.site_status === 'ongoing').length
-  const upcomingCount = sites.filter(s => s.site_status === 'upcoming').length
+  const ongoingCount  = viewSites.filter(s => s.site_status === 'ongoing').length
+  const upcomingCount = viewSites.filter(s => s.site_status === 'upcoming').length
   const openUpdate = site => {
     const completionMeta = parseCompletionMeta(site.notes || '')
     setPanelAnchor({ open: true })
@@ -980,6 +998,11 @@ export default function Sites() {
             <button className={`ss-tool${selectMode ? ' on' : ''}`} onClick={() => { setSelectMode(v => !v); setSelected(new Set()) }} title="Select several sites to update at once">
               <CheckSquare size={13} /> Select
             </button>
+            {isZairul && (hiddenCount > 0 || showHidden) && (
+              <button className={`ss-tool${showHidden ? ' on' : ''}`} onClick={() => setParam({ hidden: !showHidden })} title="Sites you've hidden from this page">
+                <EyeOff size={13} /> Hidden<i>{hiddenCount}</i>
+              </button>
+            )}
           </div>
         </div>
         </div>
@@ -1023,7 +1046,10 @@ export default function Sites() {
         {paginated.length === 0 ? (
           <div className="ss-empty">
             <MapPin size={28} style={{ opacity:0.35 }} />
-            {sites.length === 0 ? (<>
+            {showHidden && viewSites.length === 0 ? (<>
+              <span>No hidden sites</span>
+              <button className="ss-empty-btn" onClick={() => setParam({ hidden:'' })}>Back to sites</button>
+            </>) : sites.length === 0 ? (<>
               <span>No sites yet</span>
               <button className="ss-empty-btn" onClick={openAdd}><Plus size={14} /> Add your first site</button>
             </>) : (<>
@@ -1208,6 +1234,9 @@ export default function Sites() {
                             <button onClick={() => { setMoreMenu(null); navigate(`/sites/${site.id}`) }}><ArrowUpRight size={14} /><span>Open site</span></button>
                             <button onClick={() => { setMoreMenu(null); openEdit(site) }}><SlidersHorizontal size={14} /><span>Edit site</span></button>
                             <button onClick={() => { setMoreMenu(null); openDuplicate(site) }}><Copy size={14} /><span>Duplicate</span></button>
+                            {isZairul && (site.is_hidden
+                              ? <button onClick={() => handleHide(site, false)}><Eye size={14} /><span>Unhide</span></button>
+                              : <button onClick={() => handleHide(site, true)}><EyeOff size={14} /><span>Hide from Sites</span></button>)}
                             <hr />
                             <button className="danger" onClick={() => handleDelete(site)}><Trash2 size={14} /><span>Delete</span></button>
                           </div>

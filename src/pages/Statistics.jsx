@@ -217,7 +217,7 @@ export default function Statistics() {
 
     async function fetchAll() {
       const [{ data: siteData }, { data: memberData }, { data: docs }, leaveData] = await Promise.all([
-        supabase.from('sites').select('*, site_assignments(assignment_role, work_date, member_id, team_members(id, full_name))'),
+        supabase.from('sites').select('*, site_assignments(assignment_role, work_date, member_id, team_members(id, full_name))').eq('is_hidden', false),
         supabase.from('team_members').select('id, full_name, short_name').order('full_name'),
         supabase.from('library_documents').select('id'),
         fetchTeamLeaves().catch(() => []),

@@ -173,6 +173,7 @@ function SearchOverlay({ onClose }) {
       const [{ data: sites }, { data: members }] = await Promise.all([
         supabase.from('sites')
           .select('id, site_name, location, site_status, site_type')
+          .eq('is_hidden', false)
           .ilike('site_name', `%${query}%`)
           .limit(6),
         supabase.from('team_members')

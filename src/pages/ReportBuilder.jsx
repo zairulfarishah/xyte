@@ -1606,7 +1606,7 @@ export default function ReportBuilder() {
   const [sites, setSites] = useState([])
 
   useEffect(() => {
-    supabase.from('sites').select('id, site_name, location, client_company_name, scheduled_date, site_photo_url').order('site_name').then(({ data }) => setSites(data || []))
+    supabase.from('sites').select('id, site_name, location, client_company_name, scheduled_date, site_photo_url').eq('is_hidden', false).order('site_name').then(({ data }) => setSites(data || []))
   }, [])
 
   if (openReportId) return <EditorView reportId={openReportId} sites={sites} onBack={() => setOpenReportId(null)} />

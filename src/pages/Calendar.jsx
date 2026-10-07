@@ -111,6 +111,7 @@ export default function CalendarPage() {
       .select(`id, site_name, site_type, site_status, scheduled_date, end_date, site_session, site_photo_url, location,
         client_company_name, scope_of_work, site_duration_days,
         site_assignments(assignment_role, work_date, team_members(id, short_name, full_name, avatar_url))`)
+      .eq('is_hidden', false)
       .or(`and(scheduled_date.gte.${from},scheduled_date.lte.${to}),and(end_date.gte.${from},end_date.lte.${to}),and(scheduled_date.lte.${from},end_date.gte.${to})`)
       .order('scheduled_date')
     setSites(data || [])

@@ -67,7 +67,7 @@ export default function MyTimecard({ month, setMonth, viewId, setViewId }) {
   useEffect(() => {
     Promise.all([
       supabase.from('team_members').select('id, full_name, short_name').order('full_name'),
-      supabase.from('sites').select('id, site_name, site_status, scheduled_date, end_date, site_assignments(member_id, work_date, assignment_role)'),
+      supabase.from('sites').select('id, site_name, site_status, is_hidden, scheduled_date, end_date, site_assignments(member_id, work_date, assignment_role)'),
       fetchTeamLeaves().catch(() => []),
     ]).then(([m, s, l]) => {
       setMembers(m.data || [])
@@ -107,7 +107,7 @@ export default function MyTimecard({ month, setMonth, viewId, setViewId }) {
   // No assignment means the default: Store (site_id '').
   function suggestedSiteIds(date) {
     return sites
-      .filter(s => s.site_status !== 'cancelled' &&
+      .filter(s => s.site_status !== 'cancelled' && !s.is_hidden &&
         getSiteDates(s).includes(date) &&
         assignmentsForDate(s.site_assignments || [], date).some(a => assignmentMemberId(a) === viewId))
       .map(s => s.id)
@@ -484,7 +484,8 @@ function SitePicker({ value, sites, date, suggested, disabled, onChange }) {
   const q = query.trim().toLowerCase()
   const sections = useMemo(() => {
     if (!open) return []
-    const match = s => !q || s.site_name.toLowerCase().includes(q) || shortDate(s.scheduled_date).toLowerCase().includes(q)
+    // Hidden sites still name slots already saved against them, but aren't offered for new ones
+    const match = s => !s.is_hidden && (!q || s.site_name.toLowerCase().includes(q) || shortDate(s.scheduled_date).toLowerCase().includes(q))
     const onDay = sites.filter(s => getSiteDates(s).includes(date) && match(s))
       .sort((a, b) => (suggested.includes(b.id) ? 1 : 0) - (suggested.includes(a.id) ? 1 : 0))
     const onDayIds = new Set(onDay.map(s => s.id))

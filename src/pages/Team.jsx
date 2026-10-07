@@ -71,6 +71,7 @@ export default function Team() {
       supabase
         .from('sites')
         .select('id, site_name, location, scheduled_date, end_date, site_status, report_status, site_type, site_session, site_assignments(member_id, assignment_role, work_date)')
+        .eq('is_hidden', false)
         .order('scheduled_date', { ascending: true }),
       fetchTeamLeaves().catch(() => []),
     ])

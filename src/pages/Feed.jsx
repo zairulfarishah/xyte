@@ -661,7 +661,7 @@ export default function Feed() {
   useEffect(() => {
     Promise.all([
       supabase.from('team_members').select('id, full_name, short_name, avatar_url').order('full_name'),
-      supabase.from('sites').select('id, site_name').order('site_name'),
+      supabase.from('sites').select('id, site_name').eq('is_hidden', false).order('site_name'),
     ]).then(([{ data: m }, { data: s }]) => {
       setMembers(m || [])
       setSites(s || [])

@@ -57,6 +57,7 @@ export default function MapView() {
     const { data } = await supabase
       .from('sites')
       .select(`*, site_assignments(assignment_role, work_date, member_id, team_members(full_name))`)
+      .eq('is_hidden', false)
       .order('scheduled_date', { ascending: true })
     setSites(data || [])
     setLoading(false)

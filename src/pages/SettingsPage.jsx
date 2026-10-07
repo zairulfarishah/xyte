@@ -118,7 +118,7 @@ export default function SettingsPage() {
   async function fetchAll() {
     const [{ data: m }, { data: s }, { count }, leaveData] = await Promise.all([
       supabase.from('team_members').select('*').order('created_at'),
-      supabase.from('sites').select('id, site_name, site_status, report_status, scheduled_date, end_date, site_assignments(member_id, work_date, assignment_role)'),
+      supabase.from('sites').select('id, site_name, site_status, report_status, scheduled_date, end_date, site_assignments(member_id, work_date, assignment_role)').eq('is_hidden', false),
       supabase.from('library_documents').select('id', { count: 'exact', head: true }),
       fetchTeamLeaves().catch(() => []),
     ])
