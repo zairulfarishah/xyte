@@ -7,6 +7,7 @@ import { fetchTeamLeaves, setOffDay, saveTeamLeaves } from '../utils/teamLeaves'
 import { useAuth } from '../context/AuthContext'
 import { assignmentsForDate } from '../utils/siteDays'
 import CalendarListView from './CalendarList'
+import SitesViewSwitch from '../components/SitesViewSwitch'
 import { DEFAULT_CALENDAR_SETTINGS, fetchCalendarSettings, saveCalendarSettings } from '../utils/calendarSettings'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -165,6 +166,7 @@ export default function CalendarPage() {
             <p style={{ color: '#94a3b8', fontSize: '12px', marginTop: '3px' }}>
               {sites.length} site{sites.length !== 1 ? 's' : ''} in {monthLabel}
             </p>
+            <SitesViewSwitch style={{ marginTop: '10px' }} />
           </div>
           <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
             <button
@@ -268,6 +270,7 @@ export default function CalendarPage() {
             <p style={{ color: '#94a3b8', fontSize: '13px', marginTop: '2px' }}>
               {sites.length} site{sites.length !== 1 ? 's' : ''} this month
             </p>
+            <SitesViewSwitch style={{ marginTop: '12px' }} />
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>

@@ -8,6 +8,8 @@ import {
 } from '../utils/teamLeaves'
 import { publicHolidayName } from '../utils/holidays'
 import { memberDatesOnSite } from '../utils/siteDays'
+import { removeLeaveFromSites } from '../utils/leaveAssignments'
+import { toast } from '../utils/toast'
 import { formatPhoneDisplay, isValidPhone, normalizePhone } from '../utils/whatsapp'
 import NotificationSettings from '../components/NotificationSettings'
 import './Settings.css'
@@ -166,7 +168,7 @@ export default function SettingsPage() {
           </div>
         ) : <>
           {tab === 'members' && <MembersTab members={members} setRawMembers={setRawMembers} />}
-          {tab === 'leave' && <LeaveTab members={members} sites={sites} leaves={leaves} setLeaves={setLeaves} />}
+          {tab === 'leave' && <LeaveTab members={members} sites={sites} leaves={leaves} setLeaves={setLeaves} onSitesChanged={fetchAll} />}
           {tab === 'notifications' && <><div className="st-bar"><div><h2>Notifications</h2><p>What you get alerted about on this account</p></div></div><div className="st-narrow"><NotificationSettings /></div></>}
           {tab === 'about' && <AboutTab sites={sites} docCount={docCount} />}
         </>}
@@ -368,7 +370,8 @@ async function createLogin(email, password, fullName) {
 }
 
 // ════════════════════════ Team leave ════════════════════════
-function LeaveTab({ members, sites, leaves, setLeaves }) {
+function LeaveTab({ members, sites, leaves, setLeaves, onSitesChanged }) {
+  const { fullName } = useAuth()
   const today = isoOf(new Date())
   const [month, setMonth] = useState(today.slice(0, 7))
   const [draft, setDraft] = useState(null) // leave being added/edited
@@ -390,7 +393,8 @@ function LeaveTab({ members, sites, leaves, setLeaves }) {
     setDraft({ id: null, member_id: memberId, leave_type: REAL_LEAVE_TYPES[0], leave_session: 'FULL_DAY', start_date: date, end_date: date, note: '' })
   const openEdit = leave => setDraft({ ...leave, end_date: endOf(leave), leave_session: leave.leave_session || 'FULL_DAY', note: leave.note || '' })
 
-  async function persist(next) {
+  // savedRow: the leave just added/edited — the person comes off any site on those days
+  async function persist(next, savedRow = null) {
     setSaving(true)
     setError('')
     try {
@@ -398,10 +402,29 @@ function LeaveTab({ members, sites, leaves, setLeaves }) {
       setLeaves(next)
       setDraft(null)
       window.dispatchEvent(new CustomEvent('xyte:leaves-updated'))
+      if (savedRow) await takeOffSites(savedRow)
     } catch (err) {
       setError(err.message || 'Unable to save leave.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function takeOffSites(row) {
+    const who = memberById[row.member_id]?.short_name || 'They'
+    try {
+      const { removed, halfDay } = await removeLeaveFromSites(row, { actor: fullName })
+      if (removed.length) {
+        const names = removed.map(x => `"${x.site.site_name}"`).join(', ')
+        const lostPic = removed.filter(x => x.wasPic).map(x => x.site.site_name)
+        toast(`${who} taken off ${names}${lostPic.length ? ` — pick a new PIC for ${lostPic.join(', ')}` : ''}`, { tone: lostPic.length ? 'warn' : 'ok', ms: 9000 })
+        onSitesChanged?.()
+      }
+      if (halfDay.length) {
+        toast(`${who} is on half-day leave but still booked full day on ${halfDay.map(x => x.site.site_name).join(', ')} — check the crew`, { tone: 'warn', ms: 9000 })
+      }
+    } catch (err) {
+      toast(`Leave saved, but couldn't update sites: ${err.message}`, { tone: 'err', ms: 9000 })
     }
   }
 
@@ -421,7 +444,7 @@ function LeaveTab({ members, sites, leaves, setLeaves }) {
     const clash = leaves.find(l => l.id !== row.id && l.member_id === row.member_id && !isOffDay(l) && !isOffDay(row) &&
       !(row.end_date < l.start_date || row.start_date > endOf(l)))
     if (clash) return setError(`${memberById[row.member_id]?.short_name || 'They'} already has ${titleCase(clash.leave_type)} on ${rangeLabel(clash)}.`)
-    persist(d.id ? leaves.map(l => l.id === d.id ? row : l) : [...leaves, row])
+    persist(d.id ? leaves.map(l => l.id === d.id ? row : l) : [...leaves, row], row)
   }
 
   function deleteDraft() {
@@ -633,7 +656,7 @@ function LeaveDrawer({ draft, setDraft, members, memberById, sites, saving, erro
 
   // Sites this person is booked on during the leave
   const clashes = !draft.member_id || !draft.start_date ? [] : sites
-    .filter(s => !['cancelled', 'postponed'].includes(String(s.site_status || '').toLowerCase()))
+    .filter(s => ['upcoming', 'ongoing'].includes(String(s.site_status || '').toLowerCase()))
     .map(s => ({ s, dates: memberDatesOnSite(s, draft.member_id).filter(d => d >= draft.start_date && d <= end) }))
     .filter(x => x.dates.length)
 
@@ -705,7 +728,9 @@ function LeaveDrawer({ draft, setDraft, members, memberById, sites, saving, erro
             <div className="st-warn-list">
               <b style={{ fontSize: 12 }}>⚠ {m?.short_name || 'They'} {clashes.length === 1 ? 'is' : 'are'} booked on site:</b>
               {clashes.map(({ s, dates }) => <span key={s.id}>{s.site_name} — {dates.map(d => fmt(d)).join(', ')}</span>)}
-              <span>Saving still works; reassign the site if needed.</span>
+              <span>{isOffDay(draft) ? 'Off days do not change the site crew.'
+                : draft.leave_session === 'FULL_DAY' ? 'Saving takes them off the site on these days.'
+                : 'Half-day leave: they only come off a site booked for that same half.'}</span>
             </div>
           )}
         </div>

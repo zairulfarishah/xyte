@@ -4,6 +4,7 @@ import L from 'leaflet'
 import { supabase } from '../supabase'
 import { Search } from 'lucide-react'
 import PlaceSearchBox from '../components/PlaceSearchBox'
+import SitesViewSwitch from '../components/SitesViewSwitch'
 import { useViewport } from '../utils/useViewport'
 import { siteCrew, sitePic } from '../utils/siteDays'
 import 'leaflet/dist/leaflet.css'
@@ -91,9 +92,11 @@ export default function MapView() {
     <div style={{ padding: isMobile ? '14px' : '16px 20px', minHeight: 'calc(100vh - 54px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
       {/* Header */}
-      <div style={{ marginBottom: '12px', flexShrink: 0 }}>
-        <h1 style={{ fontSize: '20px', fontWeight: '700', color: '#0f172a' }}>Map</h1>
-        <p style={{ color: '#64748b', fontSize: '12px', marginTop: '1px' }}>All site locations</p>
+      {/* Same dark band as Sites and Calendar */}
+      <div style={{ flexShrink: 0, background: '#071226', margin: isMobile ? '-14px -14px 14px' : '-16px -20px 16px', padding: isMobile ? '18px 14px 16px' : '24px 32px 20px' }}>
+        <h1 style={{ fontSize: '22px', fontWeight: '700', color: 'white' }}>Map</h1>
+        <p style={{ color: '#94a3b8', fontSize: '13px', marginTop: '2px' }}>All site locations</p>
+        <SitesViewSwitch style={{ marginTop: '12px' }} />
       </div>
 
       {/* Main layout */}

@@ -4,6 +4,7 @@ import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { useViewport } from '../utils/useViewport'
 import { notify, notifyMany } from '../utils/notify'
+import { undoableDelete } from '../utils/toast'
 import {
   FEED_BUCKET, feedPublicUrl, isImageAttachment, notExpiredFilter, isExpired,
   timeAgo, fmtDateTime, fmtShortDate, expiryFromDate, dateFromExpiry,
@@ -451,6 +452,7 @@ function Comments({ post, comments, members, onChange }) {
   const { memberId, fullName, isZairul } = useAuth()
   const [text, setText] = useState('')
   const [saving, setSaving] = useState(false)
+  const [removedIds, setRemovedIds] = useState(() => new Set())
 
   async function handleAdd() {
     const body = text.trim()
@@ -474,16 +476,23 @@ function Comments({ post, comments, members, onChange }) {
     onChange()
   }
 
-  async function handleDelete(c) {
-    if (!confirm('Delete this comment?')) return
-    const { error } = await supabase.from('feed_comments').delete().eq('id', c.id)
-    if (error) { alert(error.message); return }
-    onChange()
+  function handleDelete(c) {
+    const toggle = on => setRemovedIds(prev => { const next = new Set(prev); if (on) next.add(c.id); else next.delete(c.id); return next })
+    undoableDelete({
+      label: 'comment',
+      hide: () => toggle(true),
+      restore: () => toggle(false),
+      commit: async () => {
+        const { error } = await supabase.from('feed_comments').delete().eq('id', c.id)
+        if (error) throw error
+        onChange()
+      },
+    })
   }
 
   return (
     <div style={{ borderTop: '1px solid #f1f5f9', marginTop: '10px', paddingTop: '12px', display: 'grid', gap: '10px' }}>
-      {comments.map(c => (
+      {comments.filter(c => !removedIds.has(c.id)).map(c => (
         <div key={c.id} style={{ display: 'flex', gap: '10px' }}>
           <Avatar person={c.author} name={c.author_name} size={28} />
           <div style={{ flex: 1, minWidth: 0, background: '#f1f5f9', borderRadius: '12px', padding: '8px 12px' }}>
@@ -527,6 +536,7 @@ function PostCard({ post, comments, reactions, members, sites, onChange, onToggl
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState({ body: '', siteId: '', hideAfter: '' })
   const [saving, setSaving] = useState(false)
+  const [removed, setRemoved] = useState(false)
   const expired = isExpired(post)
 
   function startEdit() {
@@ -560,14 +570,23 @@ function PostCard({ post, comments, reactions, members, sites, onChange, onToggl
     onChange()
   }
 
-  async function handleDelete() {
-    if (!confirm('Delete this post and its comments?')) return
-    const paths = (post.attachments || []).map(a => a.path)
-    if (paths.length) await supabase.storage.from(FEED_BUCKET).remove(paths)
-    const { error } = await supabase.from('feed_posts').delete().eq('id', post.id)
-    if (error) { alert(error.message); return }
-    onChange()
+  function handleDelete() {
+    undoableDelete({
+      label: 'post',
+      hide: () => setRemoved(true),
+      restore: () => setRemoved(false),
+      commit: async () => {
+        const { error } = await supabase.from('feed_posts').delete().eq('id', post.id)
+        if (error) throw error
+        // Files go only once the post itself is gone
+        const paths = (post.attachments || []).map(a => a.path)
+        if (paths.length) await supabase.storage.from(FEED_BUCKET).remove(paths)
+        onChange()
+      },
+    })
   }
+
+  if (removed) return null
 
   return (
     <div style={{ ...card, padding: '16px', borderLeft: post.pinned ? '4px solid #f59e0b' : card.border, opacity: expired ? 0.65 : 1 }}>

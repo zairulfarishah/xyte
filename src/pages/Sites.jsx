@@ -10,6 +10,7 @@ import {
 import { memberSchedule, notify, notifyMany, notifyScheduleChanges, siteRoleIds } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
+import SitesViewSwitch from '../components/SitesViewSwitch'
 import { getSiteHeaderImage } from '../utils/siteHeader'
 import { mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../utils/completionMeta'
 import { fetchTeamLeaves, getLeaveSessionLabel, getLeaveSummary, getMemberLeaveOnDate } from '../utils/teamLeaves'
@@ -956,6 +957,7 @@ export default function Sites() {
                 </button></>
               )}
             </p>
+            <SitesViewSwitch style={{ marginTop:'12px' }} />
           </div>
           <label className="ss-search">
             <Search size={15} strokeWidth={2.2} />

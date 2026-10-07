@@ -121,7 +121,7 @@ export function PushPrompt() {
   }
 
   return (
-    <div style={{ position: 'fixed', left: '16px', right: '16px', bottom: '16px', zIndex: 1500, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+    <div style={{ position: 'fixed', left: '16px', right: '16px', bottom: 'calc(16px + var(--bnav, 0px))', zIndex: 1500, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
       <div style={{ pointerEvents: 'auto', width: '100%', maxWidth: '420px', background: '#0f172a', color: 'white', border: '1px solid rgba(148,163,184,0.25)', borderRadius: '16px', boxShadow: '0 20px 50px rgba(2,6,23,0.45)', padding: '14px 16px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
         <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <BellRing size={17} />

@@ -1,10 +1,15 @@
 import { lazy, Suspense, useState, useEffect, useRef } from 'react'
-import { BrowserRouter, Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { Search, Bell, X, MapPin, Users, Plus, LogOut, Menu, ChevronDown } from 'lucide-react'
+import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import {
+  Search, Bell, X, MapPin, Users, Plus, LogOut, ChevronDown, Home, Clock, MessageSquare,
+  FileText, Receipt, CheckSquare, FolderOpen, BarChart3, Settings, LayoutGrid,
+} from 'lucide-react'
 import { supabase } from './supabase'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { useViewport } from './utils/useViewport'
 import { PushToggle, PushPrompt } from './components/PushControls'
+import Toaster from './components/Toaster'
+import './components/ui.css'
 
 const LoginPage = lazy(() => import('./pages/LoginPage'))
 
@@ -26,36 +31,57 @@ const ReportBuilder = lazy(() => import('./pages/ReportBuilder'))
 const Feed = lazy(() => import('./pages/Feed'))
 
 // Hidden for now — routes still work by direct URL: /report-builder (Xport), /tools
+// Calendar and Map are views of Sites (switch at the top of each), so "Sites" covers all three.
+const SITE_VIEWS = ['/sites', '/calendar', '/map']
 const NAV = [
-  { to: '/', label: 'Dashboard', end: true },
-  { to: '/sites', label: 'Sites', end: false },
-  { to: '/team', label: 'Team', end: false },
-  { to: '/feed', label: 'Feed', end: false },
-  {
-    label: 'Field',
-    items: [
-      { to: '/map', label: 'Map' },
-      { to: '/calendar', label: 'Calendar' },
-      { to: '/tasks', label: 'Tasks' },
-    ],
-  },
+  { to: '/', label: 'Dashboard', Icon: Home, end: true },
+  { to: '/sites', label: 'Sites', Icon: MapPin, match: SITE_VIEWS },
+  { to: '/timecard', label: 'Timecard', Icon: Clock },
+  { to: '/team', label: 'Team', Icon: Users },
+  { to: '/feed', label: 'Feed', Icon: MessageSquare },
   {
     label: 'Office',
     items: [
-      { to: '/library', label: 'Library' },
-      { to: '/reports', label: 'Reports' },
-      { to: '/claim', label: 'Claim' },
-      { to: '/schedule', label: 'Schedule' },
+      { to: '/reports', label: 'Reports', Icon: FileText },
+      { to: '/claim', label: 'Claims', Icon: Receipt },
+      { to: '/tasks', label: 'Tasks', Icon: CheckSquare },
+      { to: '/library', label: 'Library', Icon: FolderOpen },
     ],
   },
   {
     label: 'Admin',
+    adminOnly: true,
     items: [
-      { to: '/statistics', label: 'Statistics' },
-      { to: '/settings', label: 'Settings' },
+      { to: '/statistics', label: 'Statistics', Icon: BarChart3 },
+      { to: '/settings', label: 'Settings', Icon: Settings },
     ],
   },
 ]
+
+const isOn = (item, pathname) => item.match
+  ? item.match.some(p => pathname === p || pathname.startsWith(p + '/'))
+  : item.end ? pathname === item.to : pathname === item.to || pathname.startsWith(item.to + '/')
+
+// Things waiting on the admin: reports to approve and expense claims to review.
+// Re-checked on every route change and once a minute.
+function useAdminBadges(isAdmin, pathname) {
+  const [counts, setCounts] = useState({})
+  useEffect(() => {
+    if (!isAdmin) return undefined
+    let cancelled = false
+    async function check() {
+      const [reports, claims] = await Promise.all([
+        supabase.from('sites').select('id', { count: 'exact', head: true }).eq('report_status', 'submitted').eq('is_hidden', false),
+        supabase.from('claims').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+      ])
+      if (!cancelled) setCounts({ '/reports': reports.count || 0, '/claim': claims.count || 0 })
+    }
+    check()
+    const timer = setInterval(check, 60000)
+    return () => { cancelled = true; clearInterval(timer) }
+  }, [isAdmin, pathname])
+  return isAdmin ? counts : {}
+}
 
 const FEED_SEEN_KEY = 'xyte_feed_seen'
 
@@ -96,11 +122,12 @@ function UnreadBadge({ count }) {
   )
 }
 
-function NavGroup({ label, items, pillStyle }) {
+function NavGroup({ label, items, pillStyle, badges = {} }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   const { pathname } = useLocation()
-  const isActive = items.some(i => pathname === i.to || pathname.startsWith(i.to + '/'))
+  const isActive = items.some(i => isOn(i, pathname))
+  const total = items.reduce((n, i) => n + (badges[i.to] || 0), 0)
 
   useEffect(() => {
     if (!open) return
@@ -116,6 +143,7 @@ function NavGroup({ label, items, pillStyle }) {
         style={{ ...pillStyle({ isActive }), border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
       >
         {label}
+        {!open && <UnreadBadge count={total} />}
         <ChevronDown size={13} style={{ transition: 'transform 0.15s', transform: open ? 'rotate(180deg)' : 'none' }} />
       </button>
       {open && (
@@ -133,9 +161,14 @@ function NavGroup({ label, items, pillStyle }) {
                 fontWeight: '600',
                 background: isActive ? '#2563eb' : 'transparent',
                 color: isActive ? 'white' : '#cbd5e1',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '9px',
               })}
             >
-              {item.label}
+              {item.Icon && <item.Icon size={14} style={{ opacity: 0.8 }} />}
+              <span style={{ flex: 1 }}>{item.label}</span>
+              <UnreadBadge count={badges[item.to]} />
             </NavLink>
           ))}
         </div>
@@ -170,11 +203,15 @@ function SearchOverlay({ onClose }) {
     }
     setLoading(true)
     const t = setTimeout(async () => {
+      // Commas and brackets would break the or() filter; DO numbers live in notes
+      const q = query.trim().replace(/[,()*%\\]/g, ' ')
+      const fields = ['site_name', 'location', 'client_company_name', 'client_name', 'salesperson', 'notes']
       const [{ data: sites }, { data: members }] = await Promise.all([
         supabase.from('sites')
-          .select('id, site_name, location, site_status, site_type')
+          .select('id, site_name, location, site_status, site_type, client_company_name')
           .eq('is_hidden', false)
-          .ilike('site_name', `%${query}%`)
+          .or(fields.map(f => `${f}.ilike.%${q}%`).join(','))
+          .order('scheduled_date', { ascending: false })
           .limit(6),
         supabase.from('team_members')
           .select('id, full_name, role')
@@ -213,7 +250,7 @@ function SearchOverlay({ onClose }) {
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={e => e.key === 'Escape' && onClose()}
-            placeholder="Search sites, team members..."
+            placeholder="Search sites, clients, DO, people…"
             style={{ flex: 1, border: 'none', outline: 'none', fontSize: '15px', color: '#0f172a', background: 'none' }}
           />
           {loading && <div style={{ width: '14px', height: '14px', borderRadius: '50%', border: '2px solid #e2e8f0', borderTopColor: '#2563eb', animation: 'spin 0.6s linear infinite' }} />}
@@ -240,7 +277,9 @@ function SearchOverlay({ onClose }) {
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontWeight: '600', fontSize: '13px', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{site.site_name}</p>
-                      <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '1px' }}>{site.location}</p>
+                      <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {[site.client_company_name, site.location].filter(Boolean).join(' · ')}
+                      </p>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                       <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: STATUS_DOT[site.site_status] || '#94a3b8' }} />
@@ -272,14 +311,30 @@ function SearchOverlay({ onClose }) {
                 ))}
               </>
             )}
+            <SeeAllInSites query={query} go={go} />
           </div>
         ) : query.trim() && !loading ? (
-          <p style={{ padding: '28px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>No results for "{query}"</p>
+          <>
+            <p style={{ padding: '28px 28px 12px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>No results for "{query}"</p>
+            <SeeAllInSites query={query} go={go} />
+          </>
         ) : !query.trim() ? (
-          <p style={{ padding: '28px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>Type to search sites or team members...</p>
+          <p style={{ padding: '28px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>Search sites, clients, locations, DO numbers or team members…</p>
         ) : null}
       </div>
     </div>
+  )
+}
+
+// The Sites page search also matches crew names and scope, so hand the query over there
+function SeeAllInSites({ query, go }) {
+  return (
+    <button
+      onClick={() => go(`/sites?q=${encodeURIComponent(query.trim())}`)}
+      style={{ width: '100%', padding: '12px 20px', border: 'none', borderTop: '1px solid #f1f5f9', background: '#f8fafc', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', fontWeight: '700', color: '#2563eb', textAlign: 'left' }}
+    >
+      <LayoutGrid size={14} /> See all sites matching “{query.trim()}” →
+    </button>
   )
 }
 
@@ -336,7 +391,7 @@ function PageLoader() {
 function AppShell() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { user, loading: authLoading, fullName, avatarUrl, memberId } = useAuth()
+  const { user, loading: authLoading, fullName, avatarUrl, memberId, isZairul } = useAuth()
   const [searchOpen, setSearchOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
   const [notifs, setNotifs] = useState([])
@@ -347,6 +402,14 @@ function AppShell() {
   const avatarRef = useRef(null)
   const { isMobile, isTablet } = useViewport()
   const feedUnread = useFeedUnread(user, memberId, location.pathname)
+  const adminBadges = useAdminBadges(isZairul, location.pathname)
+  const badges = { ...adminBadges, '/feed': feedUnread }
+  const nav = NAV.filter(item => !item.adminOnly || isZairul)
+  // Phone bar holds the everyday pages; everything else is under "More"
+  const BAR = ['/', '/sites', '/timecard']
+  const moreItems = nav.flatMap(item => item.items ? [{ heading: item.label }, ...item.items] : (BAR.includes(item.to) ? [] : [item]))
+  const moreBadge = moreItems.reduce((n, i) => n + (badges[i.to] || 0), 0)
+  const moreActive = moreItems.some(i => i.to && isOn(i, location.pathname))
 
   useEffect(() => {
     setMobileMenuOpen(false)
@@ -470,16 +533,6 @@ function AppShell() {
         {isMobile && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', minHeight: '40px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-              <button
-                onClick={() => setMobileMenuOpen(open => !open)}
-                style={{ position: 'relative', width: '34px', height: '34px', borderRadius: '10px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
-              >
-                {mobileMenuOpen ? <X size={17} /> : <Menu size={17} />}
-                {feedUnread > 0 && !mobileMenuOpen && (
-                  <span style={{ position: 'absolute', top: '-3px', right: '-3px', width: '10px', height: '10px', borderRadius: '50%', background: '#ef4444', border: '2px solid #0f172a' }} />
-                )}
-              </button>
-
               <NavLink to="/" style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', flexShrink: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1 }}>
                   <span style={{ fontSize: '18px', fontWeight: '900', color: '#22c55e', letterSpacing: '-0.03em', lineHeight: 1, textShadow: '0 0 12px rgba(34,197,94,0.5), 0 0 32px rgba(34,197,94,0.15)' }}>X</span>
@@ -552,12 +605,13 @@ function AppShell() {
 
             <div style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '2px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '999px', padding: '4px', width: 'max-content', maxWidth: '100%' }}>
-                {NAV.map(item => item.items
-                  ? <NavGroup key={item.label} label={item.label} items={item.items} pillStyle={desktopNavStyle} />
+                {nav.map(item => item.items
+                  ? <NavGroup key={item.label} label={item.label} items={item.items} pillStyle={desktopNavStyle} badges={badges} />
                   : (
-                    <NavLink key={item.to} to={item.to} end={item.end} style={args => ({ ...desktopNavStyle(args), display: 'flex', alignItems: 'center', gap: '6px' })}>
+                    <NavLink key={item.to} to={item.to} end={item.end}
+                      style={() => ({ ...desktopNavStyle({ isActive: isOn(item, location.pathname) }), display: 'flex', alignItems: 'center', gap: '6px' })}>
                       {item.label}
-                      {item.to === '/feed' && <UnreadBadge count={feedUnread} />}
+                      <UnreadBadge count={badges[item.to]} />
                     </NavLink>
                   ))}
               </div>
@@ -625,52 +679,9 @@ function AppShell() {
             </div>
           </div>
         )}
-
-        {isMobile && mobileMenuOpen && (
-          <div style={{ background: 'rgba(15,23,42,0.98)', border: '1px solid rgba(148,163,184,0.12)', borderRadius: '18px', padding: '12px', display: 'grid', gap: '8px' }}>
-            <button
-              onClick={() => {
-                handleOpenAddSite()
-                setMobileMenuOpen(false)
-              }}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: '#2563eb', border: 'none', cursor: 'pointer', color: 'white', padding: '10px 12px', borderRadius: '12px', fontSize: '13px', fontWeight: '700' }}
-            >
-              <Plus size={14} /> Add Site
-            </button>
-
-            <div style={{ display: 'grid', gap: '6px' }}>
-              {NAV.flatMap(item => item.items ? [{ heading: item.label }, ...item.items] : [item]).map(({ heading, to, label, end }) => heading ? (
-                <p key={heading} style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '0.08em', textTransform: 'uppercase', color: '#64748b', margin: '8px 4px 0' }}>{heading}</p>
-              ) : (
-                <NavLink
-                  key={to}
-                  to={to}
-                  end={end}
-                  onClick={() => setMobileMenuOpen(false)}
-                  style={({ isActive }) => ({
-                    padding: '11px 12px',
-                    borderRadius: '12px',
-                    textDecoration: 'none',
-                    fontSize: '13px',
-                    fontWeight: '600',
-                    background: isActive ? '#2563eb' : 'rgba(255,255,255,0.04)',
-                    color: isActive ? 'white' : '#cbd5e1',
-                    border: isActive ? '1px solid #3b82f6' : '1px solid rgba(148,163,184,0.08)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  })}
-                >
-                  {label}
-                  {to === '/feed' && <UnreadBadge count={feedUnread} />}
-                </NavLink>
-              ))}
-            </div>
-          </div>
-        )}
       </nav>
 
-      <main style={{ flex: 1, minWidth: 0 }}>
+      <main className="xt-main" style={{ flex: 1, minWidth: 0 }}>
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/" element={<Dashboard />} />
@@ -684,16 +695,63 @@ function AppShell() {
             <Route path="/reports" element={<Reports />} />
             <Route path="/tools" element={<Tools />} />
             <Route path="/tasks" element={<TaskPage />} />
-            <Route path="/statistics" element={<Statistics />} />
+            <Route path="/statistics" element={isZairul ? <Statistics /> : <Navigate to="/" replace />} />
             <Route path="/claim" element={<Claim />} />
-            <Route path="/schedule" element={<Schedule />} />
+            <Route path="/timecard" element={<Schedule />} />
+            <Route path="/schedule" element={<Navigate to={`/timecard${location.search}`} replace />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/report-builder" element={<ReportBuilder />} />
           </Routes>
         </Suspense>
       </main>
 
+      {isMobile && (<>
+        {mobileMenuOpen && (<>
+          <div className="xt-sheet-scrim" onClick={() => setMobileMenuOpen(false)} />
+          <div className="xt-sheet">
+            {[
+              { heading: null, items: nav.filter(i => !i.items && !BAR.includes(i.to)) },
+              ...nav.filter(i => i.items).map(g => ({ heading: g.label, items: g.items })),
+            ].map(({ heading, items }) => (
+              <div key={heading || 'top'}>
+                {heading && <h6>{heading}</h6>}
+                <div className="grid">
+                  {items.map(item => (
+                    <NavLink key={item.to} to={item.to} className={isOn(item, location.pathname) ? 'on' : ''} onClick={() => setMobileMenuOpen(false)}>
+                      {badges[item.to] > 0 && <span className="dot">{badges[item.to] > 9 ? '9+' : badges[item.to]}</span>}
+                      <item.Icon size={19} />
+                      {item.label}
+                    </NavLink>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>)}
+
+        <nav className="xt-bnav" aria-label="Main">
+          {nav.filter(i => BAR.slice(0, 2).includes(i.to)).map(item => (
+            <NavLink key={item.to} to={item.to} end={item.end} className={isOn(item, location.pathname) && !mobileMenuOpen ? 'on' : ''}>
+              <item.Icon size={20} /> {item.label === 'Dashboard' ? 'Home' : item.label}
+            </NavLink>
+          ))}
+          <button className="add" onClick={() => { setMobileMenuOpen(false); handleOpenAddSite() }} aria-label="Add site">
+            <span><Plus size={22} strokeWidth={2.6} /></span>
+          </button>
+          {nav.filter(i => i.to === '/timecard').map(item => (
+            <NavLink key={item.to} to={item.to} className={isOn(item, location.pathname) && !mobileMenuOpen ? 'on' : ''}>
+              <item.Icon size={20} /> {item.label}
+            </NavLink>
+          ))}
+          <button className={mobileMenuOpen || moreActive ? 'on' : ''} onClick={() => setMobileMenuOpen(o => !o)}>
+            {moreBadge > 0 && !mobileMenuOpen && <span className="dot">{moreBadge > 9 ? '9+' : moreBadge}</span>}
+            {mobileMenuOpen ? <X size={20} /> : <LayoutGrid size={20} />} More
+          </button>
+        </nav>
+      </>)}
+
       {searchOpen && <SearchOverlay onClose={() => setSearchOpen(false)} />}
+      <Toaster />
       <PushPrompt />
     </div>
   )

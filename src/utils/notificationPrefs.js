@@ -8,7 +8,7 @@ export const NOTIFICATION_CATEGORIES = [
   { key: 'feed_post',         label: 'New Feed posts',         hint: 'Whenever someone posts in Feed',                                          url: '/feed',     defaultOn: true },
   { key: 'feed_comment',      label: 'Comments on your posts', hint: 'When someone comments on a Feed post you wrote',                         url: '/feed',     defaultOn: true },
   { key: 'mention',           label: 'Mentions',               hint: 'When someone @mentions you in a Feed post or comment',                    url: '/feed',     defaultOn: true },
-  { key: 'schedule_reminder', label: 'Timecard reminder',      hint: '5:30 PM on weekdays and 1:00 PM on Saturday, only if you have not keyed in', url: '/schedule', defaultOn: true },
+  { key: 'schedule_reminder', label: 'Timecard reminder',      hint: '5:30 PM on weekdays and 1:00 PM on Saturday, only if you have not keyed in', url: '/timecard', defaultOn: true },
   { key: 'claim',             label: 'Claims',                 hint: 'When your claim is approved, rejected or paid (admin: new claims to approve)',                           url: '/claim',    defaultOn: true },
   { key: 'general',           label: 'Other team updates',     hint: 'New sites, site edits and report status for the whole team',              url: '/',         defaultOn: false },
 ]

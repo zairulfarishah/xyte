@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { Download, Upload, ChevronDown, ChevronRight, FileText, File, X, Trash2, Eye, Plus } from 'lucide-react'
 import { useViewport } from '../utils/useViewport'
 import CompileExport from '../components/CompileExport'
+import { undoableDelete } from '../utils/toast'
 
 const SECTIONS = [
   { key: 'xradar_namelist',  label: 'Xradar Namelist',  type: 'single', color: '#2563eb', bg: '#eff6ff' },
@@ -218,11 +219,17 @@ export default function Library() {
     setPreviewing(false)
   }
 
-  async function handleDelete(doc) {
-    if (!confirm('Delete this file?')) return
-    await supabase.storage.from('library').remove([doc.file_path])
-    await supabase.from('library_documents').delete().eq('id', doc.id)
-    setDocs(prev => prev.filter(d => d.id !== doc.id))
+  function handleDelete(doc) {
+    undoableDelete({
+      label: doc.file_name ? `"${doc.file_name}"` : 'file',
+      hide: () => setDocs(prev => prev.filter(d => d.id !== doc.id)),
+      restore: () => setDocs(prev => prev.some(d => d.id === doc.id) ? prev : [...prev, doc]),
+      commit: async () => {
+        const { error } = await supabase.from('library_documents').delete().eq('id', doc.id)
+        if (error) throw error
+        await supabase.storage.from('library').remove([doc.file_path])
+      },
+    })
   }
 
   async function handleDeleteSection(key) {
