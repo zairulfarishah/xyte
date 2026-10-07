@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { notify, notifyMany } from '../utils/notify'
 import { toast, undoableDelete } from '../utils/toast'
 import { MAKAN_BUCKET, makanUrl, memberShort, rm, round2, uploadMakanFile } from '../utils/makan'
-import { Avatar, Lightbox, Modal } from './BreakRoomUI'
+import { Avatar, Lightbox, Modal, QrImage } from './BreakRoomUI'
 
 const todayIso = () => {
   const d = new Date()
@@ -450,7 +450,7 @@ function PaySheet({ bill, share, payer, onClose, onPaid }) {
           <Copy size={13} /> Copy amount
         </button>
         {qr
-          ? <div className="mk-qr"><img src={qr} alt={`${firstName}'s DuitNow QR`} /></div>
+          ? <div className="mk-qr lg"><QrImage key={qr} src={qr} alt={`${firstName}'s DuitNow QR`} /></div>
           : <div className="mk-qr none">{firstName} hasn't added a DuitNow QR yet{payer?.pay_details ? ' — use the details below.' : '. Ask them for their account.'}</div>}
         {qr && <p className="mk-sub">Screenshot this and scan it from your bank app, or scan from another phone.</p>}
         {payer?.pay_details && <div className="mk-details">{payer.pay_details}</div>}

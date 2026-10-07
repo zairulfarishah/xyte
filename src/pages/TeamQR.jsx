@@ -4,7 +4,8 @@ import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { toast } from '../utils/toast'
 import { makanUrl, uploadMakanFile } from '../utils/makan'
-import { Avatar, Modal } from './BreakRoomUI'
+import { Avatar, Modal, QrImage } from './BreakRoomUI'
+import { cropQrFile } from '../utils/qrCrop'
 
 // Everyone's DuitNow QR in one place. You edit your own; the admin can edit anyone's.
 export default function TeamQR({ members, onSaved, editMe = false, onEditMeDone }) {
@@ -51,7 +52,7 @@ export default function TeamQR({ members, onSaved, editMe = false, onEditMeDone 
                 {canEdit && <button className="mk-x" title={isMe ? 'Edit my QR' : `Edit ${m.full_name}'s QR`} onClick={() => setEditing(m)}><Pencil size={14} /></button>}
               </div>
               {m.pay_qr_url ? (
-                <button className="qr-thumb" onClick={() => setViewing(m)} title="Show QR"><img src={m.pay_qr_url} alt={`${m.full_name}'s QR`} loading="lazy" /></button>
+                <button className="qr-thumb" onClick={() => setViewing(m)} title="Show QR"><QrImage key={m.pay_qr_url} src={m.pay_qr_url} alt={`${m.full_name}'s QR`} /></button>
               ) : (
                 <button className="qr-thumb none" onClick={() => canEdit ? setEditing(m) : setViewing(m)} disabled={!canEdit && !m.pay_details}>
                   <QrCode size={26} />
@@ -72,12 +73,12 @@ export default function TeamQR({ members, onSaved, editMe = false, onEditMeDone 
 
 function QrView({ m, onClose }) {
   return (
-    <Modal narrow title={m.full_name} onClose={onClose}>
+    <Modal title={m.full_name} onClose={onClose} wide>
       <div className="mk-pay">
         {m.pay_qr_url
-          ? <div className="mk-qr"><img src={m.pay_qr_url} alt={`${m.full_name}'s DuitNow QR`} /></div>
+          ? <div className="mk-qr xl"><QrImage key={m.pay_qr_url} src={m.pay_qr_url} alt={`${m.full_name}'s DuitNow QR`} /></div>
           : <div className="mk-qr none">No QR yet</div>}
-        {m.pay_qr_url && <p className="mk-sub">Scan from another phone, or screenshot and scan from your bank app.</p>}
+        {m.pay_qr_url && <p className="mk-sub">Turn your screen brightness up and scan from another phone.</p>}
         {m.pay_details && <div className="mk-details">{m.pay_details}</div>}
         {m.pay_details && (
           <button className="mk-btn ghost sm" onClick={() => navigator.clipboard?.writeText(m.pay_details).then(() => toast('Details copied'))}>
@@ -94,8 +95,19 @@ function QrEditor({ m, isMe, onClose, onSaved }) {
   const [removeQr, setRemoveQr] = useState(false)
   const [details, setDetails] = useState(m.pay_details || '')
   const [saving, setSaving] = useState(false)
+  const [scan, setScan] = useState(null) // 'reading' | 'cropped' | 'notfound'
   const fileRef = useRef(null)
   const first = m.full_name.split(' ')[0]
+
+  // Cut the QR out of the screenshot so it shows big; keep the picture as-is if no QR is found
+  async function pick(original) {
+    setScan('reading')
+    setRemoveQr(false)
+    const crop = await cropQrFile(original).catch(() => null)
+    const f = crop || original
+    setFile({ file: f, url: URL.createObjectURL(f) })
+    setScan(crop ? 'cropped' : 'notfound')
+  }
   const shown = file?.url || (!removeQr && m.pay_qr_url)
 
   async function save() {
@@ -118,23 +130,26 @@ function QrEditor({ m, isMe, onClose, onSaved }) {
     <Modal narrow title={isMe ? 'My QR' : `${first}'s QR`} onClose={() => !saving && onClose()}
       footer={<>
         <button className="mk-btn ghost" onClick={onClose} disabled={saving}>Cancel</button>
-        <button className="mk-btn" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+        <button className="mk-btn" onClick={save} disabled={saving || scan === 'reading'}>{saving ? 'Saving…' : 'Save'}</button>
       </>}>
       <input ref={fileRef} type="file" accept="image/*" hidden onChange={e => {
         const f = e.target.files[0]
-        if (f) { setFile({ file: f, url: URL.createObjectURL(f) }); setRemoveQr(false) }
+        if (f) pick(f)
         e.target.value = ''
       }} />
       <div style={{ display: 'grid', justifyItems: 'center', gap: 10 }}>
         {shown
-          ? <div className="mk-qr" style={{ width: 230 }}><img src={shown} alt="QR" /></div>
+          ? <div className="mk-qr" style={{ width: 230 }}>{file ? <img src={shown} alt="QR" /> : <QrImage key={shown} src={shown} />}</div>
           : <button className="mk-qr none" style={{ width: 230, cursor: 'pointer' }} onClick={() => fileRef.current?.click()}>
               <span><QrCode size={30} style={{ display: 'block', margin: '0 auto 8px' }} />Tap to upload a QR</span>
             </button>}
         <div className="mk-row">
           <button className="mk-btn sm" onClick={() => fileRef.current?.click()} disabled={saving}><ImagePlus size={13} /> {shown ? 'Change' : 'Upload'}</button>
-          {shown && <button className="mk-btn danger sm" onClick={() => { setFile(null); setRemoveQr(true) }} disabled={saving}>Remove</button>}
+          {shown && <button className="mk-btn danger sm" onClick={() => { setFile(null); setRemoveQr(true); setScan(null) }} disabled={saving}>Remove</button>}
         </div>
+        {scan === 'reading' && <p className="mk-sub">Looking for the QR…</p>}
+        {scan === 'cropped' && <p className="mk-sub" style={{ color: '#15803d', fontWeight: 700 }}>✓ QR found — trimmed to just the code</p>}
+        {scan === 'notfound' && <p className="mk-sub" style={{ color: '#b45309', fontWeight: 700 }}>Couldn't read a QR in this picture. Try a clearer screenshot, or save it as is.</p>}
       </div>
       <div className="mk-note">
         Get the QR from the bank app — e.g. <b>Maybank MAE</b> → DuitNow QR → Receive, <b>CIMB OCTO</b> → DuitNow QR, or <b>Touch 'n Go</b> → Receive. Screenshot it and upload here.
