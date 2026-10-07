@@ -1,5 +1,3 @@
-import jsQR from 'jsqr'
-
 // Bank-app screenshots are mostly screen with a small QR in the middle. Find the
 // QR and cut it out with a quiet-zone margin, so it can be shown big and sharp.
 
@@ -24,6 +22,8 @@ export async function findQr(source) {
   ctx.drawImage(bitmap, 0, 0, w, h)
   bitmap.close?.()
 
+  // The reader is only downloaded the first time a QR is looked at
+  const { default: jsQR } = await import('jsqr')
   const found = jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: 'attemptBoth' })
   if (!found) return null
 

@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../supabase'
-import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
-import L from 'leaflet'
 import { Camera } from 'lucide-react'
 import { calculateWorkload } from '../utils/workload'
 import { memberSchedule, notify, notifyAssignments, notifyMany, notifyScheduleChanges, siteRoleIds } from '../utils/notify'
@@ -14,18 +12,7 @@ import {
   assignmentMemberId, crewForDate, getSiteDates, isMissingPic, memberRoleOnSite, picForDate, representativeDate,
 } from '../utils/siteDays'
 import DashboardBento from './DashboardBento'
-import 'leaflet/dist/leaflet.css'
-
-function xIcon(color, selected = false) {
-  const size = selected ? 22 : 16
-  return L.divIcon({
-    html: `<div style="font-family:Inter,Arial,sans-serif;font-size:${size}px;font-weight:900;color:${color};line-height:1;letter-spacing:-0.03em;-webkit-text-stroke:2px #111827;paint-order:stroke fill;display:flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;">X</div>`,
-    className: '',
-    iconSize:      [size, size],
-    iconAnchor:    [size / 2, size / 2],
-    tooltipAnchor: [0, -(size / 2) - 4],
-  })
-}
+import LocationPicker from '../components/LazyLocationPicker'
 
 const SITE_TYPES = [
   { value: 'site_scanning', label: 'Site Scanning' },
@@ -79,35 +66,6 @@ async function uploadSitePhoto(file) {
   return { url: publicUrl, error: null }
 }
 
-function MapClickHandler({ onPick }) {
-  useMapEvents({ click: event => onPick(event.latlng.lat, event.latlng.lng) })
-  return null
-}
-
-function LocationPicker({ lat, lng, onPick, mapKey }) {
-  const hasPin = lat !== '' && lng !== ''
-  const center = hasPin ? [parseFloat(lat), parseFloat(lng)] : [3.1390, 101.6869]
-
-  return (
-    <MapContainer
-      key={mapKey}
-      center={center}
-      zoom={hasPin ? 13 : 10}
-      style={{ height: '180px', borderRadius: '12px', cursor: 'crosshair' }}
-      zoomControl={false}
-      scrollWheelZoom={true}
-    >
-      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="" />
-      <MapClickHandler onPick={onPick} />
-      {hasPin && (
-        <Marker
-          position={[parseFloat(lat), parseFloat(lng)]}
-          icon={xIcon('#2563eb', true)}
-        />
-      )}
-    </MapContainer>
-  )
-}
 
 function buildMemberRecord(member, sites) {
   const assignments = sites.flatMap(site =>

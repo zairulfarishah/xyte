@@ -31,6 +31,26 @@ const ReportBuilder = lazy(() => import('./pages/ReportBuilder'))
 const Feed = lazy(() => import('./pages/Feed'))
 const BreakRoom = lazy(() => import('./pages/BreakRoom'))
 
+// After sign-in, fetch the code for the everyday pages while the phone is idle,
+// so opening them later doesn't wait on a download. Rarely used pages load on demand.
+const PREFETCH = [
+  () => import('./pages/Sites'), () => import('./pages/SiteDetail'), () => import('./pages/Calendar'),
+  () => import('./pages/Schedule'), () => import('./pages/Team'), () => import('./pages/Feed'),
+  () => import('./pages/BreakRoom'), () => import('./pages/Claim'), () => import('./pages/Reports'),
+]
+function usePrefetchPages(user) {
+  useEffect(() => {
+    if (!user || navigator.connection?.saveData) return undefined
+    const timers = []
+    const run = () => PREFETCH.forEach((load, i) => timers.push(setTimeout(() => load().catch(() => {}), i * 250)))
+    const idle = window.requestIdleCallback ? window.requestIdleCallback(run, { timeout: 4000 }) : setTimeout(run, 2500)
+    return () => {
+      if (window.cancelIdleCallback) window.cancelIdleCallback(idle); else clearTimeout(idle)
+      timers.forEach(clearTimeout)
+    }
+  }, [user])
+}
+
 // Hidden for now — routes still work by direct URL: /report-builder (Xport), /tools
 // Calendar and Map are views of Sites (switch at the top of each), so "Sites" covers all three.
 const SITE_VIEWS = ['/sites', '/calendar', '/map']
@@ -405,6 +425,7 @@ function AppShell() {
   const { isMobile, isTablet } = useViewport()
   const feedUnread = useFeedUnread(user, memberId, location.pathname)
   const adminBadges = useAdminBadges(isZairul, location.pathname)
+  usePrefetchPages(user)
   const badges = { ...adminBadges, '/feed': feedUnread }
   const nav = NAV.filter(item => !item.adminOnly || isZairul)
   // Phone bar holds the everyday pages; everything else is under "More"

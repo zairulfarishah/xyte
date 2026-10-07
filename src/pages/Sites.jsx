@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { MapContainer, TileLayer, CircleMarker, useMapEvents } from 'react-leaflet'
 import { supabase } from '../supabase'
 import {
   Pencil, Trash2, Search, ArrowUpRight, MapPin, MessageCircle, X, Camera,
@@ -10,6 +9,7 @@ import {
 import { memberSchedule, notify, notifyMany, notifyScheduleChanges, siteRoleIds } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
 import PlaceSearchBox from '../components/PlaceSearchBox'
+import LocationPicker from '../components/LazyLocationPicker'
 import SitesViewSwitch from '../components/SitesViewSwitch'
 import { getSiteHeaderImage } from '../utils/siteHeader'
 import { mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../utils/completionMeta'
@@ -21,7 +21,6 @@ import {
   assignmentMemberId, assignmentsForDate, crewForDate, getSiteDates, hasDailyCrew,
   isPic, picForDate, siteCrew, sitePic, uniqueAssignments,
 } from '../utils/siteDays'
-import 'leaflet/dist/leaflet.css'
 import './Sites.css'
 
 /* ── Design tokens (Dashboard light-mode parity) ── */
@@ -254,23 +253,6 @@ async function uploadSitePhoto(original) {
   return { url:publicUrl, error:null }
 }
 
-function MapClickHandler({ onPick }) {
-  useMapEvents({ click: e => onPick(e.latlng.lat, e.latlng.lng) })
-  return null
-}
-function LocationPicker({ lat, lng, onPick, mapKey }) {
-  const hasPin = lat !== '' && lng !== ''
-  const center = hasPin ? [parseFloat(lat), parseFloat(lng)] : [3.139, 101.6869]
-  return (
-    <MapContainer key={mapKey} center={center} zoom={hasPin ? 13 : 10}
-      style={{ height:'160px', borderRadius:'10px', cursor:'crosshair' }} zoomControl={false} scrollWheelZoom={false}>
-      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="" />
-      <MapClickHandler onPick={onPick} />
-      {hasPin && <CircleMarker center={[parseFloat(lat), parseFloat(lng)]} radius={9}
-        pathOptions={{ color:'white', fillColor:'#2563eb', fillOpacity:1, weight:3 }} />}
-    </MapContainer>
-  )
-}
 
 // Last loaded data, kept for the session so coming back to Sites shows the list
 // straight away while a fresh copy loads in the background.

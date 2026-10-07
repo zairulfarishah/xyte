@@ -60,7 +60,22 @@ function sanitizeLeave(leave) {
   }
 }
 
-export async function fetchTeamLeaves() {
+// Nine pages read the leave file. Keep one copy for a minute so moving between
+// pages doesn't download it again; saving leave refreshes the copy straight away.
+const LEAVE_CACHE_MS = 60000
+let leaveCache = { at: 0, data: null, promise: null }
+
+export function fetchTeamLeaves() {
+  if (leaveCache.data && Date.now() - leaveCache.at < LEAVE_CACHE_MS) return Promise.resolve(leaveCache.data)
+  if (leaveCache.promise) return leaveCache.promise
+  const promise = downloadTeamLeaves()
+    .then(data => { leaveCache = { at: Date.now(), data, promise: null }; return data })
+    .catch(err => { leaveCache = { ...leaveCache, promise: null }; throw err })
+  leaveCache = { ...leaveCache, promise }
+  return promise
+}
+
+async function downloadTeamLeaves() {
   const { data, error } = await supabase.storage.from(LEAVE_BUCKET).download(LEAVE_FILE_PATH)
 
   if (error) {
@@ -93,6 +108,7 @@ export async function saveTeamLeaves(leaves) {
   if (error) {
     throw new Error(error.message)
   }
+  leaveCache = { at: Date.now(), data: sortLeaves(leaves).map(sanitizeLeave), promise: null }
 }
 
 export function isDateWithinLeave(date, leave) {
