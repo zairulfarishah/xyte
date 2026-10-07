@@ -2,7 +2,7 @@ import { lazy, Suspense, useState, useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import {
   Search, Bell, X, MapPin, Users, Plus, LogOut, ChevronDown, Home, Clock, MessageSquare,
-  FileText, Receipt, CheckSquare, FolderOpen, BarChart3, Settings, LayoutGrid,
+  FileText, Receipt, CheckSquare, FolderOpen, BarChart3, Settings, LayoutGrid, Coffee,
 } from 'lucide-react'
 import { supabase } from './supabase'
 import { AuthProvider, useAuth } from './context/AuthContext'
@@ -29,6 +29,7 @@ const Schedule = lazy(() => import('./pages/Schedule'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const ReportBuilder = lazy(() => import('./pages/ReportBuilder'))
 const Feed = lazy(() => import('./pages/Feed'))
+const BreakRoom = lazy(() => import('./pages/BreakRoom'))
 
 // Hidden for now — routes still work by direct URL: /report-builder (Xport), /tools
 // Calendar and Map are views of Sites (switch at the top of each), so "Sites" covers all three.
@@ -39,6 +40,7 @@ const NAV = [
   { to: '/timecard', label: 'Timecard', Icon: Clock },
   { to: '/team', label: 'Team', Icon: Users },
   { to: '/feed', label: 'Feed', Icon: MessageSquare },
+  { to: '/break-room', label: 'Break Room', Icon: Coffee },
   {
     label: 'Office',
     items: [
@@ -686,6 +688,8 @@ function AppShell() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/feed" element={<Feed />} />
+            <Route path="/break-room" element={<BreakRoom />} />
+            <Route path="/makan" element={<Navigate to={`/break-room${location.search}`} replace />} />
             <Route path="/sites" element={<Sites />} />
             <Route path="/sites/:id" element={<SiteDetail />} />
             <Route path="/map" element={<MapView />} />
