@@ -4,7 +4,8 @@ import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { notify, notifyMany } from '../utils/notify'
 import { toast, undoableDelete } from '../utils/toast'
-import { MAKAN_BUCKET, avatarColor, initials, makanUrl, memberShort, rm, round2, uploadMakanFile } from '../utils/makan'
+import { MAKAN_BUCKET, makanUrl, memberShort, rm, round2, uploadMakanFile } from '../utils/makan'
+import { Avatar, Lightbox, Modal } from './BreakRoomUI'
 
 const todayIso = () => {
   const d = new Date()
@@ -14,39 +15,9 @@ const fmtDate = d => new Date(`${String(d).slice(0, 10)}T00:00:00`).toLocaleDate
 const shareState = s => s.received_at ? 'recv' : s.paid_at ? 'paid' : 'unpaid'
 const STATE_LABEL = { recv: 'Received', paid: 'Paid · to confirm', unpaid: 'Unpaid' }
 
-function Avatar({ m, name, size }) {
-  const label = m?.full_name || name
-  return (
-    <span className="mk-av" style={{ '--c': avatarColor(m?.id || name), ...(size ? { width: size, height: size } : {}) }} title={label}>
-      {m?.avatar_url ? <img src={m.avatar_url} alt="" /> : initials(label)}
-    </span>
-  )
-}
-
-function Modal({ title, onClose, children, footer, narrow }) {
-  useEffect(() => {
-    const onKey = e => e.key === 'Escape' && onClose()
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-  return (
-    <div className="mk-scrim" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className={`mk-modal${narrow ? ' narrow' : ''}`}>
-        <div className="mk-modal-h"><h3>{title}</h3><button className="mk-x" onClick={onClose}><X size={16} /></button></div>
-        <div className="mk-modal-b">{children}</div>
-        {footer && <div className="mk-modal-f">{footer}</div>}
-      </div>
-    </div>
-  )
-}
-
-function Lightbox({ src, onClose }) {
-  return <div className="mk-lightbox" onClick={onClose}><img src={src} alt="" /></div>
-}
-
 // ════════════════ Split bill ════════════════
 export default function SplitBill({ members, onSetupError, onOpenQr }) {
-  const { memberId, fullName, isZairul } = useAuth()
+  const { memberId, fullName } = useAuth()
   const [bills, setBills] = useState([])
   const [shares, setShares] = useState([])
   const [loading, setLoading] = useState(true)
@@ -162,13 +133,13 @@ export default function SplitBill({ members, onSetupError, onOpenQr }) {
         <div className="mk-card mk-empty">
           <Receipt size={26} style={{ opacity: .35, margin: '0 auto 8px', display: 'block' }} />
           <b>{view === 'settled' ? 'Nothing settled yet' : 'All square'}</b>
-          {view === 'open' ? 'Paid for the team? Post a new bill and everyone sees what they owe.' : ''}
+          {view === 'open' ? 'Paid for the team? Post a new bill — only the people on it can see it.' : ''}
         </div>
       ) : (
         <div className="mk-bills">
           {listed.map(bill => (
             <BillCard key={bill.id} bill={bill} shares={sharesByBill[bill.id] || []} memberById={memberById}
-              memberId={memberId} canDelete={bill.payer_id === memberId || isZairul}
+              memberId={memberId} canDelete={bill.payer_id === memberId || bill.created_by === memberId}
               onPay={share => setPaying({ bill, share })}
               onUnpay={share => updateShare(share, { paid_at: null, proof_path: null })}
               onReceived={(share, on) => markReceived(bill, share, on)}
@@ -307,7 +278,7 @@ function BillForm({ members, onClose, onSaved }) {
       const receipts = []
       for (const f of files) receipts.push({ path: await uploadMakanFile(f.file, 'receipts'), name: f.file.name })
       const { data: bill, error: e1 } = await supabase.from('bills').insert({
-        title: title.trim(), bill_date: date, payer_id: payer.id, payer_name: payer.full_name,
+        title: title.trim(), bill_date: date, payer_id: payer.id, payer_name: payer.full_name, created_by: memberId,
         total: billTotal > 0 ? billTotal : sharesSum, receipts, note: note.trim() || null,
       }).select().single()
       if (e1) throw new Error(e1.message)
@@ -368,7 +339,7 @@ function BillForm({ members, onClose, onSaved }) {
       </div>
 
       <div>
-        <label className="mk-label">Who owes</label>
+        <label className="mk-label">Who owes <span style={{ fontWeight: 500 }}>— only you, the payer and these people can see this bill</span></label>
         <div className="mk-chips">
           {others.map(m => (
             <button key={m.id} className={`mk-chip${people.has(m.id) ? ' on' : ''}`} onClick={() => togglePerson(m.id)}>
@@ -498,68 +469,5 @@ function PaySheet({ bill, share, payer, onClose, onPaid }) {
         )}
       </div>
     </Modal>
-  )
-}
-
-// ════════════════ My QR ════════════════
-export function MyPayQR({ members, onSaved }) {
-  const { memberId } = useAuth()
-  const me = members.find(m => m.id === memberId)
-  const [details, setDetails] = useState(null)
-  const [saving, setSaving] = useState(false)
-  const fileRef = useRef(null)
-  const text = details ?? me?.pay_details ?? ''
-
-  if (!memberId) return <div className="mk-card mk-empty"><b>Not linked</b>Your login isn't linked to a team member.</div>
-  if (!me) return <div className="mk-card mk-empty">Loading…</div>
-
-  async function save(patch, message) {
-    setSaving(true)
-    const { error } = await supabase.from('team_members').update(patch).eq('id', memberId)
-    setSaving(false)
-    if (error) { toast(`Couldn't save: ${error.message}`, { tone: 'err' }); return }
-    toast(message)
-    setDetails(null)
-    onSaved()
-  }
-
-  async function uploadQr(file) {
-    setSaving(true)
-    try {
-      const path = await uploadMakanFile(file, 'qr')
-      await save({ pay_qr_url: makanUrl(path) }, 'QR saved')
-    } catch (err) {
-      toast(`Couldn't upload: ${err.message}`, { tone: 'err' })
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="mk-card mk-pad mk-myqr">
-      <div style={{ display: 'grid', gap: 10, justifyItems: 'center' }}>
-        <input ref={fileRef} type="file" accept="image/*" hidden onChange={e => { const f = e.target.files[0]; if (f) uploadQr(f); e.target.value = '' }} />
-        {me.pay_qr_url
-          ? <div className="mk-qr" style={{ width: 220 }}><img src={me.pay_qr_url} alt="My DuitNow QR" /></div>
-          : <button className="mk-qr none" style={{ width: 220, cursor: 'pointer' }} onClick={() => fileRef.current?.click()}><span><QrCode size={30} style={{ display: 'block', margin: '0 auto 8px' }} />Tap to add your QR</span></button>}
-        <div className="mk-row">
-          <button className="mk-btn sm" onClick={() => fileRef.current?.click()} disabled={saving}><ImagePlus size={13} /> {me.pay_qr_url ? 'Change' : 'Upload QR'}</button>
-          {me.pay_qr_url && <button className="mk-btn danger sm" onClick={() => save({ pay_qr_url: null }, 'QR removed')} disabled={saving}>Remove</button>}
-        </div>
-      </div>
-      <div style={{ display: 'grid', gap: 12 }}>
-        <div>
-          <h2 style={{ fontSize: 16, fontWeight: 800 }}>How people pay you back</h2>
-          <p className="mk-sub">When you pay for the team, everyone who owes you sees this QR and these details.</p>
-        </div>
-        <div className="mk-note">
-          Get your QR from your bank app — e.g. <b>Maybank MAE</b> → DuitNow QR → Receive, <b>CIMB OCTO</b> → DuitNow QR, or <b>Touch 'n Go</b> → Receive. Screenshot it and upload here.
-        </div>
-        <div>
-          <label className="mk-label">Bank details (backup if the QR doesn't scan)</label>
-          <textarea className="mk-in" rows={3} value={text} onChange={e => setDetails(e.target.value)} placeholder={'e.g. Maybank 1234 5678 9012\nZairul Farishah'} maxLength={200} />
-        </div>
-        <div><button className="mk-btn" onClick={() => save({ pay_details: text.trim() || null }, 'Details saved')} disabled={saving || details === null}>Save details</button></div>
-      </div>
-    </div>
   )
 }
