@@ -9,8 +9,16 @@ import Flappy from './Flappy'
 import Game2048 from './Game2048'
 import Snake from './Snake'
 import Reaction from './Reaction'
+import DailyWord from './DailyWord'
+import Memory from './Memory'
+import QuickMath from './QuickMath'
+import Stack from './Stack'
+import Whack from './Whack'
 
-const PLAYERS = { flappy: Flappy, '2048': Game2048, snake: Snake, reaction: Reaction }
+const PLAYERS = {
+  flappy: Flappy, '2048': Game2048, snake: Snake, reaction: Reaction,
+  word: DailyWord, memory: Memory, math: QuickMath, stack: Stack, whack: Whack,
+}
 const MEDALS = ['🥇', '🥈', '🥉']
 
 export default function Games() {
@@ -86,7 +94,8 @@ function GameScreen({ gameKey, onBack }) {
   useEffect(() => { load() }, [load, round])
 
   const onGameOver = useCallback(async score => {
-    if (!memberId || !(score > 0)) return
+    // A missed Daily Word scores 0 but still counts as today's play
+    if (!memberId || !(score > 0 || (game.sum && score === 0))) return
     try {
       const r = await saveScore(gameKey, score, { memberId, fullName })
       if (r.newRecord) {
@@ -99,7 +108,7 @@ function GameScreen({ gameKey, onBack }) {
     } catch (err) {
       setError(err.message)
     }
-  }, [gameKey, game.name, memberId, fullName])
+  }, [gameKey, game.name, game.sum, memberId, fullName])
 
   return (
     <>
@@ -137,6 +146,7 @@ function GameScreen({ gameKey, onBack }) {
             </ol>
           )}
           {game.lowerWins && <p className="mk-sub" style={{ marginTop: 8 }}>Lower is better.</p>}
+          {game.sum && <p className="mk-sub" style={{ marginTop: 8 }}>Points added up over the days: 6 for 1 guess down to 1 for 6 guesses.</p>}
         </div>
       </div>
     </>
