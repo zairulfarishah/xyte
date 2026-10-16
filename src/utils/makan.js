@@ -12,7 +12,7 @@ export function makanUrl(path) {
 
 // Phone photos are often several MB; scale big ones down to a 1600px JPEG.
 // QR codes stay sharp at that size.
-async function shrinkPhoto(file, maxSide = 1600) {
+export async function shrinkPhoto(file, maxSide = 1600) {
   if (!file.type.startsWith('image/') || file.type === 'image/gif' || file.size < 400 * 1024) return file
   try {
     const bitmap = await createImageBitmap(file)

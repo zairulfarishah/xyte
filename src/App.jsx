@@ -2,7 +2,7 @@ import { lazy, Suspense, useState, useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import {
   Search, Bell, X, MapPin, Users, Plus, LogOut, ChevronDown, Home, Clock, MessageSquare,
-  FileText, Receipt, CheckSquare, FolderOpen, BarChart3, Settings, LayoutGrid, Coffee,
+  FileText, Receipt, CheckSquare, FolderOpen, BarChart3, Settings, LayoutGrid, Coffee, Sparkles,
 } from 'lucide-react'
 import { supabase } from './supabase'
 import { AuthProvider, useAuth } from './context/AuthContext'
@@ -30,6 +30,7 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const ReportBuilder = lazy(() => import('./pages/ReportBuilder'))
 const Feed = lazy(() => import('./pages/Feed'))
 const BreakRoom = lazy(() => import('./pages/BreakRoom'))
+const FiveS = lazy(() => import('./pages/FiveS'))
 
 // After sign-in, fetch the code for the everyday pages while the phone is idle,
 // so opening them later doesn't wait on a download. Rarely used pages load on demand.
@@ -75,6 +76,7 @@ const NAV = [
     adminOnly: true,
     items: [
       { to: '/statistics', label: 'Statistics', Icon: BarChart3 },
+      { to: '/5s', label: '5S', Icon: Sparkles },
       { to: '/settings', label: 'Settings', Icon: Settings },
     ],
   },
@@ -711,6 +713,7 @@ function AppShell() {
             <Route path="/feed" element={<Feed />} />
             <Route path="/break-room" element={<BreakRoom />} />
             <Route path="/makan" element={<Navigate to={`/break-room${location.search}`} replace />} />
+            <Route path="/5s" element={isZairul ? <FiveS /> : <Navigate to="/" replace />} />
             <Route path="/sites" element={<Sites />} />
             <Route path="/sites/:id" element={<SiteDetail />} />
             <Route path="/map" element={<MapView />} />
