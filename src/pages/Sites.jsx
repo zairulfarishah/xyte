@@ -619,8 +619,11 @@ export default function Sites() {
 
   async function handleSave() {
     if (!form.site_name || !form.location || !form.scheduled_date) return
+    // Days left over from an older date range are dropped, not checked or saved
+    const siteDays = new Set(datesInRange(form.scheduled_date, form.end_date))
+    const dailyInRange = Object.entries(form.daily_assignments).filter(([dateStr]) => siteDays.has(dateStr))
     if (form.assign_mode === 'per_day') {
-      for (const [dateStr, day] of Object.entries(form.daily_assignments)) {
+      for (const [dateStr, day] of dailyInRange) {
         const leaveError = getLeaveConflict([day.pic_id, ...day.crew_ids].filter(Boolean), dateStr)
         if (leaveError) {
           setUploadError(leaveError)
@@ -679,7 +682,7 @@ export default function Sites() {
       let siteId = editSite?.id
       const assignments = []
       if (form.assign_mode === 'per_day') {
-        Object.entries(form.daily_assignments).forEach(([dateStr, day]) => {
+        dailyInRange.forEach(([dateStr, day]) => {
           if (day.pic_id) assignments.push({ member_id:day.pic_id, assignment_role:'PIC', work_date:dateStr })
           day.crew_ids.forEach(id => { if (id!==day.pic_id) assignments.push({ member_id:id, assignment_role:'crew', work_date:dateStr }) })
         })
@@ -694,10 +697,11 @@ export default function Sites() {
         const { error } = await supabase.from('sites').update(payload).eq('id', siteId)
         if (error) throw new Error(error.message)
         if (changed) {
-          await Promise.all([
+          const [{ error: delError }] = await Promise.all([
             supabase.from('site_assignments').delete().eq('site_id', siteId),
             supabase.from('workload_log').delete().eq('site_id', siteId),
           ])
+          if (delError) throw new Error(delError.message)
         }
       } else {
         const { data, error } = await supabase.from('sites').insert(payload).select().single()
@@ -1588,9 +1592,11 @@ export default function Sites() {
                           <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
                             {members.filter(m => m.id !== day.pic_id).map(m => {
                               const leave = getMemberLeaveOnDate(leaves, m.id, dateStr)
+                              // Someone already ticked who later went on leave can still be unticked
+                              const blocked = Boolean(leave) && !day.crew_ids.includes(m.id)
                               return (
-                                <label key={m.id} style={{ display:'flex', alignItems:'center', gap:'10px', cursor: leave ? 'not-allowed' : 'pointer', opacity: leave ? 0.55 : 1 }}>
-                                  <input type="checkbox" checked={day.crew_ids.includes(m.id)} disabled={Boolean(leave)} onChange={() => toggleDayCrew(dateStr, m.id)} style={{ width:'15px', height:'15px', accentColor:'#2563eb' }} />
+                                <label key={m.id} style={{ display:'flex', alignItems:'center', gap:'10px', cursor: blocked ? 'not-allowed' : 'pointer', opacity: leave ? 0.55 : 1 }}>
+                                  <input type="checkbox" checked={day.crew_ids.includes(m.id)} disabled={blocked} onChange={() => toggleDayCrew(dateStr, m.id)} style={{ width:'15px', height:'15px', accentColor:'#2563eb' }} />
                                   <span style={{ fontSize:'12px', color:'#0f172a' }}>
                                     {m.full_name}{leave ? ` - ${getLeaveSummary(leave)}` : ''}
                                   </span>
@@ -1657,6 +1663,7 @@ export default function Sites() {
                 </div>
               </div>
 
+              {uploadError && <p style={{ margin:0, padding:'10px 12px', borderRadius:'8px', fontSize:'12px', color:'#b91c1c', fontWeight:'600', background:'#fef2f2', border:'1px solid #fecaca' }}>{uploadError}</p>}
               <div style={{ display:'flex', flexDirection:isMobile ? 'column' : 'row', gap:'12px', paddingTop:'4px', borderTop:'1px solid #f1f5f9' }}>
                 <button onClick={handleSave} disabled={saving} style={{ flex:1, padding:'11px', borderRadius:'10px', fontSize:'14px', fontWeight:'800', color:'white', border:'none', cursor:'pointer', fontFamily:'inherit', background:'#2563eb', opacity:saving?0.6:1, boxShadow:'0 2px 8px rgba(37,99,235,.28)' }}>
                   {saving ? 'Saving…' : editSite ? 'Save Changes' : 'Add Site'}
