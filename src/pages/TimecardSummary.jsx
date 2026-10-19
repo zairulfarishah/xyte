@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../supabase'
-import { FileDown, Loader2 } from 'lucide-react'
+import { FileDown, FileSpreadsheet, Loader2 } from 'lucide-react'
 import { fetchTeamLeaves, getMemberLeaveOnDate } from '../utils/teamLeaves'
 import { normalizeDate } from '../utils/siteDays'
 import { formatMinutes, rangeDates, summarizeTimecards } from '../utils/timecard'
 import { buildTimecardPdf, timecardPdfFilename, downloadPdf } from '../utils/timecardPdf'
+import { buildTimecardXlsx, timecardXlsxFilename, downloadXlsx } from '../utils/timecardExcel'
 
 function monthBounds(offset) {
   const now = new Date()
@@ -38,7 +39,7 @@ export default function TimecardSummary() {
   const [cards, setCards]     = useState([])
   const [loadedKey, setLoadedKey] = useState(null)
   const [error, setError]     = useState('')
-  const [exporting, setExporting] = useState(null)    // member id, or 'all'
+  const [exporting, setExporting] = useState(null)    // `${format}:${member id | 'all'}`
 
   const { from, to } = range
   const validRange = from && to && from <= to
@@ -92,17 +93,19 @@ export default function TimecardSummary() {
     return t
   }, [entries])
 
-  async function exportPdf(which) {
+  async function exportFile(format, which) {
     const list = which === 'all' ? entries : entries.filter(e => e.member.id === which)
     if (list.length === 0) return
-    setExporting(which)
+    setExporting(`${format}:${which}`)
     setError('')
     try {
       const siteNames = Object.fromEntries(sites.map(s => [s.id, s.site_name]))
-      const bytes = await buildTimecardPdf({ entries: list, dates, from, to, today, siteName: id => siteNames[id] })
-      downloadPdf(bytes, timecardPdfFilename(from, to, which === 'all' ? null : list[0].member))
+      const args = { entries: list, dates, from, to, today, siteName: id => siteNames[id] }
+      const member = which === 'all' ? null : list[0].member
+      if (format === 'xlsx') downloadXlsx(await buildTimecardXlsx(args), timecardXlsxFilename(from, to, member))
+      else downloadPdf(await buildTimecardPdf(args), timecardPdfFilename(from, to, member))
     } catch (err) {
-      setError(`Could not build the PDF: ${err.message}`)
+      setError(`Could not build the ${format === 'xlsx' ? 'Excel file' : 'PDF'}: ${err.message}`)
     } finally {
       setExporting(null)
     }
@@ -128,10 +131,16 @@ export default function TimecardSummary() {
           <span>to</span>
           <input type="date" value={to} min={from} onChange={e => setRange(r => ({ ...r, to: e.target.value }))} style={dateInput} />
         </div>
-        <button onClick={() => exportPdf('all')} disabled={!!exporting || loading || !validRange}
-          style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px', border: 'none', borderRadius: 999, cursor: 'pointer', fontSize: 13.5, fontWeight: 800, color: 'white', background: '#0f172a', opacity: exporting || loading ? 0.6 : 1 }}>
-          {exporting === 'all' ? <Loader2 size={15} className="animate-spin" /> : <FileDown size={15} />} All members PDF
-        </button>
+        <div style={{ marginLeft: 'auto', display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <button onClick={() => exportFile('xlsx', 'all')} disabled={!!exporting || loading || !validRange}
+            style={{ ...allBtn, background: '#15803d', opacity: exporting || loading ? 0.6 : 1 }}>
+            {exporting === 'xlsx:all' ? <Loader2 size={15} className="animate-spin" /> : <FileSpreadsheet size={15} />} All members Excel
+          </button>
+          <button onClick={() => exportFile('pdf', 'all')} disabled={!!exporting || loading || !validRange}
+            style={{ ...allBtn, background: '#0f172a', opacity: exporting || loading ? 0.6 : 1 }}>
+            {exporting === 'pdf:all' ? <Loader2 size={15} className="animate-spin" /> : <FileDown size={15} />} All members PDF
+          </button>
+        </div>
       </div>
 
       {error && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', borderRadius: 12, padding: '10px 14px', fontSize: 13.5 }}>{error}</div>}
@@ -154,10 +163,16 @@ export default function TimecardSummary() {
                 <td style={{ ...td, textAlign: 'left', paddingLeft: 18, fontWeight: 700, color: '#0f172a' }}>{member.full_name}</td>
                 {COLS.map(c => <SummaryCell key={c.key} col={c} value={summary[c.key]} />)}
                 <td style={{ ...td, paddingRight: 14 }}>
-                  <button onClick={() => exportPdf(member.id)} disabled={!!exporting} title={`Download ${member.full_name}'s timecard`}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 11px', border: '1px solid #cbd5e1', borderRadius: 999, background: 'white', color: '#1d4ed8', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
-                    {exporting === member.id ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />} PDF
-                  </button>
+                  <div style={{ display: 'inline-flex', gap: 6 }}>
+                    <button onClick={() => exportFile('xlsx', member.id)} disabled={!!exporting} title={`Download ${member.full_name}'s timecard as Excel`}
+                      style={{ ...rowBtn, color: '#15803d' }}>
+                      {exporting === `xlsx:${member.id}` ? <Loader2 size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />} Excel
+                    </button>
+                    <button onClick={() => exportFile('pdf', member.id)} disabled={!!exporting} title={`Download ${member.full_name}'s timecard as PDF`}
+                      style={{ ...rowBtn, color: '#1d4ed8' }}>
+                      {exporting === `pdf:${member.id}` ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />} PDF
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -177,6 +192,7 @@ export default function TimecardSummary() {
       <p style={{ fontSize: 12, color: '#64748b' }}>
         OT is split by the day it was worked: weekday (before 8:00 AM / after 5:30 PM), Saturday (after 1:00 PM) and Sundays & public holidays (all hours).
         Missing = past working days with no time keyed in and no full-day leave. Each PDF has a signature block for the employee and approver.
+        Excel hours are decimals (1.50 = 1h 30m) so they can be summed; the all-members file has a Summary sheet plus one sheet per member.
       </p>
     </div>
   )
@@ -193,4 +209,6 @@ function SummaryCell({ col, value, bold }) {
 
 const th = { padding: '12px 10px', fontSize: 11.5, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.03em', textAlign: 'right', whiteSpace: 'nowrap' }
 const td = { padding: '10px', textAlign: 'right', whiteSpace: 'nowrap' }
+const allBtn = { display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px', border: 'none', borderRadius: 999, cursor: 'pointer', fontSize: 13.5, fontWeight: 800, color: 'white' }
+const rowBtn = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 11px', border: '1px solid #cbd5e1', borderRadius: 999, background: 'white', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }
 const dateInput = { border: 'none', fontSize: 13, color: '#0f172a', fontFamily: 'inherit', background: 'transparent', padding: '4px 0' }
