@@ -74,6 +74,25 @@ export const PILLARS = [
 ]
 export const ITEM_KEYS = PILLARS.flatMap(p => p.items.map((_, i) => `${p.key}_${i + 1}`))
 
+// Zone types and the questions that don't apply to them (pre-marked N-A on a new audit)
+export const ZONE_TYPES = [
+  { key: 'office', label: 'Office', na: ['std_3'] },
+  { key: 'meeting', label: 'Meeting room', na: ['sort_4', 'std_3'] },
+  { key: 'store', label: 'Store', na: ['std_3'] },
+  { key: 'pantry', label: 'Pantry', na: [] },
+  { key: 'toilet', label: 'Toilet', na: ['sort_4', 'set_1', 'set_2', 'set_4', 'std_4'] },
+  { key: 'walkway', label: 'Walkway', na: ['sort_4', 'set_1', 'set_2', 'set_4', 'std_3'] },
+  { key: 'other', label: 'Other', na: [] },
+]
+export const zoneType = key => ZONE_TYPES.find(t => t.key === key) || null
+
+// Starting answers for a new audit: the type's N-A items, plus "previous audit
+// issues resolved" when there is no previous audit
+export function presetAnswers(type, isFirstAudit) {
+  const keys = [...(zoneType(type)?.na || []), ...(isFirstAudit ? ['sustain_1'] : [])]
+  return Object.fromEntries(keys.map(k => [k, 'na']))
+}
+
 // Yes ÷ (Yes + No) as 0–100; null when nothing was marked Yes or No
 export function passPct(answers = {}) {
   const vals = ITEM_KEYS.map(k => answers[k])

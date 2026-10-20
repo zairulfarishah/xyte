@@ -11,6 +11,7 @@ create table if not exists fives_zones (
   code text not null,                 -- "1", "4a", "9b" …
   name text not null,                 -- "Zone 1", or a proper area name
   pic_name text,
+  zone_type text,                     -- office, store, toilet … (see ZONE_TYPES in src/utils/fiveS.js)
   sort_order int not null default 0,
   active boolean not null default true,
   created_at timestamptz not null default now()

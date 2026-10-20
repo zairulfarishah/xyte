@@ -6,7 +6,7 @@ import { useTabParam } from '../utils/useTabParam'
 import { toast } from '../utils/toast'
 import {
   ITEM_KEYS, PILLARS, addZone, average, deleteAudit, deleteZone, fetchAudits, fetchZones, fivesUrl, fmtDate, fmtPct, lastMonths, monthName,
-  passPct, removePhotos, saveAudit, todayStr, updateZone, tone, uploadZonePhoto, zoneStatus,
+  passPct, presetAnswers, removePhotos, saveAudit, todayStr, updateZone, tone, uploadZonePhoto, zoneStatus, zoneType, ZONE_TYPES,
 } from '../utils/fiveS'
 import './BreakRoom.css' // shared mk-* cards, buttons, inputs and modal
 import './FiveS.css'
@@ -109,7 +109,7 @@ function AuditBoard({ activeZones, auditsByZone, canAudit, ...rest }) {
                     <b className="grow">{z.name}</b>
                     {audit ? <Pct pct={audit.pass_pct} /> : <span className="mk-pill fs-todo">Not done</span>}
                   </div>
-                  <small>PIC: {z.pic_name || '—'}</small>
+                  <small>{zoneType(z.zone_type) ? `${zoneType(z.zone_type).label} · ` : ''}PIC: {z.pic_name || '—'}</small>
                   <small className={`fs-st ${status.level}`}>
                     {audit ? status.label : last ? `Last: ${fmtPct(last.pass_pct)} on ${fmtDate(last.audit_date, { day: 'numeric', month: 'short' })}` : 'Never audited'}
                   </small>
@@ -130,8 +130,12 @@ function AuditBoard({ activeZones, auditsByZone, canAudit, ...rest }) {
 
 function AuditModal({ zone, date, auditsByZone, canAudit, isZairul, reload, onClose }) {
   const { memberId, fullName } = useAuth()
-  const existing = (auditsByZone.get(zone.id) || []).find(a => a.audit_date === date)
-  const [answers, setAnswers] = useState(existing?.answers || {})
+  const zoneAudits = auditsByZone.get(zone.id) || []
+  const existing = zoneAudits.find(a => a.audit_date === date)
+  const type = zoneType(zone.zone_type)
+  // A new audit starts with the questions that don't fit this zone already on N-A
+  const [preset] = useState(() => existing ? {} : presetAnswers(zone.zone_type, !zoneAudits.some(a => a.audit_date < date)))
+  const [answers, setAnswers] = useState(existing?.answers || preset)
   const [notes, setNotes] = useState(existing?.notes || '')
   const [photos, setPhotos] = useState(existing?.photos || [])
   const [pending, setPending] = useState([]) // [{ file, preview }]
@@ -206,9 +210,15 @@ function AuditModal({ zone, date, auditsByZone, canAudit, isZairul, reload, onCl
 
         <div className="mk-modal-b">
           <p className="mk-sub" style={{ marginTop: -6 }}>
-            PIC: <b>{zone.pic_name || '—'}</b>
+            {type && <>{type.label} · </>}PIC: <b>{zone.pic_name || '—'}</b>
             {existing && <> · audited by {existing.auditor_names || '—'}</>}
           </p>
+          {!readOnly && Object.keys(preset).length > 0 && (
+            <p className="mk-sub fs-preset">
+              {Object.keys(preset).length} question{Object.keys(preset).length === 1 ? '' : 's'} pre-marked N-A
+              {type ? ` for a ${type.label.toLowerCase()}` : ''}{preset.sustain_1 ? ' (first audit has no previous issues)' : ''} — change any that do apply.
+            </p>
+          )}
 
           <section>
             <label className="mk-label">Photos of the area</label>
@@ -360,16 +370,26 @@ function Progress({ activeZones, auditsByZone }) {
 
 /* ── Trend: monthly average Pass % per zone ── */
 function Trend({ activeZones, auditsByZone }) {
+  const [typeFilter, setTypeFilter] = useState('')
   const months = lastMonths(6)
   const cell = (zoneId, month) => average((auditsByZone.get(zoneId) || [])
     .filter(a => a.pass_pct != null && String(a.audit_date).startsWith(month)).map(a => Number(a.pass_pct)))
-  const rows = activeZones.map(z => ({ zone: z, vals: months.map(m => cell(z.id, m)) }))
+  const types = ZONE_TYPES.filter(t => activeZones.some(z => z.zone_type === t.key))
+  const shown = typeFilter ? activeZones.filter(z => z.zone_type === typeFilter) : activeZones
+  const rows = shown.map(z => ({ zone: z, vals: months.map(m => cell(z.id, m)) }))
   const overall = months.map((_, i) => average(rows.map(r => r.vals[i]).filter(v => v != null)))
+  const totalLabel = typeFilter ? `All ${zoneType(typeFilter).label.toLowerCase()} zones` : 'All zones'
 
   return (
     <div className="mk-card mk-pad">
       <div className="mk-h"><h2 className="grow">Monthly average Pass %</h2></div>
       <p className="mk-sub">Green 80% and up · amber 60–79% · red under 60%. Aim to keep every zone above 80%.</p>
+      {types.length > 0 && (
+        <div className="mk-chips" style={{ marginTop: 12 }}>
+          <button className={`mk-chip ${!typeFilter ? 'on' : ''}`} onClick={() => setTypeFilter('')}>All types</button>
+          {types.map(t => <button key={t.key} className={`mk-chip ${typeFilter === t.key ? 'on' : ''}`} onClick={() => setTypeFilter(t.key)}>{t.label}</button>)}
+        </div>
+      )}
       <div className="fs-table-wrap">
         <table className="fs-table">
           <thead><tr><th>Zone</th>{months.map(m => <th key={m}>{monthName(m)}</th>)}</tr></thead>
@@ -377,7 +397,7 @@ function Trend({ activeZones, auditsByZone }) {
             {rows.map(({ zone, vals }) => (
               <tr key={zone.id}><td>{zone.name}</td>{vals.map((v, i) => <td key={i}><Pct pct={v} /></td>)}</tr>
             ))}
-            <tr className="total"><td>All zones</td>{overall.map((v, i) => <td key={i}><Pct pct={v} /></td>)}</tr>
+            <tr className="total"><td>{totalLabel}</td>{overall.map((v, i) => <td key={i}><Pct pct={v} /></td>)}</tr>
           </tbody>
         </table>
       </div>
@@ -451,7 +471,7 @@ function Zones({ zones, reload }) {
         <div className="mk-h">
           <div className="grow">
             <h2>Zones & person-in-charge</h2>
-            <p className="mk-sub">Type the zone name and PIC (anyone, not only Xyte users). Changes save when you leave the box. Switched-off zones keep their history but leave the weekly walk.</p>
+            <p className="mk-sub">Type the zone name, type and PIC (anyone, not only Xyte users). The type pre-marks questions that don't fit the area as N-A. Changes save when you leave the box. Switched-off zones keep their history but leave the weekly walk.</p>
           </div>
           <button className="mk-btn" onClick={add}><Plus size={15} /> Add zone</button>
         </div>
@@ -459,6 +479,10 @@ function Zones({ zones, reload }) {
           {zones.map(z => (
             <div key={z.id} className={`fs-zrow ${z.active ? '' : 'off'}`}>
               <input className="mk-in" defaultValue={z.name} placeholder="Zone name" onBlur={onBlurSave(z, 'name')} />
+              <select className="mk-in" value={z.zone_type || ''} onChange={e => update(z.id, { zone_type: e.target.value || null })} aria-label={`${z.name} type`}>
+                <option value="">Type…</option>
+                {ZONE_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+              </select>
               <input className="mk-in" defaultValue={z.pic_name || ''} placeholder="PIC name" onBlur={onBlurSave(z, 'pic_name')} />
               <label className="fs-switch"><input type="checkbox" checked={z.active} onChange={e => update(z.id, { active: e.target.checked })} /> On</label>
               <button className="mk-x" onClick={() => removeZone(z)} aria-label={`Delete ${z.name}`}><Trash2 size={15} /></button>
