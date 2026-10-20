@@ -15,7 +15,19 @@ function monthBounds(offset) {
   return { from: normalizeDate(first), to: normalizeDate(last) }
 }
 
+// HR pay period runs from the 26th to the 25th of the next month
+const PAY_START_DAY = 26
+function payPeriod(offset) {
+  const now = new Date()
+  const shift = now.getDate() >= PAY_START_DAY ? 1 : 0 // on/after the 26th we're in next month's period
+  const first = new Date(now.getFullYear(), now.getMonth() + shift + offset - 1, PAY_START_DAY)
+  const last = new Date(now.getFullYear(), now.getMonth() + shift + offset, PAY_START_DAY - 1)
+  return { from: normalizeDate(first), to: normalizeDate(last) }
+}
+
 const PRESETS = [
+  { key: 'pay', label: 'This pay period', range: () => payPeriod(0) },
+  { key: 'lastPay', label: 'Last pay period', range: () => payPeriod(-1) },
   { key: 'this', label: 'This month', range: () => monthBounds(0) },
   { key: 'last', label: 'Last month', range: () => monthBounds(-1) },
 ]
@@ -33,7 +45,7 @@ const COLS = [
 
 // Zairul only — payroll totals per member plus printable timecards.
 export default function TimecardSummary() {
-  const [range, setRange]     = useState(() => monthBounds(0))
+  const [range, setRange]     = useState(() => payPeriod(0))
   const [members, setMembers] = useState([])
   const [sites, setSites]     = useState([])
   const [leaves, setLeaves]   = useState([])
@@ -193,6 +205,7 @@ export default function TimecardSummary() {
 
       <p style={{ fontSize: 12, color: '#64748b' }}>
         OT is split by the day it was worked: weekday (before 8:00 AM / after 5:30 PM), Saturday (after 1:00 PM) and Sundays & public holidays (all hours).
+        Pay period runs from the 26th to the 25th. Days given a highlight colour on the Timecard keep that colour in the Excel and PDF.
         Missing = past working days with no time keyed in and no full-day leave. Each PDF has a signature block for the employee and approver.
         Excel hours are decimals (1.50 = 1h 30m) so they can be summed; the all-members file has a Summary sheet plus one sheet per member.
       </p>

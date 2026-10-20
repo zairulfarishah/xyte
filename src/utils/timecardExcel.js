@@ -1,4 +1,4 @@
-import { dayInfo, formatTime12, isMissingDay } from './timecard'
+import { dayHighlightHex, dayInfo, formatTime12, isMissingDay, LEAVE_HIGHLIGHTS } from './timecard'
 import { leaveAbbr, getLeaveSessionLabel } from './teamLeaves'
 
 // Hours go in as decimal numbers so payroll can sum them in Excel.
@@ -6,7 +6,8 @@ const hours = mins => (mins ? Math.round((mins / 60) * 100) / 100 : 0)
 
 const HEAD_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEDF2F7' } }
 const OFF_FILL  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEBEDF2' } }
-const THIN = { style: 'thin', color: { argb: 'FFCBD5E1' } }
+const solidFill = hex => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${hex.slice(1)}` } })
+const THIN ={ style: 'thin', color: { argb: 'FFCBD5E1' } }
 const BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN }
 const HRS_FMT = '0.00'
 
@@ -99,7 +100,12 @@ function addMemberSheet(wb, { member, cardsByDate, leaveOn, summary }, { dates, 
   for (const r of [2, 3]) { ws.getCell(r, 1).font = { bold: true }; ws.getCell(r, 5).font = { bold: true } }
   ws.addRow(['Office hours: Mon-Fri 8:00 AM - 5:30 PM, Sat 8:00 AM - 1:00 PM. Lunch 1:00 PM - 2:30 PM is not counted. Time outside office hours, and any work on Sundays or public holidays, is OT.'])
     .font = { italic: true, size: 9, color: { argb: 'FF64748B' } }
-  ws.addRow([])
+  // Colour key for the automatic leave highlights
+  const key = ws.addRow(['Key:', LEAVE_HIGHLIGHTS.leave.label, LEAVE_HIGHLIGHTS.medical.label])
+  key.font = { size: 9 }
+  key.getCell(1).font = { size: 9, bold: true }
+  key.getCell(2).fill = solidFill(LEAVE_HIGHLIGHTS.leave.hex)
+  key.getCell(3).fill = solidFill(LEAVE_HIGHLIGHTS.medical.hex)
   styleHeader(ws.addRow(['Date', 'Day', 'Time in', 'Time out', 'Site', 'Normal (hrs)', 'OT (hrs)', 'Remarks']))
 
   for (const date of dates) {
@@ -108,6 +114,7 @@ function addMemberSheet(wb, { member, cardsByDate, leaveOn, summary }, { dates, 
     const info = dayInfo(date)
     const offDay = info.kind === 'holiday' || info.kind === 'off'
     const slots = slotsOf(card)
+    const mark = dayHighlightHex(card, leave)
 
     const notes = []
     if (info.kind === 'holiday') notes.push(info.label)
@@ -132,7 +139,9 @@ function addMemberSheet(wb, { member, cardsByDate, leaveOn, summary }, { dates, 
     row.eachCell({ includeEmpty: true }, c => {
       c.border = BORDER
       c.alignment = { vertical: 'top', wrapText: true }
-      if (offDay) c.fill = OFF_FILL
+      // A highlight picked on the timecard, or leave, wins over the off-day grey
+      if (mark) c.fill = solidFill(mark)
+      else if (offDay) c.fill = OFF_FILL
     })
     if (card?.ot_minutes) row.getCell(7).font = { bold: true }
   }

@@ -6,7 +6,7 @@ import { useViewport } from '../utils/useViewport'
 import { ChevronDown, ChevronLeft, ChevronRight, Loader2, Plus, Search, X } from 'lucide-react'
 import { fetchTeamLeaves, getMemberLeaveOnDate, getLeaveSessionLabel } from '../utils/teamLeaves'
 import { normalizeDate, getSiteDates, assignmentsForDate, assignmentMemberId } from '../utils/siteDays'
-import { calcTimecard, hasOverlap, dayInfo, formatMinutes, formatTime12, monthDates, isMissingDay } from '../utils/timecard'
+import { calcTimecard, hasOverlap, dayInfo, formatMinutes, formatTime12, monthDates, isMissingDay, HIGHLIGHTS, highlightHex, leaveHighlight } from '../utils/timecard'
 
 const EMPTY_SLOT = { time_in: '', time_out: '', site_id: '' }
 
@@ -121,6 +121,7 @@ export default function MyTimecard({ month, setMonth, viewId, setViewId }) {
     return {
       segments: slots.length > 0 ? slots : [{ ...EMPTY_SLOT, site_id: suggestedSiteIds(date)[0] || '' }],
       remarks: saved?.remarks || '',
+      highlight: saved?.highlight || '',
     }
   }
 
@@ -132,10 +133,12 @@ export default function MyTimecard({ month, setMonth, viewId, setViewId }) {
     if (!canEdit) return
     const segments = values.segments.filter(slotHasTime)
     const remarks = values.remarks.trim()
+    const highlight = values.highlight || ''
     const saved = cards[date]
-    const blank = segments.length === 0 && !remarks
+    const blank = segments.length === 0 && !remarks && !highlight
     const unchanged = saved &&
-      JSON.stringify(savedSlots(saved)) === JSON.stringify(segments) && (saved.remarks || '') === remarks
+      JSON.stringify(savedSlots(saved)) === JSON.stringify(segments) && (saved.remarks || '') === remarks &&
+      (saved.highlight || '') === highlight
     if (unchanged || (!saved && blank)) return
 
     setSaving(date)
@@ -155,6 +158,7 @@ export default function MyTimecard({ month, setMonth, viewId, setViewId }) {
         time_out: last?.time_out || null,
         site_id: segments.find(s => s.site_id)?.site_id || null,
         remarks: remarks || null,
+        highlight: highlight || null,
         worked_minutes: worked,
         normal_minutes: normal,
         ot_minutes: ot,
@@ -167,7 +171,9 @@ export default function MyTimecard({ month, setMonth, viewId, setViewId }) {
     if (result.error) {
       setError(/segments/.test(result.error.message)
         ? 'The timecards table needs updating — run sql/migrate-timecard-segments.sql in the Supabase SQL editor.'
-        : result.error.message)
+        : /highlight/.test(result.error.message)
+          ? 'Highlights need a database update — run sql/migrate-timecard-highlight.sql in the Supabase SQL editor.'
+          : result.error.message)
       return
     }
     setCards(prev => blank ? without(prev, date) : { ...prev, [date]: result.data })
@@ -273,8 +279,9 @@ export default function MyTimecard({ month, setMonth, viewId, setViewId }) {
 
 function DayRow({ date, isToday, values, leave, missing, sites, suggested, canEdit, isMobile, onChange, onSave }) {
   const info = dayInfo(date)
-  const { segments, remarks } = values
+  const { segments, remarks, highlight } = values
   const { normal, ot } = calcTimecard(date, segments)
+  const mark = highlightHex(highlight) || leaveHighlight(leave)?.hex
   const d = new Date(`${date}T00:00:00`)
   const offDay = info.kind === 'holiday' || info.kind === 'off'
   const hasTime = segments.some(slotHasTime)
@@ -304,6 +311,7 @@ function DayRow({ date, isToday, values, leave, missing, sites, suggested, canEd
 
   const dateLabel = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
+      <HighlightPicker value={highlight} disabled={!canEdit} onChange={h => onChange({ ...values, highlight: h })} />
       <span style={{ fontSize: 13.5, fontWeight: 700, color: offDay && !hasTime ? '#94a3b8' : '#0f172a', whiteSpace: 'nowrap' }}>
         {d.toLocaleDateString('en-MY', { weekday: 'short' })} {d.getDate()}
       </span>
@@ -347,7 +355,7 @@ function DayRow({ date, isToday, values, leave, missing, sites, suggested, canEd
     <span style={{ fontSize: 12.5, color: '#475569', whiteSpace: 'nowrap' }}>{formatMinutes(normal)} · <b style={{ color: ot ? '#ea580c' : '#94a3b8' }}>OT {formatMinutes(ot)}</b></span>
   )
 
-  const rowBg = isToday ? '#eff6ff' : offDay ? '#f8fafc' : 'white'
+  const rowBg = mark || (isToday ? '#eff6ff' : offDay ? '#f8fafc' : 'white')
 
   if (isMobile) {
     return (
@@ -392,6 +400,46 @@ function DayRow({ date, isToday, values, leave, missing, sites, suggested, canEd
       })}
       {addButton && <div style={gridRow}><span />{addButton}</div>}
     </div>
+  )
+}
+
+// Colour dot before the date. Picking a colour highlights the day here and in the Excel / PDF export.
+function HighlightPicker({ value, disabled, onChange }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const hex = highlightHex(value)
+
+  useEffect(() => {
+    if (!open) return
+    const close = e => { if (!ref.current?.contains(e.target)) setOpen(false) }
+    document.addEventListener('pointerdown', close)
+    return () => document.removeEventListener('pointerdown', close)
+  }, [open])
+
+  if (disabled && !hex) return null
+  const pick = key => { setOpen(false); if (key !== (value || '')) onChange(key) }
+
+  return (
+    <span ref={ref} style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
+      <button type="button" disabled={disabled} onClick={() => setOpen(o => !o)}
+        title={hex ? `Highlighted ${HIGHLIGHTS.find(h => h.key === value).label.toLowerCase()} — change` : 'Highlight this day'}
+        aria-label="Highlight colour" aria-expanded={open}
+        style={{ width: 18, height: 18, borderRadius: 999, padding: 0, cursor: disabled ? 'default' : 'pointer',
+          background: hex || 'white', border: hex ? '1px solid rgba(15,23,42,0.25)' : '1.5px dashed #94a3b8' }} />
+      {open && (
+        <span style={{ position: 'absolute', top: 24, left: -6, zIndex: 20, display: 'flex', alignItems: 'center', gap: 6, padding: 8, background: 'white', borderRadius: 12, boxShadow: '0 8px 24px rgba(15,23,42,0.18)', border: '1px solid #e2e8f0' }}>
+          {HIGHLIGHTS.map(h => (
+            <button key={h.key} type="button" onClick={() => pick(h.key)} title={h.label} aria-label={h.label}
+              style={{ width: 22, height: 22, borderRadius: 999, padding: 0, cursor: 'pointer', background: h.hex,
+                border: h.key === value ? '2px solid #0f172a' : '1px solid rgba(15,23,42,0.2)' }} />
+          ))}
+          <button type="button" onClick={() => pick('')} title="No highlight" aria-label="No highlight"
+            style={{ width: 22, height: 22, borderRadius: 999, padding: 0, cursor: 'pointer', background: 'white', border: '1px solid #cbd5e1', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <X size={12} />
+          </button>
+        </span>
+      )}
+    </span>
   )
 }
 

@@ -1,4 +1,5 @@
 import { publicHolidayName } from './holidays'
+import { isOffDay } from './teamLeaves'
 
 // Office hours per day of week (0 = Sunday). Minutes from midnight.
 // Anything worked outside the window counts as OT; a day with no window is an
@@ -148,6 +149,32 @@ export function summarizeTimecards(dates, cardsByDate, leaveOn, today) {
   }
   return sum
 }
+
+// Colours a day can be highlighted with (timecards.highlight); the Excel / PDF
+// export fills the day's row with the same colour.
+export const HIGHLIGHTS = [
+  { key: 'yellow', label: 'Yellow', hex: '#FEF08A' },
+  { key: 'green',  label: 'Green',  hex: '#BBF7D0' },
+  { key: 'blue',   label: 'Blue',   hex: '#BFDBFE' },
+  { key: 'pink',   label: 'Pink',   hex: '#FBCFE8' },
+  { key: 'orange', label: 'Orange', hex: '#FED7AA' },
+  { key: 'purple', label: 'Purple', hex: '#DDD6FE' },
+]
+export const highlightHex = key => HIGHLIGHTS.find(h => h.key === key)?.hex || null
+
+// Leave days are highlighted automatically (rota off days aren't leave)
+export const LEAVE_HIGHLIGHTS = {
+  medical: { label: 'Medical leave', hex: '#FECACA' },
+  leave:   { label: 'Leave',         hex: '#99F6E4' },
+}
+const MEDICAL_TYPES = ['MEDICAL', 'HOSPITALIZATION LEAVE']
+export function leaveHighlight(leave) {
+  if (!leave || isOffDay(leave)) return null
+  return MEDICAL_TYPES.includes(leave.leave_type) ? LEAVE_HIGHLIGHTS.medical : LEAVE_HIGHLIGHTS.leave
+}
+
+// Row colour for a day: a colour picked on the timecard wins, then leave
+export const dayHighlightHex = (card, leave) => highlightHex(card?.highlight) || leaveHighlight(leave)?.hex || null
 
 export function formatMinutes(mins) {
   if (!mins) return '0h'

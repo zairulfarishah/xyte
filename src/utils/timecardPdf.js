@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 import { sanitize, wrap, drawCell, drawText, embedLogo, drawCompanyHeader, drawFooters } from './mileagePdf'
-import { dayInfo, formatMinutes, formatTime12, isMissingDay } from './timecard'
+import { dayHighlightHex, dayInfo, formatMinutes, formatTime12, isMissingDay } from './timecard'
 import { leaveAbbr, getLeaveSessionLabel } from './teamLeaves'
 
 const A4W = 595, A4H = 842
@@ -26,6 +26,7 @@ const OFF   = rgb(0.92, 0.93, 0.95)
 const HEAD  = rgb(0.93, 0.95, 0.97)
 const LINE  = rgb(0.55, 0.6, 0.65)
 const SOFT  = rgb(0.8, 0.84, 0.88)
+const hexRgb = hex => rgb(...[1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255))
 
 // Compact rows so a normal month (one slot a day) fits on a single page.
 const SIZE = 8
@@ -143,7 +144,7 @@ function drawMemberTimecard({ pdf, font, bold, logoImg, entry, dates, from, to, 
     }
 
     const rY = y - rowH
-    page.drawRectangle({ x: ML, y: rY, width: TABLE_W, height: rowH, borderColor: LINE, borderWidth: 0.4, color: offDay ? OFF : idx % 2 ? WHITE : ZEBRA })
+    page.drawRectangle({ x: ML, y: rY, width: TABLE_W, height: rowH, borderColor: LINE, borderWidth: 0.4, color: dayHighlightHex(card, leave) ? hexRgb(dayHighlightHex(card, leave)) : offDay ? OFF : idx % 2 ? WHITE : ZEBRA })
     COLS.forEach((c, i) => {
       if (i > 0) page.drawLine({ start: { x: colX(i), y: rY + rowH }, end: { x: colX(i), y: rY }, thickness: 0.4, color: LINE })
     })
