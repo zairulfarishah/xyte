@@ -10,6 +10,10 @@ export const GAMES = [
   { key: 'math',     name: 'Quick Math',    emoji: '🧮', blurb: 'As many sums as you can in 60 seconds', unit: 'correct' },
   { key: 'stack',    name: 'Stack Tower',   emoji: '🏗️', blurb: 'Tap to drop each block — the overhang falls off', unit: 'blocks' },
   { key: 'whack',    name: 'Whack-a-Mole',  emoji: '🔨', blurb: 'Bonk every mole you can in 30 seconds', unit: 'moles' },
+  { key: 'trivia',   name: 'Daily Trivia',  emoji: '❓', blurb: '5 questions a day, same for everyone — Malaysia, science, work', unit: 'pts', sum: true },
+  { key: 'blocks',   name: 'Block Drop',    emoji: '🧱', blurb: 'Rotate the falling blocks and clear full lines', unit: 'lines' },
+  { key: 'simon',    name: 'Simon Says',    emoji: '🟢', blurb: 'Watch the pads light up, then repeat — one longer each round', unit: 'steps' },
+  { key: 'colour',   name: 'Colour Trap',   emoji: '🎨', blurb: 'Tap the colour of the ink, not the word — 30 seconds', unit: 'correct' },
 ]
 export const gameOf = key => GAMES.find(g => g.key === key)
 

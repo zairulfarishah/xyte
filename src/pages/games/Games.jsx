@@ -14,10 +14,15 @@ import Memory from './Memory'
 import QuickMath from './QuickMath'
 import Stack from './Stack'
 import Whack from './Whack'
+import Trivia from './Trivia'
+import BlockDrop from './BlockDrop'
+import Simon from './Simon'
+import ColourTrap from './ColourTrap'
 
 const PLAYERS = {
   flappy: Flappy, '2048': Game2048, snake: Snake, reaction: Reaction,
   word: DailyWord, memory: Memory, math: QuickMath, stack: Stack, whack: Whack,
+  trivia: Trivia, blocks: BlockDrop, simon: Simon, colour: ColourTrap,
 }
 const MEDALS = ['🥇', '🥈', '🥉']
 
@@ -146,7 +151,8 @@ function GameScreen({ gameKey, onBack }) {
             </ol>
           )}
           {game.lowerWins && <p className="mk-sub" style={{ marginTop: 8 }}>Lower is better.</p>}
-          {game.sum && <p className="mk-sub" style={{ marginTop: 8 }}>Points added up over the days: 6 for 1 guess down to 1 for 6 guesses.</p>}
+          {gameKey === 'word' && <p className="mk-sub" style={{ marginTop: 8 }}>Points added up over the days: 6 for 1 guess down to 1 for 6 guesses.</p>}
+          {gameKey === 'trivia' && <p className="mk-sub" style={{ marginTop: 8 }}>Points added up over the days: 1 per right answer, up to 5 a day.</p>}
         </div>
       </div>
     </>

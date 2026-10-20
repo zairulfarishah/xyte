@@ -326,3 +326,58 @@ textarea.mk-in { height: auto; padding: 10px 12px; resize: vertical; }
 .gm-wdone { display: grid; justify-items: center; gap: 6px; padding: 14px; border-radius: 14px; background: #f8fafc; text-align: center; }
 .gm-wdone b { font-size: 18px; font-weight: 900; }
 .gm-wdone span { font-size: 12.5px; color: var(--muted); }
+
+/* ── Daily Trivia, Block Drop, Simon Says, Colour Trap ── */
+.gm-card.g-trivia { --g: linear-gradient(135deg, #4f46e5, #0ea5e9); }
+.gm-card.g-blocks { --g: linear-gradient(135deg, #1e293b, #7c3aed); }
+.gm-card.g-simon  { --g: linear-gradient(135deg, #15803d, #1d4ed8); }
+.gm-card.g-colour { --g: linear-gradient(135deg, #e11d48, #f59e0b); }
+
+/* Daily Trivia */
+.gm-trivia, .gm-blocks, .gm-simon, .gm-colour { width: min(380px, 100%); display: grid; gap: 12px; }
+.gm-tq { padding: 18px 16px; border-radius: 16px; background: #0f172a; color: #fff; font-size: 17px; font-weight: 800; line-height: 1.4; text-align: center; min-height: 96px; display: grid; place-items: center; }
+.gm-topts { display: grid; gap: 8px; }
+.gm-topts button { min-height: 50px; padding: 10px 14px; border: 0; border-radius: 12px; background: #fff; box-shadow: inset 0 0 0 1.5px #cbd5e1; font: inherit; font-size: 14.5px; font-weight: 700; color: #0f172a; cursor: pointer; text-align: left; transition: background .15s; }
+.gm-topts button:hover:not(:disabled) { background: #eff6ff; box-shadow: inset 0 0 0 1.5px #93c5fd; }
+.gm-topts button:disabled { cursor: default; }
+.gm-topts button.right { background: #16a34a; color: #fff; box-shadow: none; }
+.gm-topts button.wrong { background: #dc2626; color: #fff; box-shadow: none; }
+.gm-topts button.dim { opacity: .45; }
+.gm-tq-review { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: #f8fafc; }
+.gm-tq-review div { display: grid; gap: 2px; }
+.gm-tq-review b { font-size: 13px; font-weight: 700; }
+.gm-tq-review small { font-size: 12.5px; color: #15803d; font-weight: 700; }
+
+/* Block Drop */
+.gm-well { position: relative; display: grid; grid-template-columns: repeat(10, 1fr); gap: 1px; padding: 4px; border-radius: 14px; background: #0f172a;
+  aspect-ratio: 1 / 2; width: min(300px, 100%); justify-self: center; touch-action: none; user-select: none; cursor: pointer; }
+.gm-well i { border-radius: 3px; background: rgba(255,255,255,.04); }
+.gm-well i.on { box-shadow: inset 0 -3px 0 rgba(0,0,0,.25), inset 0 2px 0 rgba(255,255,255,.25); }
+.gm-well .msg { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 8px; padding: 20px; text-align: center; color: #fff; background: rgba(15,23,42,.7); border-radius: 14px; }
+.gm-well .msg b { font-size: 28px; font-weight: 900; }
+.gm-well .msg span { font-size: 13px; opacity: .85; }
+.gm-next { display: grid; gap: 2px; padding: 6px; border-radius: 8px; background: #0f172a; }
+.gm-next div { display: flex; gap: 2px; }
+.gm-next i { width: 10px; height: 10px; border-radius: 2px; }
+.gm-ctrl { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.gm-ctrl button { height: 52px; border: 0; border-radius: 12px; background: #e2e8f0; color: #0f172a; display: grid; place-items: center; cursor: pointer; touch-action: manipulation; }
+.gm-ctrl button:active { background: #cbd5e1; }
+
+/* Simon Says */
+.gm-pads { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px; border-radius: 50%; background: #0f172a; aspect-ratio: 1; }
+.gm-pads > button:not(.gm-simon-go) { border: 0; cursor: pointer; transition: background .08s, box-shadow .08s; touch-action: manipulation; }
+.gm-pads > button:nth-child(1) { border-radius: 100% 12px 12px 12px; }
+.gm-pads > button:nth-child(2) { border-radius: 12px 100% 12px 12px; }
+.gm-pads > button:nth-child(3) { border-radius: 12px 12px 12px 100%; }
+.gm-pads > button:nth-child(4) { border-radius: 12px 12px 100% 12px; }
+.gm-simon-go { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 86px; height: 86px; border-radius: 50%; border: 6px solid #0f172a;
+  background: #fff; font: inherit; font-size: 15px; font-weight: 900; color: #0f172a; cursor: pointer; }
+
+/* Colour Trap */
+.gm-word-card { display: grid; justify-items: center; gap: 6px; padding: 30px 12px; border-radius: 18px; background: #0f172a; transition: box-shadow .15s; }
+.gm-word-card b { font-size: 48px; font-weight: 900; letter-spacing: .02em; }
+.gm-word-card small { font-size: 12px; color: #94a3b8; font-weight: 700; }
+.gm-word-card.ok { box-shadow: 0 0 0 4px #4ade80; }
+.gm-word-card.bad { box-shadow: 0 0 0 4px #f87171; animation: gm-shake .3s; }
+.gm-swatches { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.gm-swatches button { height: 56px; border: 0; border-radius: 12px; font: inherit; font-size: 12.5px; font-weight: 900; color: #0f172a; cursor: pointer; touch-action: manipulation; }
