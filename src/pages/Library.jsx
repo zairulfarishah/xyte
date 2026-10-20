@@ -1,3 +1,4 @@
+import { activeMembers, isActiveMember } from '../utils/members'
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
@@ -109,7 +110,7 @@ export default function Library() {
       supabase.from('library_documents')
         .select('*, team_members(id, full_name)')
         .order('created_at', { ascending: false }),
-      supabase.from('team_members').select('id, full_name').order('full_name'),
+      supabase.from('team_members').select('id, full_name, is_hidden').order('full_name'),
       loadJson(CUSTOM_SECTIONS_PATH),
       loadJson(FORM_SUBS_PATH),
     ])
@@ -531,7 +532,7 @@ export default function Library() {
                     </div>
                     <div>
                       <p style={{ fontWeight: '700', fontSize: '15px', color: '#0f172a' }}>{sec.label}</p>
-                      <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '1px' }}>Personal documents · {members.length} members</p>
+                      <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '1px' }}>Personal documents · {activeMembers(members).length} members</p>
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
@@ -541,7 +542,7 @@ export default function Library() {
                 </button>
                 {isOpen && (
                   <div style={{ borderTop: '1px solid #f1f5f9' }}>
-                    {members.map((m, idx) => {
+                    {members.filter(m => isActiveMember(m) || getMember(sec.key, m.id)).map((m, idx) => {
                       const doc = getMember(sec.key, m.id)
                       const initials = m.full_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
                       const canUpload = isZairul || m.id === myMemberId
@@ -658,7 +659,7 @@ export default function Library() {
                   ) : (
                     <select style={lightInput} value={form.member_id} onChange={e => setForm(f => ({ ...f, member_id: e.target.value }))}>
                       <option value="">— Select member —</option>
-                      {members.map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
+                      {activeMembers(members).map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
                     </select>
                   )}
                 </div>

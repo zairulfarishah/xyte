@@ -17,6 +17,7 @@ import { fetchTeamLeaves, getLeaveSessionLabel, getLeaveSummary, getMemberLeaveO
 import { useViewport } from '../utils/useViewport'
 import { buildAssignmentMessage, openWhatsApp, shortNameOf } from '../utils/whatsapp'
 import { getSiteTitle } from '../utils/siteTitle'
+import { isActiveMember } from '../utils/members'
 import {
   assignmentMemberId, assignmentsForDate, crewForDate, getSiteDates, hasDailyCrew,
   isPic, picForDate, siteCrew, sitePic, uniqueAssignments,
@@ -1576,7 +1577,7 @@ export default function Sites() {
                           <label style={lLabel}>{form.site_type==='meeting'?'Organizer':'PIC'}</label>
                           <select style={lightInput} value={day.pic_id} onChange={e => setDayPic(dateStr, e.target.value)}>
                             <option value="">— Select —</option>
-                            {members.map(m => {
+                            {members.filter(m => isActiveMember(m) || m.id === day.pic_id).map(m => {
                               const leave = getMemberLeaveOnDate(leaves, m.id, dateStr)
                               return (
                                 <option key={m.id} value={m.id} disabled={Boolean(leave)}>
@@ -1590,7 +1591,7 @@ export default function Sites() {
                         <div>
                           <label style={{ ...lLabel, marginBottom:'8px' }}>{form.site_type==='meeting'?'Attendees':'Crew'}</label>
                           <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
-                            {members.filter(m => m.id !== day.pic_id).map(m => {
+                            {members.filter(m => m.id !== day.pic_id && (isActiveMember(m) || day.crew_ids.includes(m.id))).map(m => {
                               const leave = getMemberLeaveOnDate(leaves, m.id, dateStr)
                               // Someone already ticked who later went on leave can still be unticked
                               const blocked = Boolean(leave) && !day.crew_ids.includes(m.id)
@@ -1617,7 +1618,7 @@ export default function Sites() {
                       setForm(f => ({ ...f, pic_id: picId, crew_ids: f.crew_ids.filter(id => id !== picId) }))
                     }}>
                       <option value="">— Select —</option>
-                      {members.map(m => (
+                      {members.filter(m => isActiveMember(m) || m.id === form.pic_id).map(m => (
                         <option key={m.id} value={m.id} disabled={Boolean(unavailableMembers[m.id])}>
                           {m.full_name}{unavailableMembers[m.id] ? ` - On leave (${unavailableMembers[m.id].leave_type}, ${getLeaveSessionLabel(unavailableMembers[m.id].leave_session)})` : ''}
                         </option>
@@ -1627,7 +1628,7 @@ export default function Sites() {
 
                   <div><label style={{ ...lLabel, marginBottom:'12px' }}>{form.site_type==='meeting'?'Attendees':'Crew'}</label>
                     <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
-                      {members.filter(m => m.id !== form.pic_id).map(m => (
+                      {members.filter(m => m.id !== form.pic_id && (isActiveMember(m) || form.crew_ids.includes(m.id))).map(m => (
                         <label key={m.id} style={{ display:'flex', alignItems:'center', gap:'12px', cursor: unavailableMembers[m.id] ? 'not-allowed' : 'pointer', opacity: unavailableMembers[m.id] ? 0.55 : 1 }}>
                           <input type="checkbox" checked={form.crew_ids.includes(m.id)} disabled={Boolean(unavailableMembers[m.id])} onChange={() => toggleCrew(m.id)} style={{ width:'16px', height:'16px', accentColor:'#2563eb' }} />
                           <span style={{ fontSize:'13px', color:'#0f172a' }}>

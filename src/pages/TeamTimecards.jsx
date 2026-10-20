@@ -1,3 +1,4 @@
+import { isActiveMember } from '../utils/members'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../supabase'
 import { useViewport } from '../utils/useViewport'
@@ -32,7 +33,7 @@ export default function TeamTimecards({ month, setMonth, onOpenMember }) {
 
   useEffect(() => {
     Promise.all([
-      supabase.from('team_members').select('id, full_name, short_name, avatar_url').order('full_name'),
+      supabase.from('team_members').select('id, full_name, short_name, avatar_url, is_hidden').order('full_name'),
       fetchTeamLeaves().catch(() => []),
     ]).then(([m, l]) => {
       setMembers(m.data || [])
@@ -63,7 +64,7 @@ export default function TeamTimecards({ month, setMonth, onOpenMember }) {
     return map
   }, [cards])
 
-  const rows = useMemo(() => members.map(m => {
+  const rows = useMemo(() => members.filter(m => isActiveMember(m) || byMember[m.id]).map(m => {
     const days = byMember[m.id] || {}
     const list = Object.values(days)
     return {

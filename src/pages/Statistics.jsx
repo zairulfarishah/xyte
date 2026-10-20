@@ -1,3 +1,4 @@
+import { isActiveMember } from '../utils/members'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../supabase'
 import { useViewport } from '../utils/useViewport'
@@ -218,7 +219,7 @@ export default function Statistics() {
     async function fetchAll() {
       const [{ data: siteData }, { data: memberData }, { data: docs }, leaveData] = await Promise.all([
         supabase.from('sites').select('*, site_assignments(assignment_role, work_date, member_id, team_members(id, full_name))').eq('is_hidden', false),
-        supabase.from('team_members').select('id, full_name, short_name').order('full_name'),
+        supabase.from('team_members').select('id, full_name, short_name, is_hidden').order('full_name'),
         supabase.from('library_documents').select('id'),
         fetchTeamLeaves().catch(() => []),
       ])
@@ -325,7 +326,7 @@ export default function Statistics() {
       .sort((a, b) => b.value - a.value)
 
     /* People */
-    const memberStats = members.map(m => {
+    const memberStats = members.filter(m => isActiveMember(m) || sites.some(s => (s.site_assignments || []).some(a => a.member_id === m.id))).map(m => {
       const assignments = sites.filter(s => (s.site_assignments || []).some(a => a.member_id === m.id))
       const picCount = sites.filter(s => (s.site_assignments || [])
         .some(a => a.member_id === m.id && String(a.assignment_role || '').toLowerCase() === 'pic')).length

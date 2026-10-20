@@ -12,6 +12,7 @@ import {
   assignmentMemberId, crewForDate, getSiteDates, isMissingPic, memberRoleOnSite, picForDate, representativeDate,
 } from '../utils/siteDays'
 import DashboardBento from './DashboardBento'
+import { activeMembers } from '../utils/members'
 import LocationPicker from '../components/LazyLocationPicker'
 
 const SITE_TYPES = [
@@ -161,7 +162,7 @@ export default function Dashboard() {
     ])
 
     const siteList = allSites || []
-    const memberRecords = (memberData || []).map(member => buildMemberRecord(member, siteList))
+    const memberRecords = activeMembers(memberData).map(member => buildMemberRecord(member, siteList))
 
     const today = new Date().toISOString().split('T')[0]
     const in14 = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]

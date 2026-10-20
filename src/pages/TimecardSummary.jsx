@@ -1,3 +1,4 @@
+import { isActiveMember } from '../utils/members'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../supabase'
 import { FileDown, FileSpreadsheet, Loader2 } from 'lucide-react'
@@ -50,7 +51,7 @@ export default function TimecardSummary() {
 
   useEffect(() => {
     Promise.all([
-      supabase.from('team_members').select('id, full_name, short_name, role').order('full_name'),
+      supabase.from('team_members').select('id, full_name, short_name, role, is_hidden').order('full_name'),
       supabase.from('sites').select('id, site_name'),
       fetchTeamLeaves().catch(() => []),
     ]).then(([m, s, l]) => {
@@ -80,7 +81,8 @@ export default function TimecardSummary() {
   const entries = useMemo(() => {
     const byMember = {}
     for (const c of cards) (byMember[c.member_id] ||= {})[c.work_date] = c
-    return members.map(member => {
+    // Former members only show for periods where they clocked time
+    return members.filter(m => isActiveMember(m) || byMember[m.id]).map(member => {
       const cardsByDate = byMember[member.id] || {}
       const leaveOn = date => getMemberLeaveOnDate(leaves, member.id, date)
       return { member, cardsByDate, leaveOn, summary: summarizeTimecards(dates, cardsByDate, leaveOn, today) }

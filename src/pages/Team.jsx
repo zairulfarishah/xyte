@@ -7,6 +7,7 @@ import { publicHolidayName } from '../utils/holidays'
 import { getSiteDates, memberDatesOnSite, memberRoleOnSite, siteMemberIds } from '../utils/siteDays'
 import { buildJobIndex, isActiveSite, memberDayStatus } from '../utils/memberDay'
 import { buildWhatsAppUrl } from '../utils/whatsapp'
+import { activeMembers } from '../utils/members'
 import './Team.css'
 
 const VIEWS = [
@@ -75,7 +76,7 @@ export default function Team() {
         .order('scheduled_date', { ascending: true }),
       fetchTeamLeaves().catch(() => []),
     ])
-    setRawMembers(memberData || [])
+    setRawMembers(activeMembers(memberData))
     setSites(siteData || [])
     setLeaves(leaveData || [])
     setLoading(false)

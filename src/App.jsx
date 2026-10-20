@@ -239,6 +239,7 @@ function SearchOverlay({ onClose }) {
           .limit(6),
         supabase.from('team_members')
           .select('id, full_name, role')
+          .eq('is_hidden', false)
           .ilike('full_name', `%${query}%`)
           .limit(4),
       ])

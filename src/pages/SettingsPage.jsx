@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase, createDetachedClient } from '../supabase'
-import { Bell, CalendarDays, Camera, ChevronLeft, ChevronRight, Info, Pencil, Plus, Trash2, UserPlus, Users, X } from 'lucide-react'
+import { Bell, CalendarDays, Camera, ChevronLeft, ChevronRight, Eye, EyeOff, Info, Pencil, Plus, Trash2, UserPlus, Users, X } from 'lucide-react'
 import { ROLE_MULTIPLIERS, WEEKLY_CAPACITY_DAYS } from '../utils/workload'
 import { useAuth } from '../context/AuthContext'
 import {
@@ -11,6 +11,7 @@ import { memberDatesOnSite } from '../utils/siteDays'
 import { removeLeaveFromSites } from '../utils/leaveAssignments'
 import { toast } from '../utils/toast'
 import { formatPhoneDisplay, isValidPhone, normalizePhone } from '../utils/whatsapp'
+import { activeMembers, isActiveMember } from '../utils/members'
 import NotificationSettings from '../components/NotificationSettings'
 import './Settings.css'
 
@@ -182,6 +183,7 @@ function MembersTab({ members, setRawMembers }) {
   const [editing, setEditing] = useState(null) // member, or 'new'
   const [notice, setNotice] = useState(null)   // { tone, text }
   const [uploading, setUploading] = useState(null)
+  const [toggling, setToggling] = useState(null)
   const photoInput = useRef(null)
   const photoFor = useRef(null)
 
@@ -210,19 +212,26 @@ function MembersTab({ members, setRawMembers }) {
     }
   }
 
-  return <>
-    <div className="st-bar">
-      <div><h2>Team members</h2><p>{members.length} people · tap a photo to change it · a phone number enables WhatsApp buttons</p></div>
-      <button className="st-btn" onClick={() => setEditing('new')}><UserPlus size={15} />Add member</button>
-    </div>
-    {notice && <div className={`st-notice ${notice.tone}`}><span>{notice.text}</span><button onClick={() => setNotice(null)} aria-label="Dismiss"><X size={14} /></button></div>}
-    <input ref={photoInput} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhoto} />
+  // Hiding keeps every record (timecards, claims, leave, sites) — the person just
+  // drops off team lists and pickers.
+  async function setHidden(m, hidden) {
+    if (hidden && !confirm(`Hide ${m.full_name}? Their timecards, claims, leave and site history are kept — they just stop appearing in team lists and pickers. You can show them again any time.`)) return
+    setToggling(m.id)
+    const { error } = await supabase.from('team_members').update({ is_hidden: hidden }).eq('id', m.id)
+    setToggling(null)
+    if (error) return setNotice({ tone: 'err', text: `Could not ${hidden ? 'hide' : 'show'} ${m.full_name}: ${error.message}` })
+    setRawMembers(prev => prev.map(x => x.id === m.id ? { ...x, is_hidden: hidden } : x))
+    setNotice({ tone: 'ok', text: hidden ? `${m.full_name} is hidden. Their records are kept.` : `${m.full_name} is back on the team.` })
+  }
 
-    <div className="st-members">
-      {members.map(m => {
-        const tone = ROLE_TONES[m.role] || ROLE_TONES['GPR Engineer']
-        return (
-          <div key={m.id} className="st-card st-mc">
+  const current = members.filter(isActiveMember)
+  const former = members.filter(m => !isActiveMember(m))
+
+  const card = m => {
+    const tone = ROLE_TONES[m.role] || ROLE_TONES['GPR Engineer']
+    const hidden = !isActiveMember(m)
+    return (
+          <div key={m.id} className={`st-card st-mc${hidden ? ' hidden' : ''}`}>
             <div className="st-mc-top">
               <Avatar m={m} size={56} onUpload={() => pickPhoto(m.id)} uploading={uploading === m.id} />
               <div style={{ minWidth: 0 }}>
@@ -237,11 +246,30 @@ function MembersTab({ members, setRawMembers }) {
             </dl>
             <div className="st-mc-actions">
               <button className="st-btn ghost sm" onClick={() => setEditing(m)}><Pencil size={13} />Edit details</button>
+              <button className="st-btn ghost sm" onClick={() => setHidden(m, !hidden)} disabled={toggling === m.id}>
+                {hidden ? <><Eye size={13} />Show again</> : <><EyeOff size={13} />Hide</>}
+              </button>
             </div>
           </div>
-        )
-      })}
+    )
+  }
+
+  return <>
+    <div className="st-bar">
+      <div><h2>Team members</h2><p>{current.length} people · tap a photo to change it · a phone number enables WhatsApp buttons</p></div>
+      <button className="st-btn" onClick={() => setEditing('new')}><UserPlus size={15} />Add member</button>
     </div>
+    {notice && <div className={`st-notice ${notice.tone}`}><span>{notice.text}</span><button onClick={() => setNotice(null)} aria-label="Dismiss"><X size={14} /></button></div>}
+    <input ref={photoInput} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhoto} />
+
+    <div className="st-members">{current.map(card)}</div>
+
+    {former.length > 0 && <>
+      <div className="st-bar" style={{ marginTop: 28 }}>
+        <div><h2>Former members</h2><p>Hidden from team lists and pickers · all their records are kept</p></div>
+      </div>
+      <div className="st-members">{former.map(card)}</div>
+    </>}
 
     {editing && (
       <MemberDrawer
@@ -381,6 +409,7 @@ function LeaveTab({ members, sites, leaves, setLeaves, onSitesChanged }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const memberById = useMemo(() => Object.fromEntries(members.map(m => [m.id, m])), [members])
+  const current = useMemo(() => activeMembers(members), [members])
   const year = today.slice(0, 4)
 
   const realLeaves = leaves.filter(l => !isOffDay(l))
@@ -467,7 +496,7 @@ function LeaveTab({ members, sites, leaves, setLeaves, onSitesChanged }) {
 
   // ── per-member totals this year ──
   const totalCols = [['ANNUAL LEAVE', 'Annual'], ['MEDICAL', 'Medical'], ['EMERGENCY LEAVE', 'Emerg.']]
-  const totals = members.map(m => {
+  const totals = current.map(m => {
     const mine = realLeaves.filter(l => l.member_id === m.id)
     const by = type => mine.filter(l => l.leave_type === type).reduce((s, l) => s + leaveDays(l, `${year}-01-01`, `${year}-12-31`), 0)
     const all = mine.reduce((s, l) => s + leaveDays(l, `${year}-01-01`, `${year}-12-31`), 0)
@@ -507,7 +536,7 @@ function LeaveTab({ members, sites, leaves, setLeaves, onSitesChanged }) {
       </div>
     </div>
 
-    <Planner month={month} setMonth={setMonth} today={today} members={members} leaves={leaves} onAdd={openNew} onEdit={openEdit} />
+    <Planner month={month} setMonth={setMonth} today={today} members={current} leaves={leaves} onAdd={openNew} onEdit={openEdit} />
 
     <div className="st-leave-cols">
       <div className="st-card">
@@ -518,7 +547,7 @@ function LeaveTab({ members, sites, leaves, setLeaves, onSitesChanged }) {
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
             <select className="st-input" style={{ width: 'auto', padding: '7px 10px', fontSize: 13 }} value={who} onChange={e => setWho(e.target.value)}>
               <option value="">Everyone</option>
-              {members.map(m => <option key={m.id} value={m.id}>{m.short_name || m.full_name}</option>)}
+              {current.map(m => <option key={m.id} value={m.id}>{m.short_name || m.full_name}</option>)}
             </select>
             <label className="st-toggle"><input type="checkbox" checked={showOff} onChange={e => setShowOff(e.target.checked)} />Show off days</label>
           </div>
@@ -574,7 +603,7 @@ function LeaveTab({ members, sites, leaves, setLeaves, onSitesChanged }) {
       <LeaveDrawer
         draft={draft}
         setDraft={setDraft}
-        members={members}
+        members={members.filter(m => isActiveMember(m) || m.id === draft.member_id)}
         memberById={memberById}
         sites={sites}
         saving={saving}

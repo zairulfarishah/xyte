@@ -1,3 +1,4 @@
+import { activeMembers } from '../utils/members'
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
@@ -38,12 +39,12 @@ export default function TaskPage() {
   async function fetchAll() {
     setLoading(true)
     const [{ data: m }, { data: t }] = await Promise.all([
-      supabase.from('team_members').select('id, full_name, short_name, avatar_url').order('full_name'),
+      supabase.from('team_members').select('id, full_name, short_name, avatar_url, is_hidden').order('full_name'),
       supabase.from('tasks')
         .select('*, task_assignments(member_id)')
         .order('created_at', { ascending: false }),
     ])
-    setMembers(m || [])
+    setMembers(activeMembers(m))
     setTasks(t || [])
     setLoading(false)
   }

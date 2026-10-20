@@ -1,3 +1,4 @@
+import { activeMembers } from '../utils/members'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BellRing, Camera, Check, Copy, ImagePlus, Plus, QrCode, Receipt, Trash2, Undo2, X } from 'lucide-react'
 import { supabase } from '../supabase'
@@ -148,7 +149,7 @@ export default function SplitBill({ members, onSetupError, onOpenQr }) {
         </div>
       )}
 
-      {creating && <BillForm members={members} onClose={() => setCreating(false)} onSaved={() => { setCreating(false); load() }} />}
+      {creating && <BillForm members={activeMembers(members)} onClose={() => setCreating(false)} onSaved={() => { setCreating(false); load() }} />}
       {paying && (
         <PaySheet bill={paying.bill} share={paying.share} payer={memberById[paying.bill.payer_id]}
           onClose={() => setPaying(null)}

@@ -78,6 +78,8 @@
 .st-kv dt { color: var(--faint); font-weight: 600; font-size: 12px; }
 .st-kv dd { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .st-kv dd.none { color: var(--faint); font-style: italic; }
+.st-mc.hidden { opacity: .65; }
+.st-mc.hidden:hover { opacity: 1; }
 .st-mc-actions { display: flex; gap: 8px; border-top: 1px solid var(--line-2); padding-top: 12px; }
 .st-mc-actions .st-btn { flex: 1; justify-content: center; }
 

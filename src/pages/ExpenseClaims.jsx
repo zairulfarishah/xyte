@@ -75,7 +75,7 @@ export default function ExpenseClaims() {
       supabase.from('claims')
         .select('*, member:team_members!claims_member_id_fkey(id, full_name, short_name, avatar_url), site:sites(id, site_name)')
         .order('claim_date', { ascending: false }),
-      supabase.from('team_members').select('id, full_name, short_name, avatar_url').order('full_name'),
+      supabase.from('team_members').select('id, full_name, short_name, avatar_url, is_hidden').order('full_name'),
       supabase.from('sites').select('id, site_name').eq('is_hidden', false).order('site_name'),
     ])
     setSetupError(error ? error.message : null)

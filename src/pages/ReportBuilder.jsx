@@ -1,3 +1,4 @@
+import { activeMembers } from '../utils/members'
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
@@ -1319,7 +1320,7 @@ function EditorView({ reportId, sites, onBack }) {
 
   useEffect(() => { loadReport() }, [reportId])
   useEffect(() => {
-    supabase.from('team_members').select('id, full_name').order('full_name').then(({ data }) => setTeamMembers(data || []))
+    supabase.from('team_members').select('id, full_name, is_hidden').order('full_name').then(({ data }) => setTeamMembers(activeMembers(data)))
   }, [])
 
   async function loadReport() {

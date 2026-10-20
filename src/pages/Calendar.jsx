@@ -71,7 +71,7 @@ export default function CalendarPage() {
 
   useEffect(() => {
     fetchTeamLeaves().then(setLeaves).catch(() => setLeaves([]))
-    supabase.from('team_members').select('id, short_name, full_name').then(({ data }) => setMembers(data || []))
+    supabase.from('team_members').select('id, short_name, full_name, is_hidden').then(({ data }) => setMembers(data || []))
     fetchCalendarSettings().then(s => setEnabledTabs(s.tabs)).catch(() => {})
   }, [])
 

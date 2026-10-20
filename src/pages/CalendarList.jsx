@@ -1,3 +1,4 @@
+import { isActiveMember } from '../utils/members'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { isOffDay, leaveAbbr } from '../utils/teamLeaves'
 import { publicHolidayName } from '../utils/holidays'
@@ -111,7 +112,7 @@ export default function CalendarListView({ sitesSorted, year, month, navigate, l
   function storeNames(date) {
     const assigned = assignedByDate[date] || new Set()
     const away = new Set(leavesThisMonth.filter(l => inLeave(l, date)).map(l => l.member_id))
-    return members.filter(m => !assigned.has(m.id) && !away.has(m.id)).map(nameOf)
+    return members.filter(m => isActiveMember(m) && !assigned.has(m.id) && !away.has(m.id)).map(nameOf)
   }
   function offNames(date) {
     const off = new Set(leavesThisMonth.filter(l => isOffDay(l) && inLeave(l, date)).map(l => l.member_id))

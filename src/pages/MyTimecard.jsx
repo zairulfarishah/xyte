@@ -1,3 +1,4 @@
+import { isActiveMember } from '../utils/members'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
@@ -66,7 +67,7 @@ export default function MyTimecard({ month, setMonth, viewId, setViewId }) {
 
   useEffect(() => {
     Promise.all([
-      supabase.from('team_members').select('id, full_name, short_name').order('full_name'),
+      supabase.from('team_members').select('id, full_name, short_name, is_hidden').order('full_name'),
       supabase.from('sites').select('id, site_name, site_status, is_hidden, scheduled_date, end_date, site_assignments(member_id, work_date, assignment_role)'),
       fetchTeamLeaves().catch(() => []),
     ]).then(([m, s, l]) => {
@@ -208,7 +209,7 @@ export default function MyTimecard({ month, setMonth, viewId, setViewId }) {
         </div>
         {isZairul && (
           <select value={viewId || ''} onChange={e => setViewId(e.target.value)} style={{ ...inputStyle, width: 'auto', minWidth: 200, borderRadius: 999, padding: '9px 14px', fontWeight: 600 }}>
-            {members.map(m => <option key={m.id} value={m.id}>{m.full_name}{m.id === memberId ? ' (me)' : ''}</option>)}
+            {members.map(m => <option key={m.id} value={m.id}>{m.full_name}{m.id === memberId ? ' (me)' : isActiveMember(m) ? '' : ' (former)'}</option>)}
           </select>
         )}
         {!isZairul && viewId !== memberId && (

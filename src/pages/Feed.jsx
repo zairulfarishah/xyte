@@ -1,3 +1,4 @@
+import { activeMembers, isActiveMember } from '../utils/members'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../supabase'
@@ -61,7 +62,7 @@ function MentionInput({ value, onChange, members, multiline, onSubmit, placehold
   const matches = useMemo(() => {
     if (query === null) return []
     const q = query.toLowerCase()
-    return members.filter(m => `${m.full_name} ${m.short_name || ''}`.toLowerCase().includes(q)).slice(0, 6)
+    return members.filter(m => isActiveMember(m) && `${m.full_name} ${m.short_name || ''}`.toLowerCase().includes(q)).slice(0, 6)
   }, [query, members])
 
   function handleChange(e) {
@@ -221,7 +222,7 @@ function Composer({ members, sites, onPosted, onClose }) {
 
     // Mentioned people get the mention alert; everyone else gets a "new post" alert.
     const mentioned = mentionedIds(text, members).filter(id => id !== memberId)
-    const others = members.map(m => m.id).filter(id => id !== memberId && !mentioned.includes(id))
+    const others = activeMembers(members).map(m => m.id).filter(id => id !== memberId && !mentioned.includes(id))
     const snippet = text.length > 80 ? `${text.slice(0, 80).trimEnd()}…` : text
     await Promise.all([
       mentioned.length && notifyMany(`${fullName} mentioned you in a Feed post`, fullName, mentioned, 'mention'),
@@ -679,7 +680,7 @@ export default function Feed() {
 
   useEffect(() => {
     Promise.all([
-      supabase.from('team_members').select('id, full_name, short_name, avatar_url').order('full_name'),
+      supabase.from('team_members').select('id, full_name, short_name, avatar_url, is_hidden').order('full_name'),
       supabase.from('sites').select('id, site_name').eq('is_hidden', false).order('site_name'),
     ]).then(([{ data: m }, { data: s }]) => {
       setMembers(m || [])

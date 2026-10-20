@@ -1,3 +1,4 @@
+import { activeMembers } from '../utils/members'
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ChevronRight } from 'lucide-react'
@@ -54,10 +55,10 @@ export default function BreakRoom() {
 
       <div className="mk-body">
         {setupError && <SetupNotice message={setupError} />}
-        {!section && <Home members={members} onOpen={key => go({ section: key })} />}
+        {!section && <Home members={activeMembers(members)} onOpen={key => go({ section: key })} />}
         {section?.key === 'eat' && <LunchSpin members={members} onSetupError={setSetupError} />}
         {section?.key === 'pay' && view === 'qr' && (
-          <TeamQR members={members} onSaved={loadMembers}
+          <TeamQR members={activeMembers(members)} onSaved={loadMembers}
             editMe={params.get('edit') === 'me'} onEditMeDone={() => go({ section: 'pay' })} />
         )}
         {section?.key === 'pay' && view === 'bills' && (
