@@ -17,7 +17,7 @@ create table if not exists fives_zones (
 );
 
 -- ── 2. One audit per zone per date ──────────────────────────
--- answers:  {"sort_1":"yes","sort_2":"no","set_1":"na", …} — 15 items, Yes / No / N-A
+-- answers:  {"sort_1":"yes","sort_2":"no","set_1":"na", …} — 20 items (4 per pillar), Yes / No / N-A
 -- pass_pct: Yes ÷ (Yes + No) as 0–100, null when nothing was marked Yes or No
 -- photos:   [{"path": "...", "name": "..."}] in the five-s bucket
 create table if not exists fives_audits (

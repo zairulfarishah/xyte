@@ -38,32 +38,38 @@ export async function removePhotos(paths) {
   if (paths.length) await supabase.storage.from(BUCKET).remove(paths)
 }
 
-// Same 15 checks as the "Checklist Guide" tab of 5S_Checklist_Audit.xlsx
+// Written to fit any area (office, store, toilet, walkway); Yes is always the good answer.
+// Answers are keyed by position (sort_1 …), so add new questions at the end of a pillar.
 export const PILLARS = [
   { key: 'sort', label: 'Sort', items: [
-    'No broken, damaged or non-working equipment left in the zone',
-    'No unused, obsolete or duplicate items sitting in the area',
-    'Personal items (bags, food, chargers) not mixed into the work area',
+    'Are only necessary items kept in this area?',
+    'Have broken or damaged items been removed or reported for repair?',
+    'Is the area free of unused, outdated or excess items?',
+    'Are personal belongings kept in their designated place?',
   ] },
   { key: 'set', label: 'Set in Order', items: [
-    'Every item has a labeled, fixed storage location (shelf / rack / shadow board)',
-    'Items are actually placed in their labeled / assigned spot',
-    'Walkways and access paths are clear, nothing blocking',
+    'Does every item have a designated and labelled location?',
+    'Are all items returned to their designated locations?',
+    'Are walkways, doors and emergency exits kept clear?',
+    'Can items be located quickly without searching?',
   ] },
   { key: 'shine', label: 'Shine', items: [
-    'Floor and surfaces are clean, no dust / oil / debris',
-    'Equipment itself is clean, no dirt or grease buildup',
-    'No trash, wrappers or general clutter left in the area',
+    'Is the floor clean, dry and free of debris?',
+    'Are tables, shelves and other surfaces clean?',
+    'Is the area free of rubbish, with bins emptied regularly?',
+    'Are lights, fans, taps and other fittings in working condition?',
   ] },
   { key: 'std', label: 'Standardize', items: [
-    'Labels / signage are visible, legible and match the layout',
-    'Zone checklist or visual standard is posted and being followed',
-    'Equipment checkout/return log (for gear taken to job sites) is being used',
+    'Are labels and signs clear, readable and up to date?',
+    "Is the area's 5S standard (checklist or reference photo) displayed?",
+    'Are cleaning supplies available and stocked (soap, tissue, cleaning tools)?',
+    'Are cables and wires arranged neatly and safely?',
   ] },
   { key: 'sustain', label: 'Sustain', items: [
-    'This audit was done on the scheduled day and time',
-    "Last week's issues were actually fixed, not repeated",
-    'Zone PIC is aware of and engaged with the 5S process for this area',
+    'Have issues from the previous audit been resolved?',
+    'Does the area match its displayed 5S standard?',
+    'Is the area PIC maintaining the area regularly?',
+    'Do users of this area keep it clean and tidy after use?',
   ] },
 ]
 export const ITEM_KEYS = PILLARS.flatMap(p => p.items.map((_, i) => `${p.key}_${i + 1}`))
