@@ -7,15 +7,19 @@ const A4W = 595, A4H = 842
 const ML = 40, MR = 40
 const TABLE_W = A4W - ML - MR // 515
 
-// Date | Day | Time | Site | Normal | OT | Remarks
+// Date | Day | Time in | Time out | Time in | Time out | Site | Normal | OT | Remarks
+// The second in/out pair is for a second job on the same day.
 const COLS = [
-  { label: 'Date',    w: 54,  align: 'center' },
-  { label: 'Day',     w: 30,  align: 'center' },
-  { label: 'Time',    w: 112, align: 'left'   },
-  { label: 'Site',    w: 128, align: 'left'   },
-  { label: 'Normal',  w: 50,  align: 'right'  },
-  { label: 'OT',      w: 50,  align: 'right'  },
-  { label: 'Remarks', w: 91,  align: 'left'   },
+  { label: 'Date',     w: 48, align: 'center' },
+  { label: 'Day',      w: 28, align: 'center' },
+  { label: 'Time in',  w: 50, align: 'center' },
+  { label: 'Time out', w: 50, align: 'center' },
+  { label: 'Time in',  w: 50, align: 'center' },
+  { label: 'Time out', w: 50, align: 'center' },
+  { label: 'Site',     w: 92, align: 'left'   },
+  { label: 'Normal',   w: 40, align: 'right'  },
+  { label: 'OT',       w: 40, align: 'right'  },
+  { label: 'Remarks',  w: 67, align: 'left'   },
 ]
 
 const BLACK = rgb(0, 0, 0)
@@ -123,9 +127,13 @@ function drawMemberTimecard({ pdf, font, bold, logoImg, entry, dates, from, to, 
     const offDay = info.kind === 'holiday' || info.kind === 'off'
     const slots = slotsOf(card)
 
-    const timeLines = slots.map(s => `${formatTime12(s.time_in) || '?'} - ${formatTime12(s.time_out) || '?'}`)
+    // Job 1 goes in the first in/out pair, job 2 in the second; a 3rd+ job wraps onto the next line.
+    const timeCols = [0, 1].map(pair => {
+      const own = slots.filter((_, i) => i % 2 === pair)
+      return [own.map(s => formatTime12(s.time_in) || '?'), own.map(s => formatTime12(s.time_out) || '?')]
+    }).flat()
     const siteLines = slots.map(s => (s.site_id && siteName(s.site_id)) || 'Office')
-      .map(name => wrap(name, COLS[3].w - 10, font, SIZE, 1)[0])
+      .map(name => wrap(name, COLS[6].w - 10, font, SIZE, 1)[0])
 
     const notes = []
     if (info.kind === 'holiday') notes.push(info.label)
@@ -133,9 +141,9 @@ function drawMemberTimecard({ pdf, font, bold, logoImg, entry, dates, from, to, 
     if (leave) notes.push(`${leaveAbbr(leave.leave_type)} (${getLeaveSessionLabel(leave.leave_session)})`)
     if (isMissingDay(date, today, card, leave)) notes.push('No time keyed in')
     if (card?.remarks) notes.push(card.remarks)
-    const remarkLines = wrap(notes.join('; '), COLS[6].w - 10, font, SIZE, Math.max(2, slots.length))
+    const remarkLines = wrap(notes.join('; '), COLS[9].w - 10, font, SIZE, Math.max(3, slots.length))
 
-    const lineCount = Math.max(timeLines.length, siteLines.length, remarkLines.length, 1)
+    const lineCount = Math.max(siteLines.length, remarkLines.length, 1)
     const rowH = Math.max(13, lineCount * LINE_H + 4)
 
     if (y - rowH < BOTTOM_LIMIT) {
@@ -153,13 +161,14 @@ function drawMemberTimecard({ pdf, font, bold, logoImg, entry, dates, from, to, 
     const muted = offDay && !card ? GREY : BLACK
     drawCell(page, fmtDate(date, { day: '2-digit', month: 'short' }), { x: colX(0), w: COLS[0].w, y: firstY, align: 'center', font, size: SIZE, color: muted })
     drawCell(page, fmtDate(date, { weekday: 'short' }), { x: colX(1), w: COLS[1].w, y: firstY, align: 'center', font, size: SIZE, color: muted })
-    timeLines.forEach((ln, i) => drawCell(page, ln, { x: colX(2), w: COLS[2].w, y: firstY - i * LINE_H, align: 'left', font, size: SIZE }))
-    siteLines.forEach((ln, i) => drawCell(page, ln, { x: colX(3), w: COLS[3].w, y: firstY - i * LINE_H, align: 'left', font, size: SIZE, color: GREY }))
+    timeCols.forEach((lines, c) => lines.forEach((ln, i) =>
+      drawCell(page, ln, { x: colX(2 + c), w: COLS[2 + c].w, y: firstY - i * LINE_H, align: 'center', font, size: SIZE })))
+    siteLines.forEach((ln, i) => drawCell(page, ln, { x: colX(6), w: COLS[6].w, y: firstY - i * LINE_H, align: 'left', font, size: SIZE, color: GREY }))
     if (card) {
-      drawCell(page, hrs(card.normal_minutes), { x: colX(4), w: COLS[4].w, y: firstY, align: 'right', font, size: SIZE })
-      drawCell(page, hrs(card.ot_minutes), { x: colX(5), w: COLS[5].w, y: firstY, align: 'right', font: bold, size: SIZE })
+      drawCell(page, hrs(card.normal_minutes), { x: colX(7), w: COLS[7].w, y: firstY, align: 'right', font, size: SIZE })
+      drawCell(page, hrs(card.ot_minutes), { x: colX(8), w: COLS[8].w, y: firstY, align: 'right', font: bold, size: SIZE })
     }
-    remarkLines.forEach((ln, i) => drawCell(page, ln, { x: colX(6), w: COLS[6].w, y: firstY - i * LINE_H, align: 'left', font, size: SIZE, color: GREY }))
+    remarkLines.forEach((ln, i) => drawCell(page, ln, { x: colX(9), w: COLS[9].w, y: firstY - i * LINE_H, align: 'left', font, size: SIZE, color: GREY }))
 
     y = rY
   })
