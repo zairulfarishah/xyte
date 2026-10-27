@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ClipboardCheck, Images, TrendingUp, AlertTriangle, MapPinned, Camera, X, Plus, Trash2, Check, ChevronLeft, ChevronRight } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { ClipboardCheck, Images, TrendingUp, AlertTriangle, MapPinned, Camera, X, Plus, Trash2, Check, ChevronLeft, ChevronRight, FileText, Download, Upload } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import PageTabs from '../components/PageTabs'
 import { useTabParam } from '../utils/useTabParam'
 import { toast } from '../utils/toast'
 import {
-  ITEM_KEYS, PILLARS, addZone, average, deleteAudit, deleteZone, fetchAudits, fetchZones, fivesUrl, fmtDate, fmtPct, lastMonths, monthName,
-  passPct, presetAnswers, removePhotos, saveAudit, todayStr, updateZone, tone, uploadZonePhoto, zoneStatus, zoneType, ZONE_TYPES,
+  ITEM_KEYS, ITEMS_MS, PILLARS, addZone, average, deleteAudit, deleteZone, fetchAudits, fetchZones, fivesUrl, fmtDate, fmtPct, lastMonths, layoutUrl, monthName,
+  passPct, presetAnswers, removePhotos, saveAudit, todayStr, updateZone, tone, uploadLayout, uploadZonePhoto, zoneStatus, zoneType, ZONE_TYPES,
 } from '../utils/fiveS'
 import './BreakRoom.css' // shared mk-* cards, buttons, inputs and modal
 import './FiveS.css'
@@ -16,6 +17,7 @@ const TABS = [
   { key: 'progress', label: 'Progress', Icon: Images },
   { key: 'trend', label: 'Trend', Icon: TrendingUp },
   { key: 'escalation', label: 'Escalation', Icon: AlertTriangle },
+  { key: 'report', label: 'Report', Icon: FileText },
   { key: 'zones', label: 'Zones', Icon: MapPinned },
 ]
 
@@ -64,6 +66,7 @@ export default function FiveS() {
             {tab === 'progress' && <Progress {...ctx} />}
             {tab === 'trend' && <Trend {...ctx} />}
             {tab === 'escalation' && <Escalation {...ctx} />}
+            {tab === 'report' && <Report {...ctx} />}
             {tab === 'zones' && <Zones {...ctx} />}
           </>
         )}
@@ -434,6 +437,231 @@ function Escalation({ activeZones, auditsByZone }) {
         </table>
       </div>
     </div>
+  )
+}
+
+/* ── Report: one audit date → layout, zones & PIC, checklist (EN + BM), each zone's photos and score ── */
+function Report({ activeZones, auditsByZone, audits, canAudit }) {
+  const dates = useMemo(() => [...new Set(audits.map(a => a.audit_date))], [audits])
+  const [date, setDate] = useState(dates[0] || '')
+  const [layoutSrc, setLayoutSrc] = useState(layoutUrl)
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState(null)
+  const [saving, setSaving] = useState(false)
+  // Who walked the audit, printed on the report; remembered in this browser
+  const [auditors, setAuditors] = useState(() => { try { return localStorage.getItem('fs-auditors') || DEFAULT_AUDITORS } catch { return DEFAULT_AUDITORS } })
+  const changeAuditors = v => { setAuditors(v); try { localStorage.setItem('fs-auditors', v) } catch { /* not saved */ } }
+  const layoutRef = useRef(null)
+  const stageRef = useRef(null)
+
+  async function addLayout(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setUploading(true); setError(null)
+    try {
+      await uploadLayout(file)
+      setLayoutSrc(layoutUrl())
+      toast('Zone layout updated')
+    } catch (err) {
+      setError(err.message || 'Unable to upload the layout.')
+    }
+    setUploading(false)
+  }
+
+  // The PDF is made from an off-screen copy at A4 width, so it looks the same from a phone
+  useEffect(() => {
+    if (!saving) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const stage = stageRef.current
+        const imgs = [...stage.querySelectorAll('img')]
+        await Promise.all(imgs.map(img => img.complete ? null : new Promise(r => { img.onload = img.onerror = r })))
+        const { reportToPdf, downloadBlob } = await import('../utils/fiveSPdf')
+        const blob = await reportToPdf(stage)
+        if (!cancelled) downloadBlob(blob, `5S Audit Report ${date}.pdf`)
+      } catch (err) {
+        if (!cancelled) setError(`Couldn't make the PDF: ${err.message || err}`)
+      }
+      if (!cancelled) setSaving(false)
+    })()
+    return () => { cancelled = true }
+  }, [saving, date])
+
+  if (!dates.length) return <div className="mk-card mk-empty"><b>No audits yet</b>The report is made from a day's audits in the Audit tab.</div>
+
+  const doc = <ReportDoc date={date} auditors={auditors.trim()} zones={activeZones} auditsByZone={auditsByZone} layoutSrc={layoutSrc} onLayoutError={() => setLayoutSrc(null)} />
+
+  return (
+    <>
+      <div className="mk-card mk-pad mk-h" style={{ flexWrap: 'wrap' }}>
+        <div className="grow">
+          <h2>Audit report</h2>
+          <p className="mk-sub">Pick the audit date, then Save PDF to share it with the team.</p>
+        </div>
+        <select className="mk-in fs-date" value={date} onChange={e => setDate(e.target.value)} aria-label="Audit date">
+          {dates.map(d => <option key={d} value={d}>{fmtDate(d, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</option>)}
+        </select>
+        <input className="mk-in fs-date" value={auditors} placeholder="Auditors" aria-label="Auditors" onChange={e => changeAuditors(e.target.value)} />
+        {canAudit && (
+          <button className="mk-btn ghost" onClick={() => layoutRef.current?.click()} disabled={uploading}>
+            <Upload size={14} /> {uploading ? 'Uploading…' : layoutSrc ? 'Replace layout' : 'Upload layout'}
+          </button>
+        )}
+        <button className="mk-btn" onClick={() => { setError(null); setSaving(true) }} disabled={saving}><Download size={14} /> {saving ? 'Making PDF…' : 'Save PDF'}</button>
+        <input ref={layoutRef} type="file" accept="image/*,application/pdf" hidden onChange={addLayout} />
+      </div>
+      {error && <div className="mk-err">{error}</div>}
+
+      <div className="fs-report-wrap">{doc}</div>
+      {saving && createPortal(<div className="fs-pdf-stage" ref={stageRef}>{doc}</div>, document.body)}
+    </>
+  )
+}
+
+const DEFAULT_AUDITORS = 'Zairul & Alif'
+const ordinal = n => ['1st', '2nd', '3rd', '4th', '5th'][n - 1]
+const ANSWER_LABEL = { yes: 'Yes', no: 'No', na: 'N-A' }
+
+function ReportDoc({ date, auditors, zones, auditsByZone, layoutSrc, onLayoutError }) {
+  const rows = zones.map(z => {
+    const list = (auditsByZone.get(z.id) || []).filter(a => a.audit_date <= date)
+    const audit = list.find(a => a.audit_date === date) || null
+    return { zone: z, audit, status: audit ? zoneStatus(list) : null }
+  })
+  const done = rows.filter(r => r.audit)
+  const overall = average(done.filter(r => r.audit.pass_pct != null).map(r => Number(r.audit.pass_pct)))
+  const day = Number(date.slice(8, 10))
+  const tones = done.map(r => tone(r.audit.pass_pct))
+  let n = 0
+
+  return (
+    <div className="fs-report">
+      <div className="fs-r-cover" data-pdf-block>
+        <div className="fs-r-cover-title">
+          <small>{ordinal(Math.ceil(day / 7))} week audit</small>
+          <h1>5S Audit Report</h1>
+          <p className="ms">Laporan Audit 5S</p>
+          <div className="fs-r-pills">
+            {PILLARS.map(p => <span key={p.key}>{p.label}<em>{p.ms}</em></span>)}
+          </div>
+        </div>
+        <div className="fs-r-cover-date">{fmtDate(date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
+        <div className="fs-r-cover-stats">
+          <div className={`big ${tone(overall)}`}><b>{fmtPct(overall)}</b><small>Overall score</small></div>
+          <div><b>{done.length}/{zones.length}</b><small>Zones audited</small></div>
+          <div className="green"><b>{tones.filter(t => t === 'green').length}</b><small>Green</small></div>
+          <div className="amber"><b>{tones.filter(t => t === 'amber').length}</b><small>Amber</small></div>
+          <div className="red"><b>{tones.filter(t => t === 'red').length}</b><small>Red</small></div>
+        </div>
+        <footer className="fs-r-cover-foot">
+          <span>Auditor: <b>{auditors || '—'}</b></span>
+          <span>Generated {fmtDate(todayStr())}</span>
+        </footer>
+      </div>
+
+      <header className="fs-r-head" data-pdf-block>
+        <div>
+          <h1>5S Audit Report</h1>
+          <p className="ms">Laporan Audit 5S</p>
+          <p>{fmtDate(date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · {ordinal(Math.ceil(day / 7))} week audit</p>
+          <p>Auditor: <b>{auditors || '—'}</b> · Zones audited: <b>{done.length} of {zones.length}</b></p>
+        </div>
+        <div className="fs-r-overall">
+          <small>Overall score</small>
+          <span className={`fs-pct big ${tone(overall)}`}>{fmtPct(overall)}</span>
+        </div>
+      </header>
+
+      <section className="fs-r-sec" data-pdf-block>
+        <h2>1. Zone layout <span className="ms">Pelan zon</span></h2>
+        {layoutSrc
+          ? <img className="fs-r-layout" src={layoutSrc} alt="Zone layout" onError={onLayoutError} />
+          : <div className="fs-r-empty">Zone layout not uploaded yet</div>}
+      </section>
+
+      <section className="fs-r-sec" data-pdf-block>
+        <h2>2. Zones &amp; person-in-charge <span className="ms">Senarai zon dan PIC</span></h2>
+        <table className="fs-r-table">
+          <thead><tr><th>No.</th><th>Zone</th><th>Type</th><th>PIC</th><th>Score</th><th>Status</th></tr></thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={r.zone.id}>
+                <td>{i + 1}</td>
+                <td><b>{r.zone.name}</b></td>
+                <td>{zoneType(r.zone.zone_type)?.label || '—'}</td>
+                <td>{r.zone.pic_name || '—'}</td>
+                <td>{r.audit ? <span className={`fs-pct ${tone(r.audit.pass_pct)}`}>{fmtPct(r.audit.pass_pct)}</span> : '—'}</td>
+                <td>{r.status ? <span className={`fs-st ${r.status.level}`}>{r.status.label}</span> : <span className="fs-st">Not audited</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="fs-r-note">Score = Yes ÷ (Yes + No); N-A is not counted. Green 80% and up · amber 60–79% · red under 60%.</p>
+      </section>
+
+      <section className="fs-r-sec" data-pdf-block data-pdf-break>
+        <h2>3. Checklist questions <span className="ms">Senarai soalan semakan</span></h2>
+        {PILLARS.map(p => (
+          <div key={p.key} className="fs-r-pillar">
+            <h3>{p.label} <span className="ms">· {p.ms}</span></h3>
+            <ol start={n + 1}>
+              {p.items.map((text, i) => {
+                n++
+                return <li key={i}>{text}<span className="ms">{ITEMS_MS[`${p.key}_${i + 1}`]}</span></li>
+              })}
+            </ol>
+          </div>
+        ))}
+      </section>
+
+      <section className="fs-r-sec">
+        <h2 data-pdf-block data-pdf-break>4. Zone results <span className="ms">Keputusan setiap zon</span></h2>
+        {rows.map(({ zone, audit, status }) => <ReportZone key={zone.id} zone={zone} audit={audit} status={status} />)}
+      </section>
+    </div>
+  )
+}
+
+function ReportZone({ zone, audit, status }) {
+  const answers = audit?.answers || {}
+  const count = v => ITEM_KEYS.filter(k => answers[k] === v).length
+  let q = 0
+  return (
+    <article className="fs-r-zone" data-pdf-block>
+      <div className="fs-r-zone-h">
+        <div>
+          <h3>{zone.name}</h3>
+          <p>{zoneType(zone.zone_type) ? `${zoneType(zone.zone_type).label} · ` : ''}PIC: <b>{zone.pic_name || '—'}</b></p>
+        </div>
+        {audit && <span className={`fs-pct big ${tone(audit.pass_pct)}`}>{fmtPct(audit.pass_pct)}</span>}
+      </div>
+      {!audit ? <div className="fs-r-empty">Not audited on this date</div> : (
+        <>
+          <p className="fs-r-tally">
+            <span className={`fs-st ${status.level}`}>{status.label}</span>
+            <span>Yes {count('yes')} · No {count('no')} · N-A {count('na')}</span>
+          </p>
+          {audit.photos?.length > 0
+            ? <div className="fs-r-photos">{audit.photos.map(p => <img key={p.path} src={fivesUrl(p.path)} alt="" />)}</div>
+            : <div className="fs-r-empty">No photos</div>}
+          <div className="fs-r-answers">
+            {PILLARS.map(p => (
+              <div key={p.key}>
+                <b>{p.label}</b>
+                {p.items.map((_, i) => {
+                  q++
+                  const v = answers[`${p.key}_${i + 1}`]
+                  return <span key={i} className={`fs-r-ans ${v || ''}`}>Q{q} {ANSWER_LABEL[v] || '—'}</span>
+                })}
+              </div>
+            ))}
+          </div>
+          {audit.notes && <p className="fs-r-notes"><b>Notes / action needed:</b> {audit.notes}</p>}
+        </>
+      )}
+    </article>
   )
 }
 

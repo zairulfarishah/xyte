@@ -41,31 +41,31 @@ export async function removePhotos(paths) {
 // Written to fit any area (office, store, toilet, walkway); Yes is always the good answer.
 // Answers are keyed by position (sort_1 …), so add new questions at the end of a pillar.
 export const PILLARS = [
-  { key: 'sort', label: 'Sort', items: [
+  { key: 'sort', label: 'Sort', ms: 'Sisih', items: [
     'Are only necessary items kept in this area?',
     'Have broken or damaged items been removed or reported for repair?',
     'Is the area free of unused, outdated or excess items?',
     'Are personal belongings kept in their designated place?',
   ] },
-  { key: 'set', label: 'Set in Order', items: [
+  { key: 'set', label: 'Set in Order', ms: 'Susun', items: [
     'Does every item have a designated and labelled location?',
     'Are all items returned to their designated locations?',
     'Are walkways, doors and emergency exits kept clear?',
     'Can items be located quickly without searching?',
   ] },
-  { key: 'shine', label: 'Shine', items: [
+  { key: 'shine', label: 'Shine', ms: 'Sapu', items: [
     'Is the floor clean, dry and free of debris?',
     'Are tables, shelves and other surfaces clean?',
     'Is the area free of rubbish, with bins emptied regularly?',
     'Are lights, fans, taps and other fittings in working condition?',
   ] },
-  { key: 'std', label: 'Standardize', items: [
+  { key: 'std', label: 'Standardize', ms: 'Seragam', items: [
     'Are labels and signs clear, readable and up to date?',
     "Is the area's 5S standard (checklist or reference photo) displayed?",
     'Are cleaning supplies available and stocked (soap, tissue, cleaning tools)?',
     'Are cables and wires arranged neatly and safely?',
   ] },
-  { key: 'sustain', label: 'Sustain', items: [
+  { key: 'sustain', label: 'Sustain', ms: 'Sentiasa Amal', items: [
     'Have issues from the previous audit been resolved?',
     'Does the area match its displayed 5S standard?',
     'Is the area PIC maintaining the area regularly?',
@@ -73,6 +73,60 @@ export const PILLARS = [
   ] },
 ]
 export const ITEM_KEYS = PILLARS.flatMap(p => p.items.map((_, i) => `${p.key}_${i + 1}`))
+
+// Malay translation of each question, shown under the English in the audit report
+export const ITEMS_MS = {
+  sort_1: 'Adakah hanya barang yang diperlukan disimpan di kawasan ini?',
+  sort_2: 'Adakah barang yang rosak telah dibuang atau dilaporkan untuk dibaiki?',
+  sort_3: 'Adakah kawasan ini bebas daripada barang yang tidak digunakan, lapuk atau berlebihan?',
+  sort_4: 'Adakah barang peribadi disimpan di tempat yang ditetapkan?',
+  set_1: 'Adakah setiap barang mempunyai tempat yang ditetapkan dan berlabel?',
+  set_2: 'Adakah semua barang dikembalikan ke tempat asalnya?',
+  set_3: 'Adakah laluan, pintu dan pintu kecemasan sentiasa bebas daripada halangan?',
+  set_4: 'Bolehkah barang dijumpai dengan cepat tanpa perlu mencari?',
+  shine_1: 'Adakah lantai bersih, kering dan bebas daripada sampah?',
+  shine_2: 'Adakah meja, rak dan permukaan lain bersih?',
+  shine_3: 'Adakah kawasan ini bebas sampah dan tong sampah dikosongkan secara berkala?',
+  shine_4: 'Adakah lampu, kipas, paip dan kelengkapan lain berfungsi dengan baik?',
+  std_1: 'Adakah label dan papan tanda jelas, mudah dibaca dan terkini?',
+  std_2: 'Adakah standard 5S kawasan ini (senarai semak atau gambar rujukan) dipaparkan?',
+  std_3: 'Adakah bekalan pembersihan tersedia dan mencukupi (sabun, tisu, alat pembersihan)?',
+  std_4: 'Adakah kabel dan wayar disusun dengan kemas dan selamat?',
+  sustain_1: 'Adakah isu daripada audit sebelum ini telah diselesaikan?',
+  sustain_2: 'Adakah keadaan kawasan ini sepadan dengan standard 5S yang dipaparkan?',
+  sustain_3: 'Adakah PIC kawasan menyelenggara kawasan ini secara berkala?',
+  sustain_4: 'Adakah pengguna kawasan ini memastikan ia bersih dan kemas selepas digunakan?',
+}
+
+// The zone layout plan for the report: one image at a fixed path, replaced on each upload
+const LAYOUT_PATH = 'layout/zone-layout'
+export const layoutUrl = () => `${fivesUrl(LAYOUT_PATH)}?v=${Date.now()}`
+export async function uploadLayout(original) {
+  const file = original.type === 'application/pdf' ? await pdfToImage(original) : await shrinkPhoto(original, 2400)
+  await supabase.storage.from(BUCKET).remove([LAYOUT_PATH])
+  const { error } = await supabase.storage.from(BUCKET).upload(LAYOUT_PATH, file, { contentType: file.type, cacheControl: '60' })
+  if (error) throw new Error(error.message)
+}
+
+// Page 1 of a PDF as a JPEG about 2400px wide (pdf.js is loaded only when needed)
+async function pdfToImage(pdfFile) {
+  const [pdfjs, { default: workerSrc }] = await Promise.all([import('pdfjs-dist'), import('pdfjs-dist/build/pdf.worker.min.mjs?url')])
+  pdfjs.GlobalWorkerOptions.workerSrc = workerSrc
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(await pdfFile.arrayBuffer()) }).promise
+  const page = await doc.getPage(1)
+  const viewport = page.getViewport({ scale: Math.min(4, 2400 / page.getViewport({ scale: 1 }).width) })
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.round(viewport.width)
+  canvas.height = Math.round(viewport.height)
+  const ctx = canvas.getContext('2d')
+  ctx.fillStyle = '#fff'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  await page.render({ canvasContext: ctx, canvas, viewport }).promise
+  doc.destroy()
+  const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.9))
+  if (!blob) throw new Error('Could not read that PDF.')
+  return new File([blob], 'zone-layout.jpg', { type: 'image/jpeg' })
+}
 
 // Zone types and the questions that don't apply to them (pre-marked N-A on a new audit)
 export const ZONE_TYPES = [
