@@ -9,11 +9,11 @@ import { undoableDelete } from '../utils/toast'
 
 const SECTIONS = [
   { key: 'xradar_namelist',  label: 'Xradar Namelist',  type: 'single', color: '#2563eb', bg: '#eff6ff' },
-  { key: 'cidb',             label: 'CIDB',              type: 'member', color: '#7c3aed', bg: '#faf5ff' },
+  { key: 'cidb',             label: 'CIDB',              type: 'member', color: '#7c3aed', bg: '#faf5ff', expires: true },
   { key: 'identity_card',    label: 'Identity Card',     type: 'member', color: '#db2777', bg: '#fdf2f8' },
-  { key: 'ntsp',             label: 'NTSP',              type: 'member', color: '#059669', bg: '#f0fdf4' },
-  { key: 'ansp',             label: 'ANSP',              type: 'member', color: '#0891b2', bg: '#ecfeff' },
-  { key: 'ogsp',             label: 'OGSP',              type: 'member', color: '#d97706', bg: '#fffbeb' },
+  { key: 'ntsp',             label: 'NTSP',              type: 'member', color: '#059669', bg: '#f0fdf4', expires: true },
+  { key: 'ansp',             label: 'ANSP',              type: 'member', color: '#0891b2', bg: '#ecfeff', expires: true },
+  { key: 'ogsp',             label: 'OGSP',              type: 'member', color: '#d97706', bg: '#fffbeb', expires: true },
   { key: 'form_template',    label: 'Form Template',     type: 'sub',    color: '#0f172a', bg: '#f8fafc' },
   { key: 'drawing_template', label: 'Drawing Template',  type: 'multi',  color: '#475569', bg: '#f1f5f9' },
 ]
@@ -34,6 +34,27 @@ const TYPE_BADGE = {
   pdf:  { bg: '#fee2e2', text: '#991b1b' },
   docx: { bg: '#eff6ff', text: '#1d4ed8' },
   zip:  { bg: '#fef9c3', text: '#854d0e' },
+}
+
+// Cards expiring within this many days are flagged amber before they turn red
+const EXPIRY_SOON_DAYS = 30
+
+// Whole days from today to a 'YYYY-MM-DD' expiry date: negative once expired, null when not set
+function daysLeft(expiresOn) {
+  if (!expiresOn) return null
+  const [y, m, d] = expiresOn.split('-').map(Number)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return Math.round((new Date(y, m - 1, d) - today) / 86400000)
+}
+
+function countdown(days) {
+  const n = Math.abs(days)
+  if (n <= 60) return `${n} day${n !== 1 ? 's' : ''}`
+  const months = Math.round(n / 30.44)
+  if (months < 12) return `${months} months`
+  const yrs = Math.floor(months / 12), mo = months % 12
+  return `${yrs} yr${yrs !== 1 ? 's' : ''}${mo ? ` ${mo} mo` : ''}`
 }
 
 const lightInput = {
@@ -79,7 +100,10 @@ export default function Library() {
 
   const [showUpload, setShowUpload]           = useState(false)
   const [uploading, setUploading]             = useState(false)
-  const [form, setForm]                       = useState({ section: '', member_id: '', subcategory: '' })
+  const [form, setForm]                       = useState({ section: '', member_id: '', subcategory: '', expires_on: '' })
+  const [editExpiry, setEditExpiry]           = useState(null)
+  const [savingExpiry, setSavingExpiry]       = useState(false)
+  const [expiryError, setExpiryError]         = useState(null)
   const [lockedMemberId, setLockedMemberId]   = useState(null)
   const [files, setFiles]                     = useState([])
   const [uploadError, setUploadError]         = useState(null)
@@ -137,6 +161,7 @@ export default function Library() {
       section: sectionKey,
       member_id: forceMemberId || (sec?.type === 'member' ? myMemberId || '' : ''),
       subcategory: subcat || (sectionKey === 'form_template' ? (allFormSubs[0] || '') : ''),
+      expires_on: '',
     })
     setFiles(dropped)
     setUploadError(null)
@@ -146,7 +171,7 @@ export default function Library() {
 
   function openUploadBlank() {
     setLockedMemberId(null)
-    setForm({ section: '', member_id: '', subcategory: '' })
+    setForm({ section: '', member_id: '', subcategory: '', expires_on: '' })
     setFiles([])
     setUploadError(null)
     if (fileRef.current) fileRef.current.value = ''
@@ -164,6 +189,7 @@ export default function Library() {
     if (sec?.type === 'member' && !form.member_id)   { setUploadError('Please select a team member.'); return }
     if (form.section === 'form_template' && !form.subcategory) { setUploadError('Please select a sub-section.'); return }
     if ((sec?.type === 'member' || sec?.type === 'single') && files.length > 1) { setUploadError(`${sec.label} takes one file. Remove the extra files.`); return }
+    if (sec?.expires && !form.expires_on) { setUploadError(`Please enter the ${sec.label} expiry date.`); return }
 
     setUploading(true); setUploadError(null)
 
@@ -178,6 +204,8 @@ export default function Library() {
         file_type:   file.name.split('.').pop().toLowerCase(),
         member_id:   form.member_id   || null,
         subcategory: form.subcategory || null,
+        // Only sent when filled, so sections without an expiry don't depend on the column
+        ...(sec?.type === 'member' && form.expires_on ? { expires_on: form.expires_on } : {}),
       })
       const err = upErr || dbErr
       if (err) {
@@ -224,6 +252,16 @@ export default function Library() {
     }
     window.open(url, '_blank')
     setPreviewing(false)
+  }
+
+  async function handleSaveExpiry() {
+    setSavingExpiry(true); setExpiryError(null)
+    const value = editExpiry.value || null
+    const { error } = await supabase.from('library_documents').update({ expires_on: value }).eq('id', editExpiry.doc.id)
+    setSavingExpiry(false)
+    if (error) { setExpiryError(error.message); return }
+    setDocs(prev => prev.map(d => d.id === editExpiry.doc.id ? { ...d, expires_on: value } : d))
+    setEditExpiry(null)
   }
 
   function handleDelete(doc) {
@@ -349,6 +387,25 @@ export default function Library() {
     )
   }
 
+  function ExpiryTag({ doc, sec }) {
+    const days = daysLeft(doc.expires_on)
+    if (days == null && !sec.expires) return null
+    const look = days == null      ? { bg: '#f8fafc', fg: '#64748b', border: '1px dashed #cbd5e1', text: 'No expiry date. Set it' }
+      : days < 0                   ? { bg: '#fee2e2', fg: '#b91c1c', text: `Expired ${fmtDate(doc.expires_on)} · ${countdown(days)} ago` }
+      : days === 0                 ? { bg: '#fee2e2', fg: '#b91c1c', text: `Expires today` }
+      : days <= EXPIRY_SOON_DAYS   ? { bg: '#fef3c7', fg: '#b45309', text: `Expires ${fmtDate(doc.expires_on)} · ${countdown(days)} left` }
+      :                              { bg: '#f0fdf4', fg: '#15803d', text: `Expires ${fmtDate(doc.expires_on)} · ${countdown(days)} left` }
+    return (
+      <button
+        title="Change expiry date"
+        onClick={() => { setExpiryError(null); setEditExpiry({ doc, value: doc.expires_on || '' }) }}
+        style={{ background: look.bg, color: look.fg, border: look.border || 'none', padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit' }}
+      >
+        {look.text}
+      </button>
+    )
+  }
+
   const emptyRow = text => <p style={{ padding: isMobile ? '14px' : '16px 20px', fontSize: '12px', color: '#94a3b8' }}>{text}</p>
 
   function folderMeta(sec) {
@@ -356,8 +413,18 @@ export default function Library() {
     const files = `${n} file${n !== 1 ? 's' : ''}`
     if (sec.type === 'member') {
       const roster = activeMembers(members)
-      const have = roster.filter(m => getMember(sec.key, m.id)).length
-      return { text: `${have}/${roster.length} members`, progress: roster.length ? have / roster.length : 0 }
+      const held = roster.map(m => getMember(sec.key, m.id)).filter(Boolean)
+      const left = held.map(d => daysLeft(d.expires_on)).filter(d => d != null)
+      const expired = left.filter(d => d <= 0).length
+      const soon = left.filter(d => d > 0 && d <= EXPIRY_SOON_DAYS).length
+      return {
+        text: `${held.length}/${roster.length} members`,
+        progress: roster.length ? held.length / roster.length : 0,
+        alerts: [
+          expired && { color: '#b91c1c', text: `${expired} expired` },
+          soon && { color: '#b45309', text: `${soon} expiring soon` },
+        ].filter(Boolean),
+      }
     }
     if (sec.type === 'sub')    return { text: `${allFormSubs.length} sub-folders · ${files}` }
     if (sec.type === 'single') return { text: n ? 'Latest version' : 'No file yet' }
@@ -393,7 +460,10 @@ export default function Library() {
             {avatar}
             <div style={{ minWidth: 0 }}>
               <p style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a' }}>{m.full_name}</p>
-              <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.file_name} · {fmtDate(doc.created_at)}</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '3px' }}>
+                <ExpiryTag doc={doc} sec={sec} />
+                <span style={{ fontSize: '11px', color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{doc.file_name}</span>
+              </div>
             </div>
             <DocActions doc={doc} onReplace={() => openUploadFor(sec.key, '', m.id)} />
           </div>
@@ -511,6 +581,11 @@ export default function Library() {
                     <div style={{ height: '100%', width: `${meta.progress * 100}%`, background: sec.color, borderRadius: '9px' }} />
                   </div>
                 )}
+                {meta.alerts?.length > 0 && (
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
+                    {meta.alerts.map(a => <span key={a.text} style={{ fontSize: '11px', fontWeight: '700', color: a.color }}>● {a.text}</span>)}
+                  </div>
+                )}
               </button>
             )
           })}
@@ -622,6 +697,13 @@ export default function Library() {
                 </div>
               )}
 
+              {selectedSec?.type === 'member' && (
+                <div>
+                  <label style={lLabel}>Expiry date{selectedSec.expires ? ' *' : ' (if any)'}</label>
+                  <input type="date" style={lightInput} value={form.expires_on} onChange={e => { setForm(f => ({ ...f, expires_on: e.target.value })); setUploadError(null) }} />
+                </div>
+              )}
+
               <div>
                 <label style={lLabel}>Files *</label>
                 <div
@@ -682,6 +764,36 @@ export default function Library() {
                 </button>
                 <button onClick={() => setShowAddList(false)} style={{ flex: 1, padding: '11px', borderRadius: '10px', fontSize: '14px', fontWeight: '600', color: '#0f172a', cursor: 'pointer', background: '#f1f5f9', border: '1px solid #e2e8f0' }}>Cancel</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Expiry Date Modal */}
+      {editExpiry && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 4000, padding: '16px' }} onClick={e => e.target === e.currentTarget && setEditExpiry(null)}>
+          <div style={{ background: 'white', borderRadius: '20px', width: '100%', maxWidth: '400px', overflow: 'hidden', boxShadow: '0 24px 64px rgba(15,23,42,.18)' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ fontWeight: '700', fontSize: '16px', color: '#0f172a' }}>Expiry Date</p>
+                <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {allSections.find(s => s.key === editExpiry.doc.section)?.label} · {members.find(m => m.id === editExpiry.doc.member_id)?.full_name}
+                </p>
+              </div>
+              <button onClick={() => setEditExpiry(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', padding: 0 }}><X size={18} /></button>
+            </div>
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={lLabel}>Card expires on</label>
+                <input type="date" style={lightInput} value={editExpiry.value} onChange={e => setEditExpiry(x => ({ ...x, value: e.target.value }))} autoFocus />
+              </div>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <button onClick={handleSaveExpiry} disabled={savingExpiry} style={{ flex: 1, padding: '11px', borderRadius: '10px', fontSize: '14px', fontWeight: '700', color: 'white', border: 'none', cursor: savingExpiry ? 'not-allowed' : 'pointer', background: '#2563eb', opacity: savingExpiry ? 0.5 : 1 }}>
+                  {savingExpiry ? 'Saving…' : 'Save'}
+                </button>
+                <button onClick={() => setEditExpiry(null)} style={{ flex: 1, padding: '11px', borderRadius: '10px', fontSize: '14px', fontWeight: '600', color: '#0f172a', cursor: 'pointer', background: '#f1f5f9', border: '1px solid #e2e8f0' }}>Cancel</button>
+              </div>
+              {expiryError && <p style={{ fontSize: '12px', color: '#ef4444', background: '#fee2e2', padding: '8px 12px', borderRadius: '8px' }}>{expiryError}</p>}
             </div>
           </div>
         </div>
