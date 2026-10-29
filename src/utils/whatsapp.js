@@ -99,6 +99,53 @@ export function buildAssignmentMessage({
   return blocks.map(block => block.join('\n')).join('\n\n')
 }
 
+const SESSION_LABEL = { AM: 'Morning (AM)', PM: 'Afternoon (PM)', 'Night Work': 'Night work', 'Full Day': 'Full day' }
+
+// One message covering several sites, for a group chat or anyone on the team.
+// entries — [{ site, picName, crewNames, dayRoster }] (short names), in the order to list them
+export function buildSitesBrief(entries) {
+  const header = entries.length === 1 ? '*Site brief*' : `*Site brief: ${entries.length} sites*`
+  const blocks = entries.map(({ site, picName, crewNames = [], dayRoster = [] }, i) => {
+    const duration = Number(site?.site_duration_days) || 0
+    const lines = [
+      `*${i + 1}. ${site?.site_name || '-'}*`,
+      `*Date:* ${formatAssignmentDate(site?.scheduled_date)}${duration > 1 ? ` (${duration} days)` : ''}`,
+    ]
+    const session = SESSION_LABEL[site?.site_session] || site?.site_session
+    if (session) lines.push(`*Time:* ${session}`)
+
+    if (site?.latitude && site?.longitude) {
+      lines.push(`*Location:* https://maps.google.com/?q=${site.latitude},${site.longitude}`)
+    } else if (site?.location) {
+      lines.push(`*Location:* ${site.location}`)
+    }
+
+    // A rotating crew gets one line per day; otherwise PIC and crew once
+    if (dayRoster.length > 1) {
+      lines.push('*Team:*')
+      dayRoster.forEach(d => {
+        const names = [d.picName && `${d.picName} (PIC)`, ...(d.crewNames || []).filter(n => n !== d.picName)].filter(Boolean)
+        lines.push(`${shortDayLabel(d.date)}: ${names.join(', ') || '-'}`)
+      })
+    } else {
+      if (picName) lines.push(`*PIC:* ${picName}`)
+      const crew = crewNames.filter(n => n && n !== picName)
+      if (crew.length > 0) lines.push(`*Crew:* ${crew.join(', ')}`)
+    }
+
+    const objective = String(site?.scope_of_work || '').trim().replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n')
+    if (objective) lines.push('*Objective:*', objective)
+
+    return lines.join('\n')
+  })
+  return [header, ...blocks].join('\n\n')
+}
+
+// No number: WhatsApp asks which chat or group to send it to
+export function openWhatsAppShare(message) {
+  window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer')
+}
+
 function shortDayLabel(date) {
   const parsed = new Date(`${String(date || '').slice(0, 10)}T00:00:00`)
   if (Number.isNaN(parsed.getTime())) return String(date || '')

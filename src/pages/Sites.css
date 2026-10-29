@@ -276,6 +276,9 @@ section:first-of-type > .ss-group { margin-top: 0; }
 .ss-bulk .acts button::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--oc); }
 .ss-bulk .acts button:hover:not(:disabled) { background: var(--ob); color: var(--ot); }
 .ss-bulk .acts button:disabled { opacity: .4; cursor: default; }
+.ss-bulk .wa { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 10px; font-size: 12.5px; font-weight: 700; background: #16a34a; color: #fff; }
+.ss-bulk .wa:hover:not(:disabled) { background: #15803d; }
+.ss-bulk .wa:disabled { opacity: .4; cursor: default; }
 .ss-bulk .x { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; color: #94a3b8; }
 .ss-bulk .x:hover { background: rgba(255,255,255,.1); color: #fff; }
 

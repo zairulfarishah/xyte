@@ -15,7 +15,7 @@ import { getSiteHeaderImage } from '../utils/siteHeader'
 import { mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../utils/completionMeta'
 import { fetchTeamLeaves, getLeaveSessionLabel, getLeaveSummary, getMemberLeaveOnDate } from '../utils/teamLeaves'
 import { useViewport } from '../utils/useViewport'
-import { buildAssignmentMessage, openWhatsApp, shortNameOf } from '../utils/whatsapp'
+import { buildAssignmentMessage, buildSitesBrief, openWhatsApp, openWhatsAppShare, shortNameOf } from '../utils/whatsapp'
 import { getSiteTitle } from '../utils/siteTitle'
 import { isActiveMember } from '../utils/members'
 import {
@@ -189,6 +189,27 @@ function durationLabel(site) {
   return site.site_session && site.site_session !== 'Full Day' ? `${base} · ${site.site_session}` : base
 }
 
+// Who works each day, in short names — only for sites that run a different crew per day
+function dayRosterOf(site) {
+  const assignments = site.site_assignments || []
+  if (!hasDailyCrew(assignments)) return []
+  return getSiteDates(site).map(date => ({
+    date,
+    picName: shortNameOf(picForDate(assignments, date)?.team_members),
+    crewNames: crewForDate(assignments, date).map(c => shortNameOf(c.team_members)).filter(Boolean),
+  }))
+}
+
+// One site's part of the multi-site WhatsApp brief
+function siteBriefEntry(site) {
+  return {
+    site,
+    picName: shortNameOf(sitePic(site)?.team_members),
+    crewNames: [...new Set(siteCrew(site).map(c => shortNameOf(c.team_members)).filter(Boolean))],
+    dayRoster: dayRosterOf(site),
+  }
+}
+
 // First two parts of the address — full one is on hover
 function shortLocation(location) {
   return String(location || '').split(',').map(x => x.trim()).filter(Boolean).slice(0, 2).join(', ')
@@ -286,6 +307,7 @@ export default function Sites() {
   const [selectMode, setSelectMode]     = useState(false)
   const [selected, setSelected]         = useState(() => new Set())
   const [bulkSaving, setBulkSaving]     = useState(false)
+  const [brief, setBrief]               = useState(null)   // { text, people } for the multi-site WhatsApp brief
   const pendingDeletes = useRef(new Map())
   const photoInputRef = useRef(null)
   const searchRef = useRef(null)
@@ -493,6 +515,32 @@ export default function Sites() {
     ready.forEach(s => notifyStatusChange(s, { site_status: status }))
     toast(`${ready.length} site${ready.length > 1 ? 's' : ''} set to ${status}${skipped.length ? ` · ${skipped.length} skipped (no DO number or reason)` : ''}`, { tone: skipped.length ? 'warn' : 'ok', ms:6000 })
     setSelected(new Set()); setSelectMode(false)
+  }
+
+  // One WhatsApp message for every selected site, earliest first. Anyone assigned
+  // to one of them with a phone number can be sent it directly (PICs first).
+  function openBrief() {
+    const picked = sites.filter(s => selected.has(s.id)).sort((a, b) => siteStart(a).localeCompare(siteStart(b)))
+    if (!picked.length) return
+    const people = new Map()
+    picked.forEach(s => uniqueAssignments(s.site_assignments || []).forEach(a => {
+      const m = a.team_members
+      if (!m?.phone) return
+      people.set(m.id, { member: m, pic: people.get(m.id)?.pic || isPic(a) })
+    }))
+    setBrief({
+      text: buildSitesBrief(picked.map(siteBriefEntry)),
+      people: [...people.values()].sort((a, b) => b.pic - a.pic || a.member.full_name.localeCompare(b.member.full_name)),
+    })
+  }
+
+  async function copyBrief() {
+    try {
+      await navigator.clipboard.writeText(brief.text)
+      toast('Copied. Paste it into any chat')
+    } catch {
+      toast('Could not copy. Select the text and copy it instead', { tone:'err' })
+    }
   }
 
   function toggleSelected(id) {
@@ -1063,11 +1111,7 @@ export default function Sites() {
               const statusTone = STATUS_TONE[site.site_status] || STATUS_TONE.upcoming
               const isExpanded = expandedCard === site.id
               // Per-day rosters travel with the WhatsApp brief so everyone sees the rotation
-              const dayRoster = perDay ? siteDates.map(date => ({
-                date,
-                picName: shortNameOf(picForDate(site.site_assignments || [], date)?.team_members),
-                crewNames: crewForDate(site.site_assignments || [], date).map(c => shortNameOf(c.team_members)).filter(Boolean),
-              })) : []
+              const dayRoster = dayRosterOf(site)
               const memberDatesOn = memberId => perDay
                 ? siteDates.filter(date => assignmentsForDate(site.site_assignments || [], date).some(a => assignmentMemberId(a) === memberId))
                 : siteDates
@@ -1274,6 +1318,9 @@ export default function Sites() {
                 onClick={() => handleBulkStatus(s)}>{s}</button>
             ))}
           </div>
+          <button className="wa" disabled={!selected.size} onClick={openBrief} title="One WhatsApp message with every selected site">
+            <MessageCircle size={14} /> WhatsApp
+          </button>
           <button className="x" title="Done" onClick={() => { setSelectMode(false); setSelected(new Set()) }}><X size={16} /></button>
         </div>
       )}
@@ -1376,6 +1423,49 @@ export default function Sites() {
           </>
         )
       })()}
+
+      {/* ── WHATSAPP BRIEF ── */}
+      {brief && (
+        <div style={{ position:'fixed', inset:0, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50, padding:'16px', background:'rgba(0,0,0,0.4)' }}
+          onClick={e => e.target===e.currentTarget && setBrief(null)}>
+          <div style={{ width:'100%', maxWidth:'560px', maxHeight:'92vh', borderRadius:'20px', background:'white', boxShadow:'0 24px 64px rgba(15,23,42,.18)', display:'flex', flexDirection:'column', overflow:'hidden' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:isMobile ? '16px 18px' : '20px 28px', borderBottom:'1px solid #f1f5f9', flexShrink:0 }}>
+              <h3 style={{ margin:0, fontSize:'17px', fontWeight:'800', color:'#0f172a' }}>WhatsApp brief</h3>
+              <button onClick={() => setBrief(null)} style={{ background:'none', border:'none', cursor:'pointer', color:'#94a3b8' }}><X size={18} /></button>
+            </div>
+            <div style={{ overflowY:'auto', padding:isMobile ? '16px 18px' : '20px 28px', display:'flex', flexDirection:'column', gap:'16px' }}>
+              <div>
+                <label style={lLabel}>Message. Edit anything before sending</label>
+                <textarea style={{ ...lightInput, minHeight:'260px', resize:'vertical', lineHeight:1.5, fontFamily:'inherit' }}
+                  value={brief.text} onChange={e => setBrief(b => ({ ...b, text:e.target.value }))} />
+              </div>
+              <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
+                <button onClick={() => openWhatsAppShare(brief.text)}
+                  style={{ display:'inline-flex', alignItems:'center', gap:'6px', padding:'9px 16px', borderRadius:'10px', border:'none', background:'#16a34a', color:'white', fontSize:'13px', fontWeight:'700', cursor:'pointer' }}>
+                  <MessageCircle size={14} /> Send to a chat or group
+                </button>
+                <button onClick={copyBrief}
+                  style={{ display:'inline-flex', alignItems:'center', gap:'6px', padding:'9px 16px', borderRadius:'10px', border:'1px solid #e2e8f0', background:'white', color:'#0f172a', fontSize:'13px', fontWeight:'700', cursor:'pointer' }}>
+                  <Copy size={14} /> Copy
+                </button>
+              </div>
+              {brief.people.length > 0 && (
+                <div>
+                  <label style={lLabel}>Or send straight to someone on these sites</label>
+                  <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
+                    {brief.people.map(({ member, pic }) => (
+                      <button key={member.id} onClick={() => openWhatsApp(member.phone, brief.text)}
+                        style={{ display:'inline-flex', alignItems:'center', gap:'6px', padding:'6px 12px', borderRadius:'999px', border:'1px solid #bbf7d0', background:'#f0fdf4', color:'#166534', fontSize:'12px', fontWeight:'650', cursor:'pointer' }}>
+                        {shortNameOf(member)}{pic && <em style={{ fontStyle:'normal', fontSize:'9px', fontWeight:'800', color:'#92400e' }}>PIC</em>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── MODAL ── */}
       {showForm && (
