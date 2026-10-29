@@ -2,10 +2,11 @@ import { activeMembers, isActiveMember } from '../utils/members'
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
-import { Download, Upload, ChevronRight, FileText, Folder, X, Trash2, Eye, Plus } from 'lucide-react'
+import { Download, Upload, ChevronRight, ChevronUp, FileText, Folder, X, Trash2, Eye, Plus } from 'lucide-react'
 import { useViewport } from '../utils/useViewport'
 import CompileExport from '../components/CompileExport'
 import { undoableDelete } from '../utils/toast'
+import { canCombine, combineToPdf } from '../utils/combinePdf'
 
 const SECTIONS = [
   { key: 'xradar_namelist',  label: 'Xradar Namelist',  type: 'single', color: '#2563eb', bg: '#eff6ff' },
@@ -106,6 +107,7 @@ export default function Library() {
   const [expiryError, setExpiryError]         = useState(null)
   const [lockedMemberId, setLockedMemberId]   = useState(null)
   const [files, setFiles]                     = useState([])
+  const [combine, setCombine]                 = useState(true)
   const [uploadError, setUploadError]         = useState(null)
 
   const [preview, setPreview]                 = useState(null)
@@ -164,6 +166,7 @@ export default function Library() {
       expires_on: '',
     })
     setFiles(dropped)
+    setCombine(sec?.type === 'member' || sec?.type === 'single')
     setUploadError(null)
     if (fileRef.current) fileRef.current.value = ''
     setShowUpload(true)
@@ -173,6 +176,7 @@ export default function Library() {
     setLockedMemberId(null)
     setForm({ section: '', member_id: '', subcategory: '', expires_on: '' })
     setFiles([])
+    setCombine(true)
     setUploadError(null)
     if (fileRef.current) fileRef.current.value = ''
     setShowUpload(true)
@@ -188,13 +192,29 @@ export default function Library() {
     if (!files.length || !form.section) return
     if (sec?.type === 'member' && !form.member_id)   { setUploadError('Please select a team member.'); return }
     if (form.section === 'form_template' && !form.subcategory) { setUploadError('Please select a sub-section.'); return }
-    if ((sec?.type === 'member' || sec?.type === 'single') && files.length > 1) { setUploadError(`${sec.label} takes one file. Remove the extra files.`); return }
+    const merging = files.length > 1 && combine && files.every(canCombine)
+    if (sec?.type === 'single' && files.length > 1 && !merging) { setUploadError(`${sec.label} takes one file. Combine them into one PDF or remove the extra files.`); return }
     if (sec?.expires && !form.expires_on) { setUploadError(`Please enter the ${sec.label} expiry date.`); return }
 
     setUploading(true); setUploadError(null)
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i]
+    let queue = files
+    if (merging) {
+      try {
+        const memberName = members.find(m => m.id === form.member_id)?.full_name
+        const name = sec?.type === 'member' && memberName
+          ? `${sec.label} - ${memberName}.pdf`
+          : `${files[0].name.replace(/\.[^.]+$/, '')} (combined).pdf`
+        queue = [new File([await combineToPdf(files)], name, { type: 'application/pdf' })]
+      } catch (err) {
+        setUploadError(`Could not combine files. ${err.message}`)
+        setUploading(false)
+        return
+      }
+    }
+
+    for (let i = 0; i < queue.length; i++) {
+      const file = queue[i]
       const filePath = `${form.section}/${Date.now()}_${i}_${file.name.replace(/\s+/g, '_')}`
       const { error: upErr } = await supabase.storage.from('library').upload(filePath, file)
       const { error: dbErr } = upErr ? {} : await supabase.from('library_documents').insert({
@@ -210,7 +230,7 @@ export default function Library() {
       const err = upErr || dbErr
       if (err) {
         // Keep the failed file and the ones after it so the user can retry just those
-        setFiles(files.slice(i))
+        if (!merging) setFiles(files.slice(i))
         setUploadError(`${file.name}: ${err.message}`)
         setUploading(false)
         if (i > 0) fetchAll()
@@ -336,10 +356,12 @@ export default function Library() {
 
   const getSingle   = key       => docs.find(d => d.section === key) || null
   const getMember   = (key, id) => docs.find(d => d.section === key && d.member_id === id) || null
+  const getMemberDocs = (key, id) => docs.filter(d => d.section === key && d.member_id === id)
   const getMulti    = key       => docs.filter(d => d.section === key)
   const getSubDocs  = sub       => docs.filter(d => d.section === 'form_template' && d.subcategory === sub)
 
   const selectedSec = allSections.find(s => s.key === form.section)
+  const combinable  = files.length > 1 && files.every(canCombine)
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
@@ -439,7 +461,8 @@ export default function Library() {
 
     if (sec.type === 'member') {
       return rosterFor(sec.key).map(m => {
-        const doc = getMember(sec.key, m.id)
+        const memberDocs = getMemberDocs(sec.key, m.id)
+        const doc = memberDocs[0]
         const avatar = (
           <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: sec.color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: '700', color: sec.color, flexShrink: 0 }}>
             {initialsOf(m.full_name)}
@@ -455,7 +478,8 @@ export default function Library() {
             <button onClick={() => openUploadFor(sec.key, '', m.id)} style={{ ...dashBtn, marginLeft: 'auto' }}><Upload size={12} /> Upload</button>
           </div>
         )
-        return (
+        const addBtn = <button title={`Add another ${sec.label} file`} onClick={() => openUploadFor(sec.key, '', m.id)} style={iconBtn}><Plus size={15} /></button>
+        if (memberDocs.length === 1) return (
           <div key={m.id} style={rowStyle}>
             {avatar}
             <div style={{ minWidth: 0 }}>
@@ -465,7 +489,31 @@ export default function Library() {
                 <span style={{ fontSize: '11px', color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{doc.file_name}</span>
               </div>
             </div>
-            <DocActions doc={doc} onReplace={() => openUploadFor(sec.key, '', m.id)} />
+            <DocActions doc={doc} />
+            {addBtn}
+          </div>
+        )
+        return (
+          <div key={m.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+            <div style={{ ...rowStyle, borderBottom: 'none', paddingBottom: '4px' }}>
+              {avatar}
+              <div style={{ minWidth: 0 }}>
+                <p style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a' }}>{m.full_name}</p>
+                <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{memberDocs.length} files</p>
+              </div>
+              <div style={{ marginLeft: 'auto' }}>{addBtn}</div>
+            </div>
+            {memberDocs.map(d => (
+              <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: isMobile ? '4px 14px 4px 56px' : '4px 20px 4px 62px' }}>
+                <FileText size={14} color={sec.color} style={{ flexShrink: 0 }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', minWidth: 0 }}>
+                  <span style={{ fontSize: '12px', color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{d.file_name}</span>
+                  <ExpiryTag doc={d} sec={sec} />
+                </div>
+                <DocActions doc={d} />
+              </div>
+            ))}
+            <div style={{ height: '6px' }} />
           </div>
         )
       })
@@ -715,7 +763,7 @@ export default function Library() {
                 >
                   <Upload size={22} color="#94a3b8" style={{ margin: '0 auto' }} />
                   <p style={{ marginTop: '6px' }}>{isMobile ? 'Tap to choose files' : <>Drag files here or <b style={{ color: '#2563eb' }}>browse</b></>}</p>
-                  <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>{selectedSec?.type === 'member' || selectedSec?.type === 'single' ? 'One file' : 'Multiple files OK'}</p>
+                  <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>{selectedSec?.type === 'single' ? 'One file, or several combined into one PDF' : selectedSec?.type === 'member' ? 'Several OK, e.g. IC front and back' : 'Multiple files OK'}</p>
                 </div>
                 <input ref={fileRef} type="file" multiple hidden onChange={e => { addFiles([...e.target.files]); e.target.value = '' }} />
                 {files.length > 0 && (
@@ -725,10 +773,24 @@ export default function Library() {
                         <FileText size={14} color="#94a3b8" style={{ flexShrink: 0 }} />
                         <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#0f172a' }}>{f.name}</span>
                         <span style={{ color: '#94a3b8', flexShrink: 0 }}>{(f.size / 1024).toFixed(0)} KB</span>
+                        {combinable && combine && i > 0 && (
+                          <button title="Move up" onClick={() => setFiles(prev => { const n = [...prev]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; return n })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', padding: 0 }}><ChevronUp size={14} /></button>
+                        )}
                         <button onClick={() => setFiles(prev => prev.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', padding: 0 }}><X size={14} /></button>
                       </div>
                     ))}
                   </div>
+                )}
+                {combinable && (
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginTop: '10px', padding: '9px 11px', borderRadius: '10px', background: combine ? '#eff6ff' : '#f8fafc', border: `1px solid ${combine ? '#bfdbfe' : '#e2e8f0'}`, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={combine} onChange={e => { setCombine(e.target.checked); setUploadError(null) }} style={{ marginTop: '2px' }} />
+                    <span>
+                      <span style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#0f172a' }}>Combine into one PDF</span>
+                      <span style={{ display: 'block', fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                        {combine ? 'Saved as one file in this order. Photos go two per page, like an IC copy.' : `Saved as ${files.length} separate files.`}
+                      </span>
+                    </span>
+                  </label>
                 )}
               </div>
 
@@ -736,7 +798,7 @@ export default function Library() {
 
               <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '10px', paddingTop: '4px' }}>
                 <button onClick={handleUpload} disabled={uploading || !files.length || !form.section} style={{ flex: 1, padding: '11px', borderRadius: '10px', fontSize: '14px', fontWeight: '700', color: 'white', border: 'none', cursor: uploading || !files.length || !form.section ? 'not-allowed' : 'pointer', background: '#2563eb', opacity: uploading || !files.length || !form.section ? 0.5 : 1 }}>
-                  {uploading ? 'Uploading…' : files.length > 1 ? `Upload ${files.length} files` : 'Upload'}
+                  {uploading ? (combinable && combine ? 'Combining…' : 'Uploading…') : combinable && combine ? 'Combine & upload' : files.length > 1 ? `Upload ${files.length} files` : 'Upload'}
                 </button>
                 <button onClick={() => setShowUpload(false)} style={{ flex: 1, padding: '11px', borderRadius: '10px', fontSize: '14px', fontWeight: '600', color: '#0f172a', cursor: 'pointer', background: '#f1f5f9', border: '1px solid #e2e8f0' }}>Cancel</button>
               </div>

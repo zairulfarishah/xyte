@@ -163,12 +163,11 @@ export default function CompileExport({ members, docs }) {
         if (!member) continue
 
         for (const docType of selectedTypes) {
-          const doc = docs.find(d => d.section === docType && d.member_id === memberId && d.file_type === 'pdf')
-          if (!doc) continue
+          // A member can have several files per type (e.g. IC front and back); docs come newest first
+          const typeDocs = docs.filter(d => d.section === docType && d.member_id === memberId && d.file_type === 'pdf').reverse()
+          if (typeDocs.length) setProgress(`Adding ${member.full_name} — ${DOC_TYPES.find(t => t.key === docType)?.label}…`)
 
-          setProgress(`Adding ${member.full_name} — ${DOC_TYPES.find(t => t.key === docType)?.label}…`)
-
-          try {
+          for (const doc of typeDocs) try {
             const { data } = await supabase.storage.from('library').createSignedUrl(doc.file_path, 180)
             if (!data?.signedUrl) continue
             const resp     = await fetch(data.signedUrl)
