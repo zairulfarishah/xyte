@@ -5,6 +5,9 @@ import { useViewport } from '../utils/useViewport'
 import { notify, notifyAdmin } from '../utils/notify'
 import { Plus, X, Check, Trash2, Paperclip, Receipt, Wallet, Clock, CircleCheck, Ban } from 'lucide-react'
 
+// 'mileage' is kept here only so older claims still show a proper label — new
+// mileage claims belong in the dedicated Mileage tab, so it's left out of
+// SELECTABLE_CATEGORIES below.
 const CATEGORIES = [
   { value: 'travel',        label: 'Travel' },
   { value: 'mileage',       label: 'Mileage' },
@@ -13,6 +16,8 @@ const CATEGORIES = [
   { value: 'materials',     label: 'Materials' },
   { value: 'other',         label: 'Other' },
 ]
+
+const SELECTABLE_CATEGORIES = CATEGORIES.filter(c => c.value !== 'mileage')
 
 const STATUS = {
   pending:  { label: 'Pending',  bg: '#fef9c3', text: '#854d0e', border: '#fde047', dot: '#eab308' },
@@ -384,7 +389,7 @@ export default function ExpenseClaims() {
               <div>
                 <label style={lLabel}>Category</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {CATEGORIES.map(cat => {
+                  {SELECTABLE_CATEGORIES.map(cat => {
                     const active = form.category === cat.value
                     return (
                       <button

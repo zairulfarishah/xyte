@@ -349,7 +349,7 @@ function ServicesEquipmentSection({ content, onChange, onBack }) {
 
 function PersonnelSection({ content, onChange, onBack, teamMembers }) {
   const d = content.personnel
-  const names = DEFAULT_TEAM
+  const names = teamMembers.length > 0 ? teamMembers.map(m => m.full_name) : DEFAULT_TEAM
   const setLead = v => onChange({ ...content, personnel: { ...d, lead_technician: v } })
   const addTech = () => onChange({ ...content, personnel: { ...d, additional_technicians: [...d.additional_technicians, ''] } })
   const updateTech = (i, v) => {
@@ -927,7 +927,7 @@ function SignOffSection({ content, onChange, onBack, teamMembers }) {
   const today = new Date().toISOString().split('T')[0]
   const upd = (k, v) => onChange({ ...content, sign_off: { ...d, [k]: v } })
 
-  const names = DEFAULT_TEAM
+  const names = teamMembers.length > 0 ? teamMembers.map(m => m.full_name) : DEFAULT_TEAM
   const sel = { width: '100%', padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box', background: 'white', color: '#111827' }
 
   return (

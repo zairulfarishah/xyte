@@ -185,8 +185,16 @@ function DayCell({ date, isToday, card, leave, missing }) {
     content = <div style={{ fontSize: 11, color: '#94a3b8' }}>…</div>
     title += ' · time out not keyed in'
   } else if (leave) {
-    content = <div style={{ fontSize: 11, fontWeight: 800, color: '#b45309' }}>{leaveAbbr(leave.leave_type)}</div>
+    content = (
+      <div style={{ position: 'relative', display: 'inline-block' }}>
+        <div style={{ fontSize: 11, fontWeight: 800, color: '#b45309' }}>{leaveAbbr(leave.leave_type)}</div>
+        {missing && (
+          <div style={{ position: 'absolute', top: -3, right: -7, width: 7, height: 7, borderRadius: '50%', background: '#b91c1c', border: '1px solid white' }} />
+        )}
+      </div>
+    )
     title += ` · ${leave.leave_type} (${getLeaveSessionLabel(leave.leave_session)})`
+    if (missing) title += ' · no time keyed in for the rest of the day'
   } else if (missing) {
     content = <div style={{ fontSize: 13, fontWeight: 800, color: '#b91c1c' }}>!</div>
     title += ' · no time keyed in'
