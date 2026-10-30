@@ -91,7 +91,7 @@ export async function buildTimecardXlsx({ entries, dates, from, to, today, siteN
 function addMemberSheet(wb, { member, cardsByDate, leaveOn, summary }, { dates, period, today, siteName, used }) {
   const ws = wb.addWorksheet(sheetName(member.full_name, used), { views: [{ state: 'frozen', ySplit: 6 }] })
   ws.columns = [
-    { width: 13 }, { width: 7 }, { width: 11 }, { width: 11 }, { width: 11 }, { width: 11 }, { width: 28 },
+    { width: 13 }, { width: 7 }, { width: 28 }, { width: 11 }, { width: 11 }, { width: 11 }, { width: 11 },
     { width: 13 }, { width: 11 }, { width: 44 },
   ]
   ws.addRow(['TIMECARD & OVERTIME RECORD']).font = { bold: true, size: 14 }
@@ -107,7 +107,7 @@ function addMemberSheet(wb, { member, cardsByDate, leaveOn, summary }, { dates, 
   key.getCell(2).fill = solidFill(LEAVE_HIGHLIGHTS.leave.hex)
   key.getCell(3).fill = solidFill(LEAVE_HIGHLIGHTS.medical.hex)
   // The second in/out pair is for a second job on the same day.
-  styleHeader(ws.addRow(['Date', 'Day', 'Time in', 'Time out', 'Time in', 'Time out', 'Site', 'Normal (hrs)', 'OT (hrs)', 'Remarks']))
+  styleHeader(ws.addRow(['Date', 'Day', 'Site', 'Time in', 'Time out', 'Time in', 'Time out', 'Normal (hrs)', 'OT (hrs)', 'Remarks']))
 
   for (const date of dates) {
     const card = cardsByDate[date]
@@ -131,11 +131,11 @@ function addMemberSheet(wb, { member, cardsByDate, leaveOn, summary }, { dates, 
     const row = ws.addRow([
       new Date(`${date}T00:00:00Z`),
       fmtDate(date, { weekday: 'short' }),
+      lines(s => (s.site_id && siteName(s.site_id)) || 'Office'),
       lines(timeIn, 0),
       lines(timeOut, 0),
       lines(timeIn, 1),
       lines(timeOut, 1),
-      lines(s => (s.site_id && siteName(s.site_id)) || 'Office'),
       card ? hours(card.normal_minutes) : null,
       card ? hours(card.ot_minutes) : null,
       notes.join('; '),
@@ -148,7 +148,7 @@ function addMemberSheet(wb, { member, cardsByDate, leaveOn, summary }, { dates, 
       if (mark) c.fill = solidFill(mark)
       else if (offDay) c.fill = OFF_FILL
     })
-    for (const c of [3, 4, 5, 6]) row.getCell(c).alignment = { vertical: 'top', horizontal: 'center', wrapText: true }
+    for (const c of [4, 5, 6, 7]) row.getCell(c).alignment = { vertical: 'top', horizontal: 'center', wrapText: true }
     if (card?.ot_minutes) row.getCell(9).font = { bold: true }
   }
   ws.getColumn(8).numFmt = HRS_FMT
@@ -165,8 +165,10 @@ function addMemberSheet(wb, { member, cardsByDate, leaveOn, summary }, { dates, 
     ['TOTAL OT (hrs)', hours(summary.ot)],
   ]
   for (const [label, value] of totals) {
-    const row = ws.addRow(['', '', '', '', '', '', label, value])
+    // Label sits in the narrow last Time out column, so right-align it to spill into the empty cells on its left
+    const row = ws.addRow([null, null, null, null, null, null, label, value])
     row.getCell(7).font = { bold: true }
+    row.getCell(7).alignment = { horizontal: 'right' }
     row.getCell(8).font = { bold: label.startsWith('TOTAL') }
     row.getCell(8).numFmt = label.includes('hrs') ? HRS_FMT : '0'
   }

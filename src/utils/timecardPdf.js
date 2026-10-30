@@ -7,16 +7,16 @@ const A4W = 595, A4H = 842
 const ML = 40, MR = 40
 const TABLE_W = A4W - ML - MR // 515
 
-// Date | Day | Time in | Time out | Time in | Time out | Site | Normal | OT | Remarks
+// Date | Day | Site | Time in | Time out | Time in | Time out | Normal | OT | Remarks
 // The second in/out pair is for a second job on the same day.
 const COLS = [
   { label: 'Date',     w: 48, align: 'center' },
   { label: 'Day',      w: 28, align: 'center' },
-  { label: 'Time in',  w: 50, align: 'center' },
-  { label: 'Time out', w: 50, align: 'center' },
-  { label: 'Time in',  w: 50, align: 'center' },
-  { label: 'Time out', w: 50, align: 'center' },
   { label: 'Site',     w: 92, align: 'left'   },
+  { label: 'Time in',  w: 50, align: 'center' },
+  { label: 'Time out', w: 50, align: 'center' },
+  { label: 'Time in',  w: 50, align: 'center' },
+  { label: 'Time out', w: 50, align: 'center' },
   { label: 'Normal',   w: 40, align: 'right'  },
   { label: 'OT',       w: 40, align: 'right'  },
   { label: 'Remarks',  w: 67, align: 'left'   },
@@ -133,7 +133,7 @@ function drawMemberTimecard({ pdf, font, bold, logoImg, entry, dates, from, to, 
       return [own.map(s => formatTime12(s.time_in) || '?'), own.map(s => formatTime12(s.time_out) || '?')]
     }).flat()
     const siteLines = slots.map(s => (s.site_id && siteName(s.site_id)) || 'Office')
-      .map(name => wrap(name, COLS[6].w - 10, font, SIZE, 1)[0])
+      .map(name => wrap(name, COLS[2].w - 10, font, SIZE, 1)[0])
 
     const notes = []
     if (info.kind === 'holiday') notes.push(info.label)
@@ -162,8 +162,8 @@ function drawMemberTimecard({ pdf, font, bold, logoImg, entry, dates, from, to, 
     drawCell(page, fmtDate(date, { day: '2-digit', month: 'short' }), { x: colX(0), w: COLS[0].w, y: firstY, align: 'center', font, size: SIZE, color: muted })
     drawCell(page, fmtDate(date, { weekday: 'short' }), { x: colX(1), w: COLS[1].w, y: firstY, align: 'center', font, size: SIZE, color: muted })
     timeCols.forEach((lines, c) => lines.forEach((ln, i) =>
-      drawCell(page, ln, { x: colX(2 + c), w: COLS[2 + c].w, y: firstY - i * LINE_H, align: 'center', font, size: SIZE })))
-    siteLines.forEach((ln, i) => drawCell(page, ln, { x: colX(6), w: COLS[6].w, y: firstY - i * LINE_H, align: 'left', font, size: SIZE, color: GREY }))
+      drawCell(page, ln, { x: colX(3 + c), w: COLS[3 + c].w, y: firstY - i * LINE_H, align: 'center', font, size: SIZE })))
+    siteLines.forEach((ln, i) => drawCell(page, ln, { x: colX(2), w: COLS[2].w, y: firstY - i * LINE_H, align: 'left', font, size: SIZE, color: GREY }))
     if (card) {
       drawCell(page, hrs(card.normal_minutes), { x: colX(7), w: COLS[7].w, y: firstY, align: 'right', font, size: SIZE })
       drawCell(page, hrs(card.ot_minutes), { x: colX(8), w: COLS[8].w, y: firstY, align: 'right', font: bold, size: SIZE })
