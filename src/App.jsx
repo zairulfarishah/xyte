@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState, useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import {
-  Search, Bell, X, MapPin, Users, Plus, LogOut, ChevronDown, Home, Clock, MessageSquare,
+  Search, Bell, X, MapPin, Users, Plus, LogOut, Home, Clock, MessageSquare,
   FileText, Receipt, CheckSquare, FolderOpen, BarChart3, Settings, LayoutGrid, Coffee, Sparkles, Cable,
 } from 'lucide-react'
 import { supabase } from './supabase'
@@ -70,6 +70,11 @@ const NAV = [
       { to: '/claim', label: 'Claims', Icon: Receipt },
       { to: '/tasks', label: 'Tasks', Icon: CheckSquare },
       { to: '/library', label: 'Library', Icon: FolderOpen },
+    ],
+  },
+  {
+    label: 'Program',
+    items: [
       { to: '/pt-mapper', label: 'PT Mapper', Icon: Cable },
     ],
   },
@@ -148,58 +153,39 @@ function UnreadBadge({ count }) {
   )
 }
 
-function NavGroup({ label, items, pillStyle, badges = {} }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef(null)
+// Desktop/tablet sidebar: top-level pages, then each group under a small heading.
+function SideNav({ nav, badges }) {
   const { pathname } = useLocation()
-  const isActive = items.some(i => isOn(i, pathname))
-  const total = items.reduce((n, i) => n + (badges[i.to] || 0), 0)
-
-  useEffect(() => {
-    if (!open) return
-    const onDown = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
-  }, [open])
-
+  const link = item => (
+    <NavLink key={item.to} to={item.to} end={item.end} className={isOn(item, pathname) ? 'on' : ''}>
+      <item.Icon size={16} />
+      <span>{item.label}</span>
+      <UnreadBadge count={badges[item.to]} />
+    </NavLink>
+  )
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        style={{ ...pillStyle({ isActive }), border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-      >
-        {label}
-        {!open && <UnreadBadge count={total} />}
-        <ChevronDown size={13} style={{ transition: 'transform 0.15s', transform: open ? 'rotate(180deg)' : 'none' }} />
-      </button>
-      {open && (
-        <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', top: '42px', minWidth: '170px', background: '#0f172a', border: '1px solid rgba(148,163,184,0.18)', borderRadius: '14px', boxShadow: '0 16px 40px rgba(0,0,0,0.35)', padding: '6px', zIndex: 1100, display: 'grid', gap: '2px' }}>
-          {items.map(item => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              onClick={() => setOpen(false)}
-              style={({ isActive }) => ({
-                padding: '9px 12px',
-                borderRadius: '10px',
-                textDecoration: 'none',
-                fontSize: '13px',
-                fontWeight: '600',
-                background: isActive ? '#2563eb' : 'transparent',
-                color: isActive ? 'white' : '#cbd5e1',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '9px',
-              })}
-            >
-              {item.Icon && <item.Icon size={14} style={{ opacity: 0.8 }} />}
-              <span style={{ flex: 1 }}>{item.label}</span>
-              <UnreadBadge count={badges[item.to]} />
-            </NavLink>
-          ))}
+    <aside className="xt-side">
+      <NavLink to="/" className="logo">
+        <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1 }}>
+          <span style={{ fontSize: '20px', fontWeight: '900', color: '#22c55e', letterSpacing: '-0.03em', lineHeight: 1, textShadow: '0 0 12px rgba(34,197,94,0.5), 0 0 32px rgba(34,197,94,0.15)' }}>X</span>
+          <span style={{ fontSize: '20px', fontWeight: '200', color: 'rgba(255,255,255,0.88)', letterSpacing: '0.02em', lineHeight: 1 }}>yte</span>
         </div>
-      )}
-    </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginTop: '4px' }}>
+          <div style={{ height: '1.5px', width: '44px', borderRadius: '99px', background: 'linear-gradient(90deg,#22c55e,rgba(34,197,94,0))', opacity: 0.95 }} />
+          <div style={{ height: '1.5px', width: '28px', borderRadius: '99px', background: 'linear-gradient(90deg,#22c55e,rgba(34,197,94,0))', opacity: 0.55 }} />
+          <div style={{ height: '1.5px', width: '14px', borderRadius: '99px', background: 'linear-gradient(90deg,#22c55e,rgba(34,197,94,0))', opacity: 0.28 }} />
+        </div>
+      </NavLink>
+      <nav aria-label="Main">
+        {nav.filter(i => !i.items).map(link)}
+        {nav.filter(i => i.items).map(g => (
+          <div key={g.label}>
+            <h6>{g.label}</h6>
+            {g.items.map(link)}
+          </div>
+        ))}
+      </nav>
+    </aside>
   )
 }
 
@@ -519,19 +505,6 @@ function AppShell() {
 
   const unread = notifs.filter(n => new Date(n.created_at) > new Date(lastSeen)).length
 
-  const desktopNavStyle = ({ isActive }) => ({
-    padding: '8px 14px',
-    borderRadius: '999px',
-    textDecoration: 'none',
-    fontSize: '13px',
-    fontWeight: '600',
-    transition: 'all 0.15s',
-    background: isActive ? '#2563eb' : 'transparent',
-    color: isActive ? 'white' : '#94a3b8',
-    whiteSpace: 'nowrap',
-    boxShadow: isActive ? '0 8px 18px rgba(37,99,235,0.28)' : 'none',
-  })
-
   if (authLoading) return (
     <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#0f172a' }}>
       <div style={{ width: '20px', height: '20px', borderRadius: '50%', border: '2px solid #1e3a8a', borderTopColor: '#2563eb', animation: 'spin 0.8s linear infinite' }} />
@@ -545,14 +518,17 @@ function AppShell() {
   )
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#f1f5f9' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#f1f5f9' }}>
+      {!isMobile && <SideNav nav={nav} badges={badges} />}
+
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
       <nav style={{
         background: '#0f172a',
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
         gap: isMobile ? '8px' : '0',
-        padding: isMobile ? '8px 12px' : isTablet ? '12px 18px' : '14px 28px',
+        padding: isMobile ? '8px 12px' : isTablet ? '8px 18px' : '8px 28px',
         position: 'sticky',
         top: 0,
         zIndex: 3000,
@@ -611,44 +587,11 @@ function AppShell() {
         )}
 
         {!isMobile && (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: isTablet ? '1fr' : 'minmax(160px,220px) minmax(0,1fr) minmax(220px,280px)',
-            alignItems: 'center',
-            gap: isTablet ? '12px' : '18px',
-            minHeight: isTablet ? 'auto' : '72px',
-            width: '100%',
-          }}>
-            <NavLink to="/" style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: isTablet ? 'center' : 'flex-start', flexShrink: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1 }}>
-                <span style={{ fontSize: '20px', fontWeight: '900', color: '#22c55e', letterSpacing: '-0.03em', lineHeight: 1, textShadow: '0 0 12px rgba(34,197,94,0.5), 0 0 32px rgba(34,197,94,0.15)' }}>X</span>
-                <span style={{ fontSize: '20px', fontWeight: '200', color: 'rgba(255,255,255,0.88)', letterSpacing: '0.02em', lineHeight: 1 }}>yte</span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginTop: '4px' }}>
-                <div style={{ height: '1.5px', width: '44px', borderRadius: '99px', background: 'linear-gradient(90deg,#22c55e,rgba(34,197,94,0))', opacity: 0.95 }} />
-                <div style={{ height: '1.5px', width: '28px', borderRadius: '99px', background: 'linear-gradient(90deg,#22c55e,rgba(34,197,94,0))', opacity: 0.55 }} />
-                <div style={{ height: '1.5px', width: '14px', borderRadius: '99px', background: 'linear-gradient(90deg,#22c55e,rgba(34,197,94,0))', opacity: 0.28 }} />
-              </div>
-            </NavLink>
-
-            <div style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '2px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '999px', padding: '4px', width: 'max-content', maxWidth: '100%' }}>
-                {nav.map(item => item.items
-                  ? <NavGroup key={item.label} label={item.label} items={item.items} pillStyle={desktopNavStyle} badges={badges} />
-                  : (
-                    <NavLink key={item.to} to={item.to} end={item.end}
-                      style={() => ({ ...desktopNavStyle({ isActive: isOn(item, location.pathname) }), display: 'flex', alignItems: 'center', gap: '6px' })}>
-                      {item.label}
-                      <UnreadBadge count={badges[item.to]} />
-                    </NavLink>
-                  ))}
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', justifyContent: isTablet ? 'center' : 'flex-end', minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', minHeight: '40px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
               <button
                 onClick={handleOpenAddSite}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#2563eb', border: 'none', cursor: 'pointer', color: 'white', padding: '10px 14px', borderRadius: '12px', fontSize: '12px', fontWeight: '700', transition: 'background 0.15s, transform 0.15s', boxShadow: '0 10px 25px rgba(37,99,235,0.28)' }}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#2563eb', border: 'none', cursor: 'pointer', color: 'white', padding: '8px 13px', borderRadius: '10px', fontSize: '12px', fontWeight: '700', transition: 'background 0.15s, transform 0.15s', boxShadow: '0 6px 16px rgba(37,99,235,0.25)' }}
                 onMouseEnter={e => {
                   e.currentTarget.style.background = '#1d4ed8'
                   e.currentTarget.style.transform = 'translateY(-1px)'
@@ -736,6 +679,7 @@ function AppShell() {
           </Routes>
         </Suspense>
       </main>
+      </div>
 
       {isMobile && (<>
         {mobileMenuOpen && (<>

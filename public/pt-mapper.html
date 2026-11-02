@@ -11,7 +11,7 @@
 :root{
   --bg:#e7e9ea;--panel:#f6f7f7;--line:#d0d4d7;--fg:#1b2024;--muted:#5d666e;
   --accent:#e04a1c;--accent-ink:#ffffff;--accent-soft:#fbe3da;--stage:#c7ccd0;
-  --ok:#1d8550;--field:#ffffff;
+  --ok:#1d8550;--field:#ffffff;--soft:#eceeef;
   --display:"Barlow Semi Condensed","Arial Narrow",system-ui,sans-serif;
   --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
@@ -19,11 +19,11 @@
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#14171a;--panel:#1c2024;--line:#2f353b;--fg:#e6e9eb;--muted:#9aa3ab;
   --accent:#ff6b3d;--accent-ink:#1a0d07;--accent-soft:#3a2219;--stage:#0d0f11;
-  --ok:#43c482;--field:#23282d;color-scheme:dark}}
+  --ok:#43c482;--field:#23282d;--soft:#121518;color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#14171a;--panel:#1c2024;--line:#2f353b;--fg:#e6e9eb;--muted:#9aa3ab;
   --accent:#ff6b3d;--accent-ink:#1a0d07;--accent-soft:#3a2219;--stage:#0d0f11;
-  --ok:#43c482;--field:#23282d;color-scheme:dark}
+  --ok:#43c482;--field:#23282d;--soft:#121518;color-scheme:dark}
 html,body{height:100%}
 [hidden]{display:none!important}
 body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:14px;display:flex;flex-direction:column;
@@ -158,6 +158,62 @@ input[type=date]{font:inherit;font-family:var(--mono);font-size:13px;color:var(-
 .pp select{width:auto;flex:1;min-width:0}
 .nudgrp{display:flex;gap:4px}
 .nudgrp .btn.sm{min-width:36px;font-size:16px;padding:4px 6px}
+
+/* Side panel: inspector for the selected panel, with Grid / Drawing / List / Settings / Export as views */
+#side{display:flex;flex-direction:column}
+#side svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+#side .bar{display:flex;gap:2px;padding:6px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel);z-index:2}
+#side .bar button{flex:1;display:grid;justify-items:center;gap:3px;font:600 11.5px var(--body);color:var(--muted);border:0;background:none;border-radius:6px;padding:7px 2px 5px;cursor:pointer}
+#side .bar button svg{width:18px;height:18px}
+#side .bar button:hover{background:var(--soft);color:var(--fg)}
+#side .bar button.on{background:var(--accent-soft);color:var(--accent)}
+#side .bar button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.view{display:none;padding:16px;gap:16px;align-content:start}
+.view.on{display:grid}
+.vh{display:flex;align-items:center;gap:8px}
+.vh h2{margin:0;font-family:var(--display);font-weight:700;font-size:19px;letter-spacing:.02em}
+.vh .st{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--muted)}
+.vh .x{border:0;background:none;color:var(--muted);font-size:24px;line-height:1;cursor:pointer;padding:0 2px}
+.vh h2+.x{margin-left:auto}
+.pnav{display:flex;align-items:center;gap:8px}
+.pnav .pt{flex:1;min-width:0;display:grid;justify-items:center;text-align:center}
+#pName{font-family:var(--display);font-weight:700;font-size:23px;letter-spacing:.02em}
+#pSub{font-size:12px;color:var(--muted)}
+.nb{width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:var(--field);color:var(--fg);display:grid;place-items:center;cursor:pointer;flex:none}
+.nb:hover:not(:disabled){border-color:var(--muted)}
+.nb:disabled{opacity:.35;cursor:default}
+.needsel{display:grid;gap:16px}
+#side.nosel .needsel{display:none}
+.sg{display:flex;background:var(--soft);border-radius:8px;padding:3px;gap:2px}
+.sg button{flex:1;font-family:var(--display);font-weight:600;font-size:13.5px;border:0;background:transparent;color:var(--muted);border-radius:6px;padding:6px 4px;cursor:pointer;white-space:nowrap}
+.sg button:hover:not(:disabled){color:var(--fg)}
+.sg button.on{background:var(--field);color:var(--fg);box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.sg button:disabled{cursor:default}
+.sg button:disabled:not(.on){opacity:.5}
+#stPT.on{color:var(--ok)} #stNoPT.on{color:#3d6fb3} #stNoAcc.on{color:#a07a20}
+.blk{display:grid;gap:8px}
+.lbl{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.lbl .lt{text-transform:none;letter-spacing:0;font-weight:400}
+.bh{display:flex;align-items:center;justify-content:space-between;gap:8px}
+select.unit{width:auto;padding:3px 6px}
+.pick{display:grid;grid-template-columns:56px 1fr 56px;grid-template-rows:auto 96px auto;gap:6px;align-items:center;justify-items:center}
+.pick .sq{grid-area:2/2;width:100%;height:100%;border:1.5px dashed var(--line);border-radius:4px;display:grid;place-items:center;text-align:center;padding:6px;font-family:var(--mono);font-size:11.5px;color:var(--muted);position:relative}
+.pick .sq i{position:absolute;background:var(--accent);border-radius:2px}
+.pick .sq.on-l i{left:-2px;top:-2px;bottom:-2px;width:4px} .pick .sq.on-r i{right:-2px;top:-2px;bottom:-2px;width:4px}
+.pick .sq.on-t i{top:-2px;left:-2px;right:-2px;height:4px} .pick .sq.on-b i{bottom:-2px;left:-2px;right:-2px;height:4px}
+.pick button{position:relative;font-family:var(--mono);font-weight:600;font-size:13px;min-width:40px;border:1px solid var(--line);background:var(--field);color:var(--fg);border-radius:6px;padding:5px 10px;cursor:pointer}
+.pick button:hover{border-color:var(--muted)}
+.pick button.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.pick button .cnt{position:absolute;top:-8px;right:-8px;min-width:17px;height:17px;padding:0 4px;border-radius:99px;background:var(--ok);color:#fff;font-size:10px;display:grid;place-items:center}
+.pick .t{grid-area:1/2} .pick .b{grid-area:3/2} .pick .l{grid-area:2/1} .pick .r{grid-area:2/3}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--muted)}
+.btn.ghost:hover:not(:disabled){color:var(--fg);border-color:var(--line)}
+#side .btn svg{width:15px;height:15px}
+#side .btn{display:inline-flex;align-items:center;gap:5px}
+.ex2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ex2 .btn{justify-content:center}
+#side .foot{margin-top:auto;position:sticky;bottom:0;z-index:2;background:var(--panel);border-top:1px solid var(--line);padding:10px 12px;display:flex;gap:8px;align-items:center}
+#footSum{flex:1;min-width:0;text-align:center;font-family:var(--mono);font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 </style>
 
 </head>
@@ -179,10 +235,60 @@ input[type=date]{font:inherit;font-family:var(--mono);font-size:13px;color:var(-
     <div class="hint"><span id="hint">Tap a panel to enter its PT. Drag to move, pinch or scroll to zoom.</span><span class="xy" id="xy">—</span></div>
   </div>
 
-  <aside>
-    <section class="step" id="s1">
-      <h2><span class="n">1</span>Grid layout<span class="st" id="st1"></span></h2>
-      <div id="sampleBanner" class="banner">This is an example job with example PT readings. Press <b>Edit grid</b> to enter your gridlines, then <b>Start new job</b>.</div>
+  <aside id="side">
+    <nav class="bar" aria-label="Tools">
+      <button data-v="grid" title="Grid layout"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>Grid</button>
+      <button data-v="drawing" title="Background drawing"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>Drawing</button>
+      <button data-v="list" title="Readings list and totals"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>List</button>
+      <button data-v="settings" title="Tolerance and display"><svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>Settings</button>
+      <button data-v="export" title="Report, export and job file"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/></svg>Export</button>
+    </nav>
+
+    <!-- Inspector: the panel being worked on -->
+    <section class="view on" data-view="panel">
+      <div id="sampleBanner" class="banner">This is an example job with example PT readings. Open <b>Grid</b> above to enter your gridlines, then <b>Start new job</b>.</div>
+      <div class="pnav">
+        <button class="nb" id="prevP" aria-label="Previous panel" title="Previous panel"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+        <div class="pt"><span id="pName">Tap a panel</span><small id="pSub"></small></div>
+        <button class="nb" id="nextP" aria-label="Next panel" title="Next panel"><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
+      </div>
+      <div class="needsel">
+        <div class="sg" role="group" aria-label="Panel status">
+          <button id="stPT" title="Set automatically once a PT distance is entered">PT found</button>
+          <button id="stNoPT">No PT found</button>
+          <button id="stNoAcc">No access</button>
+        </div>
+        <div class="blk">
+          <div class="lbl">Measured from <span class="lt">· tap a side</span></div>
+          <div class="pick" id="fromPick"></div>
+        </div>
+        <input type="radio" name="ptype" value="pt" checked hidden>
+        <div class="blk">
+          <div class="bh"><span class="lbl" id="offHead">Distance from gridline</span><select id="unit" class="unit" aria-label="Unit"><option value="m">m</option><option value="mm">mm</option></select></div>
+          <div class="tw offw"><table class="gt" id="offT"></table></div>
+          <div class="row" style="align-items:center">
+            <button class="btn sm" id="addOff">+ Add PT</button>
+            <span class="note" id="offCount"></span>
+            <span style="flex:1"></span>
+            <button class="btn sm ghost" id="delPanel">Delete readings</button>
+          </div>
+          <p class="warn" id="pWarn" hidden></p>
+          <p class="note">Saved as you type. <b>Enter</b> goes to the next row; Enter on an empty last row goes to the next panel.</p>
+        </div>
+      </div>
+      <div class="blk">
+        <div class="lbl">No-access area <span class="lt">· part of a panel you could not scan</span></div>
+        <div class="row" style="align-items:center">
+          <button class="btn sm" id="drawArea">Draw box</button>
+          <button class="btn sm" id="drawPoly">Draw by points</button>
+          <button class="btn sm primary" id="polyDone" hidden>Finish shape</button>
+        </div>
+        <p class="note">Tap an area to edit it: drag a corner to reshape, a side dot to resize (or add a corner), the inside to move. Double-tap a corner to remove it.</p>
+      </div>
+    </section>
+
+    <section class="view" data-view="grid" id="s1">
+      <div class="vh"><h2>Grid layout</h2><span class="st" id="st1"></span><button class="x" data-close aria-label="Back to panel">×</button></div>
       <div class="gsum" id="gridSum"></div>
       <div class="row">
         <button class="btn primary" id="editGrid">Edit grid</button>
@@ -191,64 +297,8 @@ input[type=date]{font:inherit;font-family:var(--mono);font-size:13px;color:var(-
       <p class="note">All levels share this grid. Use the level tabs at the top to switch floors.</p>
     </section>
 
-    <section class="step" id="s2">
-      <h2><span class="n">2</span>PT readings by panel<span class="st" id="st2"></span></h2>
-      <div class="panelname"><span id="pName">Tap a panel</span><small id="pSub"></small></div>
-
-      <div class="pstat" id="pStat">
-        <span class="lbl">Panel status</span><span class="chip" id="pStatChip">Not scanned</span>
-        <button class="btn sm" id="stNoPT">No PT found</button>
-        <button class="btn sm" id="stNoAcc">No access</button>
-      </div>
-
-      <div>
-        <div class="note" style="margin-bottom:6px">Measured from which gridline?</div>
-        <div class="opts" id="fromOpts"></div>
-      </div>
-      <input type="radio" name="ptype" value="pt" checked hidden>
-
-      <div class="row" style="align-items:center">
-        <div class="note" style="flex:1" id="offHead">Distance of each PT from the gridline</div>
-        <label class="chk">Unit <select id="unit" style="width:auto"><option value="m">m</option><option value="mm">mm</option></select></label>
-      </div>
-      <div class="tw offw"><table class="gt" id="offT"></table></div>
-      <div class="row" style="align-items:center">
-        <button class="btn" id="addOff">+ Add PT</button>
-        <span class="note" id="offCount"></span>
-      </div>
-      <p class="note">Each PT appears on the plan as you type and is saved automatically. Press <b>Enter</b> for the next row. Press Enter on an empty last row to go to the next panel.</p>
-      <div class="row">
-        <button class="btn primary" id="saveNext">Next panel →</button>
-        <button class="btn" id="delPanel">Delete readings</button>
-      </div>
-      <p class="warn" id="pWarn" hidden></p>
-
-      <details id="quick">
-        <summary>Type many panels at once</summary>
-        <div class="in">
-          <textarea id="quickTxt" placeholder="1/A-B 1.23, 1.4, 1.5&#10;1/B-C 1.23, 1.5&#10;B/1-2 0.15, 0.3"></textarea>
-          <p class="note">One panel per line: gridline / span, then distances. <code>1/A-B</code> means measured from gridline 1, PT running from A to B, in the panel on the gridline 2 side. Uses the unit selected above.</p>
-          <button class="btn primary" id="quickAdd">Add lines</button>
-        </div>
-      </details>
-
-      <div class="row">
-        <label class="f">Join as same PT if within (mm)<input type="number" id="tol" min="0" step="5" value="50"></label>
-        <label class="f">No-drill zone each side (mm)<input type="number" id="buffer" min="0" step="5" value="75"></label>
-      </div>
-      <div class="row">
-        <label class="chk"><input type="checkbox" id="showLbl" checked>Distance labels</label>
-        <label class="chk"><input type="checkbox" id="showBuf" checked>No-drill zone</label>
-        <label class="chk"><input type="checkbox" id="showCols" checked>Columns</label>
-        <label class="chk"><input type="checkbox" id="showGD" checked>Grid spacing</label>
-      </div>
-      <div class="sum" id="sum"></div>
-      <div class="row"><button class="btn" id="undo">Undo</button></div>
-      <div class="list" id="list"></div>
-    </section>
-
-    <section class="step" id="s3">
-      <h2><span class="n">3</span>Background drawing<span class="st" id="st3">Optional</span></h2>
+    <section class="view" data-view="drawing" id="s3">
+      <div class="vh"><h2>Background drawing</h2><span class="st" id="st3">Optional</span><button class="x" data-close aria-label="Back to panel">×</button></div>
       <p class="note">Put the consultant's drawing for this level behind the grid. Upload, then line it up by tapping two gridline intersections on it.</p>
       <div class="row">
         <button class="btn" id="upBtn">Upload PDF / image</button>
@@ -289,8 +339,39 @@ input[type=date]{font:inherit;font-family:var(--mono);font-size:13px;color:var(-
       </div>
     </section>
 
-    <section class="step" id="s4">
-      <h2><span class="n">4</span>Report &amp; export<span class="st"></span></h2>
+    <section class="view" data-view="list" id="s2">
+      <div class="vh"><h2>Readings</h2><span class="st" id="st2"></span><button class="x" data-close aria-label="Back to panel">×</button></div>
+      <div class="sum" id="sum"></div>
+      <div class="list" id="list"></div>
+      <details id="quick">
+        <summary>Type many panels at once</summary>
+        <div class="in">
+          <textarea id="quickTxt" placeholder="1/A-B 1.23, 1.4, 1.5&#10;1/B-C 1.23, 1.5&#10;B/1-2 0.15, 0.3"></textarea>
+          <p class="note">One panel per line: gridline / span, then distances. <code>1/A-B</code> means measured from gridline 1, PT running from A to B, in the panel on the gridline 2 side. Uses the unit selected on the panel.</p>
+          <button class="btn primary" id="quickAdd">Add lines</button>
+        </div>
+      </details>
+    </section>
+
+    <section class="view" data-view="settings">
+      <div class="vh"><h2>Settings</h2><button class="x" data-close aria-label="Back to panel">×</button></div>
+      <div class="row">
+        <label class="f">Join as same PT if within (mm)<input type="number" id="tol" min="0" step="5" value="50"></label>
+        <label class="f">No-drill zone each side (mm)<input type="number" id="buffer" min="0" step="5" value="75"></label>
+      </div>
+      <div class="blk">
+        <div class="lbl">Show on plan</div>
+        <div class="row">
+          <label class="chk"><input type="checkbox" id="showLbl" checked>Distance labels</label>
+          <label class="chk"><input type="checkbox" id="showBuf" checked>No-drill zone</label>
+          <label class="chk"><input type="checkbox" id="showCols" checked>Columns</label>
+          <label class="chk"><input type="checkbox" id="showGD" checked>Grid spacing</label>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" data-view="export" id="s4">
+      <div class="vh"><h2>Report &amp; export</h2><button class="x" data-close aria-label="Back to panel">×</button></div>
       <label class="f">Job name (used for file names)<input type="text" id="jobName" placeholder="Menara ABC Level 3-5"></label>
       <details id="repDet">
         <summary>Report details</summary>
@@ -306,22 +387,26 @@ input[type=date]{font:inherit;font-family:var(--mono);font-size:13px;color:var(-
           <label class="f wide">Notes on the report<textarea id="r_notes"></textarea></label>
         </div>
       </details>
-      <div class="row">
+      <div class="ex2">
         <button class="btn primary" id="exDXF">CAD files (DXF)</button>
         <button class="btn primary" id="exPDF">Report (PDF)</button>
-      </div>
-      <div class="row">
         <button class="btn" id="exPNG">Plan image (PNG)</button>
         <button class="btn" id="exCSV">Data (CSV)</button>
       </div>
       <p class="note">CAD and report include every level. The DXF is in millimetres at 1:1 with 0,0 at the first gridline intersection, and has dimensions from the gridline to every PT, a PT schedule, panel status and project notes on separate layers.</p>
-      <div class="row">
+      <div class="ex2">
         <button class="btn" id="saveProj">Save job file</button>
         <button class="btn" id="openProj">Open job file</button>
         <input type="file" id="projIn" accept=".json,application/json" hidden>
       </div>
       <p class="note" id="dlNote">Your work is also kept in this browser automatically.</p>
     </section>
+
+    <div class="foot">
+      <button class="btn sm" id="undo" title="Undo (Ctrl+Z)" aria-label="Undo"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg></button>
+      <span id="footSum"></span>
+      <button class="btn primary sm" id="saveNext">Next panel <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
+    </div>
   </aside>
 </main>
 
@@ -815,23 +900,23 @@ const DEF_REPORT={company:'Xradar Asia Sdn Bhd', project:'', client:'', location
   notes:'PT cable positions were located by Ground Penetrating Radar (GPR) and marked on site. Positions are approximate and must be verified before any coring, drilling or cutting. Keep clear of the no-drill zone shown.'};
 
 function defaults(){ return {job:'', grid:{xNames:['1','2','3','4'], xSp:[9150,9150,9150], yNames:['A','B','C'], ySp:[9150,9150], yUp:true},
-  levels:[{id:1,name:'Level 1',readings:[],status:{},bg:null}], cur:1, lnid:2,
-  readings:[], status:{}, bg:null,
+  levels:[{id:1,name:'Level 1',readings:[],status:{},areas:[],bg:null}], cur:1, lnid:2,
+  readings:[], status:{}, areas:[], bg:null,
   tol:50, buffer:75, unit:'m', showLabels:true, showBuffer:true, showCols:true, showGridDims:true, isSample:false, nid:1, report:{...DEF_REPORT, date:today()}}; }
 let S = defaults(), GEO = null, CH = [], SEGS = [], BAD = [];
 let view = {s:0.02, tx:0, ty:0};
-let sel = null, selFrom = null, mode = 'select', alignPts = [];
+let sel = null, selFrom = null, mode = 'select', alignPts = [], draft = null, selArea = null, polyPts = [];
 let bgImg = null, bgData = null, bgCache = {}, pdfDoc=null, pdfName='';
 let hover = null, undoStack = [];
 
 /* ---------------- levels ---------------- */
 const curLevel=()=>S.levels.find(l=>l.id===S.cur)||S.levels[0];
-function syncLevel(){ const L=curLevel(); if(!L) return; L.readings=S.readings; L.status=S.status; L.bg=S.bg; }
-function loadLevelData(L){ S.cur=L.id; S.readings=L.readings||[]; S.status=L.status||{}; S.bg=L.bg||null; }
+function syncLevel(){ const L=curLevel(); if(!L) return; L.readings=S.readings; L.status=S.status; L.areas=S.areas; L.bg=S.bg; }
+function loadLevelData(L){ S.cur=L.id; S.readings=L.readings||[]; S.status=L.status||{}; S.areas=(L.areas||[]).map(normArea); S.bg=L.bg||null; }
 async function ensureBg(id){ if(bgCache[id]) return bgCache[id]; try{ const u=localStorage.getItem(LS_IMG+'.'+id); if(u){ bgCache[id]={img:await loadImg(u),data:u}; return bgCache[id]; } }catch(e){} return null; }
 async function switchLevel(id){
   if(commitT) commitRows(); syncLevel(); const L=S.levels.find(l=>l.id===id); if(!L) return;
-  loadLevelData(L); undoStack=[]; sessionSnapped=false; renaming=false;
+  loadLevelData(L); undoStack=[]; sessionSnapped=false; renaming=false; selArea=null;
   const c = S.bg ? await ensureBg(id) : null; bgImg=c?c.img:null; bgData=c?c.data:null; if(S.bg && !c) S.bg=null;
   persistAll(); setMode('select');
 }
@@ -863,7 +948,7 @@ function renderLevels(){
   const add=document.createElement('button'); add.className='lvl add'; add.textContent='+ Level';
   add.onclick=()=>{ if(commitT) commitRows(); syncLevel(); const id=S.lnid++; const last=S.levels[S.levels.length-1].name;
     const m=last.match(/^(.*?)(\d+)$/); const name=m? m[1]+(+m[2]+1) : 'Level '+(S.levels.length+1);
-    S.levels.push({id,name,readings:[],status:{},bg:null}); S.isSample=false; switchLevel(id); toast(`${name} added. Tap its name to rename it.`); };
+    S.levels.push({id,name,readings:[],status:{},areas:[],bg:null}); S.isSample=false; switchLevel(id); toast(`${name} added. Tap its name to rename it.`); };
   box.append(add);
 }
 
@@ -976,6 +1061,18 @@ function render(g, V, Wpx, Hpx, screen){
       text(g, st==='nopt'?'No PT found':'No access', x+w/2, y+h/2, px, st==='nopt'?'#3d6fb3':'#6b5420', 'center', 0); }
     if(screen && samePanel(p,sel)){ g.fillStyle='rgba(224,74,28,0.08)'; g.fillRect(x,y,w,h); g.strokeStyle=COL.sel; g.lineWidth=2.5; g.setLineDash([]); g.strokeRect(x+1.5,y+1.5,w-3,h-3); }
   });
+  // no-access areas: part of a panel (or across panels) that could not be scanned
+  S.areas.forEach(A=>drawArea(g,P,A,u,V,screen&&A.id===selArea,false));
+  if(screen && draft) drawArea(g,P,rectArea(draftRect(draft)),u,V,true,true);
+  if(screen && mode==='poly' && polyPts.length){ const pv=hover&&!pts.size?snapW(hover):null, list=pv?[...polyPts,pv]:polyPts;
+    if(list.length>=3){ g.save(); areaPath(g,P,list); g.fillStyle='rgba(120,110,90,0.14)'; g.fill(); g.restore(); }
+    g.save(); g.strokeStyle=COL.sel; g.lineWidth=2; g.setLineDash([6,4]); g.beginPath(); list.forEach((p,i)=>{ const q=P(p.X,p.Y); i?g.lineTo(q.x,q.y):g.moveTo(q.x,q.y); }); g.stroke(); g.setLineDash([]);
+    polyPts.forEach((p,i)=>{ const q=P(p.X,p.Y); g.beginPath(); g.arc(q.x,q.y,i===0&&polyPts.length>=3?7:4,0,7); g.fillStyle='#fff'; g.fill(); g.stroke(); });
+    if(list.length>=2){ const a=list[list.length-2], b=list[list.length-1], q=P((a.X+b.X)/2,(a.Y+b.Y)/2); text(g,trimNum(Math.hypot(b.X-a.X,b.Y-a.Y)/1000)+' m',q.x,q.y-12,12,COL.sel,'center',0); }
+    g.restore(); }
+  if(screen && mode==='select' && selArea){ const A=S.areas.find(a=>a.id===selArea);
+    if(A) handles(A).forEach(hd=>{ const q=P(hd.X,hd.Y); g.save(); g.strokeStyle=COL.sel; g.lineWidth=1.5; g.fillStyle='#fff';
+      if(hd.k==='v'){ g.fillRect(q.x-5,q.y-5,10,10); g.strokeRect(q.x-5,q.y-5,10,10); } else { g.beginPath(); g.arc(q.x,q.y,4,0,7); g.fill(); g.stroke(); } g.restore(); }); }
   // gridlines
   g.strokeStyle=COL.grid; g.lineWidth=1*u; g.setLineDash([14*u,5*u,3*u,5*u]);
   xN.forEach(n=>line(g,P(GEO.xPos[n],GEO.minY-900),P(GEO.xPos[n],GEO.maxY+1500)));
@@ -1022,6 +1119,18 @@ function render(g, V, Wpx, Hpx, screen){
       g.fillStyle='rgba(29,133,80,0.92)'; g.fillRect(q.x+(300*V.s+4), q.y+(300*V.s+4), w, 17); g.fillStyle='#fff'; g.textAlign='left'; g.textBaseline='middle'; g.fillText(t,q.x+(300*V.s+9),q.y+(300*V.s+12.5)); }); }
   if(screen && (mode==='align1'||mode==='align2')){ alignPts.forEach(p=>{ const q=P(p.X,p.Y); g.strokeStyle=COL.sel; g.lineWidth=2; line(g,{x:q.x-10,y:q.y},{x:q.x+10,y:q.y}); line(g,{x:q.x,y:q.y-10},{x:q.x,y:q.y+10}); }); }
 }
+function drawArea(g,P,A,u,V,hl,isDraft){
+  const B=bbox(A.pts), a=P(B.x0,B.y1), b=P(B.x1,B.y0), x=a.x, y=a.y, w=b.x-a.x, h=b.y-a.y, c=centroid(A.pts), m=P(c.X,c.Y);
+  g.save(); areaPath(g,P,A.pts); g.fillStyle=COL.nna; g.fill(); g.clip(); hatch(g,x,y,w,h,Math.max(8*u,450*V.s),COL.hatch,1*u); g.restore();
+  g.save(); areaPath(g,P,A.pts); g.strokeStyle=hl?COL.sel:'#8a6a1f'; g.lineWidth=(hl?2.5:1.6)*u; g.lineJoin='miter'; g.setLineDash(isDraft?[6*u,4*u]:[]); g.stroke(); g.restore();
+  const t1=isDraft ? `${trimNum((B.x1-B.x0)/1000)} × ${trimNum((B.y1-B.y0)/1000)} m` : 'No access', note=isDraft?'':(A.note||'');
+  const px=Math.min(Math.max(9*u,260*V.s),20*u,w/(t1.length*0.65),h/(note?3:1.6));
+  if(px<6*u) return;
+  text(g,t1,m.x,m.y-(note?px*0.6:0),px,'#6b5420','center',0);
+  if(note){ const p2=Math.min(px*0.85,w/(note.length*0.65)); if(p2>=6*u) text(g,note,m.x,m.y+px*0.7,p2,'#6b5420','center',0); }
+}
+function areaPath(g,P,pts){ g.beginPath(); pts.forEach((p,i)=>{ const q=P(p.X,p.Y); i?g.lineTo(q.x,q.y):g.moveTo(q.x,q.y); }); g.closePath(); }
+const draftRect=d=>({x0:Math.min(d.a.X,d.b.X), x1:Math.max(d.a.X,d.b.X), y0:Math.min(d.a.Y,d.b.Y), y1:Math.max(d.a.Y,d.b.Y)});
 function arrow(g,a,b){ line(g,a,b); const ang=Math.atan2(b.y-a.y,b.x-a.x), L=9; g.beginPath(); g.moveTo(b.x,b.y); g.lineTo(b.x-L*Math.cos(ang-0.45),b.y-L*Math.sin(ang-0.45)); g.lineTo(b.x-L*Math.cos(ang+0.45),b.y-L*Math.sin(ang+0.45)); g.closePath(); g.fillStyle=g.strokeStyle; g.fill(); }
 function draw(){ const dpr=window.devicePixelRatio||1, r=stage.getBoundingClientRect(); ctx.setTransform(dpr,0,0,dpr,0,0); render(ctx, view, r.width, r.height, true); }
 function resize(){ const dpr=window.devicePixelRatio||1, r=stage.getBoundingClientRect(); cv.width=Math.max(1,Math.round(r.width*dpr)); cv.height=Math.max(1,Math.round(r.height*dpr)); draw(); }
@@ -1034,25 +1143,72 @@ const local=e=>{ const r=cv.getBoundingClientRect(); return {x:e.clientX-r.left,
 const s2w=(x,y)=>({X:(x-view.tx)/view.s, Y:-(y-view.ty)/view.s});
 const clampS=s=>Math.max(0.002,Math.min(3,s));
 cv.addEventListener('pointerdown',e=>{ cv.setPointerCapture(e.pointerId); const p=local(e); pts.set(e.pointerId,p);
-  if(pts.size===1) down={x:p.x,y:p.y,tx:view.tx,ty:view.ty,moved:false,bx:S.bg?S.bg.bx:0,by:S.bg?S.bg.by:0};
-  else if(pts.size===2){ const [a,b]=[...pts.values()]; pinch={d:Math.hypot(a.x-b.x,a.y-b.y),m:{x:(a.x+b.x)/2,y:(a.y+b.y)/2},v:{...view}}; if(down) down.moved=true; } });
+  if(pts.size===1){ down={x:p.x,y:p.y,tx:view.tx,ty:view.ty,moved:false,bx:S.bg?S.bg.bx:0,by:S.bg?S.bg.by:0};
+    const hd=handleAt(p.x,p.y); if(hd) down.edit={...hd, w0:s2w(p.x,p.y), orig:hd.A.pts.map(q=>({...q}))}; }
+  else if(pts.size===2){ const [a,b]=[...pts.values()]; pinch={d:Math.hypot(a.x-b.x,a.y-b.y),m:{x:(a.x+b.x)/2,y:(a.y+b.y)/2},v:{...view}}; if(down) down.moved=true; draft=null; } });
 cv.addEventListener('pointermove',e=>{ const p=local(e); hover=s2w(p.x,p.y); updateXY(); if(pts.has(e.pointerId)) pts.set(e.pointerId,p);
+  if(mode==='poly'&&polyPts.length&&!pts.size) draw();
   if(pinch&&pts.size>=2){ const [a,b]=[...pts.values()]; const d=Math.hypot(a.x-b.x,a.y-b.y), m={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
     const s=clampS(pinch.v.s*d/pinch.d), ix=(pinch.m.x-pinch.v.tx)/pinch.v.s, iy=(pinch.m.y-pinch.v.ty)/pinch.v.s; view={s,tx:m.x-ix*s,ty:m.y-iy*s}; draw(); }
   else if(down&&pts.size===1){ const dx=p.x-down.x, dy=p.y-down.y; if(!down.moved&&Math.hypot(dx,dy)>6){down.moved=true; cv.classList.add('grab');}
-    if(down.moved){ if(dragBg&&S.bg){ S.bg.bx=down.bx+dx/view.s; S.bg.by=down.by-dy/view.s; down.bgMoved=true; } else { view.tx=down.tx+dx; view.ty=down.ty+dy; } draw(); } } });
-function endPtr(e){ const tap=down&&!down.moved&&pts.size===1; if(down&&down.bgMoved){ down.bgMoved=false; save(); } pts.delete(e.pointerId); if(pts.size<2) pinch=null;
+    if(down.moved){ if(down.edit){ applyEdit(down.edit, s2w(p.x,p.y)); } else if(mode==='area'){ draft={a:snapW(s2w(down.x,down.y)), b:snapW(s2w(p.x,p.y))}; } else if(dragBg&&S.bg){ S.bg.bx=down.bx+dx/view.s; S.bg.by=down.by-dy/view.s; down.bgMoved=true; } else { view.tx=down.tx+dx; view.ty=down.ty+dy; } draw(); } } });
+function endPtr(e){ if(draft){ const d=draft; draft=null; if(mode==='area'&&pts.size===1) addArea(rectArea(draftRect(d))); else draw(); }
+  if(down&&down.edit&&down.edit.changed){ down.edit.changed=false; persistAll(); }
+  const tap=down&&!down.moved&&pts.size===1; if(down&&down.bgMoved){ down.bgMoved=false; save(); } pts.delete(e.pointerId); if(pts.size<2) pinch=null;
   if(tap){ const p=local(e); onTap(p.x,p.y); }
   if(!pts.size){ down=null; cv.classList.remove('grab'); } else if(pts.size===1){ const p=[...pts.values()][0]; down={x:p.x,y:p.y,tx:view.tx,ty:view.ty,moved:true}; } }
 cv.addEventListener('pointerup',endPtr);
-cv.addEventListener('pointercancel',e=>{ pts.delete(e.pointerId); pinch=null; if(!pts.size) down=null; });
+cv.addEventListener('pointercancel',e=>{ pts.delete(e.pointerId); pinch=null; if(draft){ draft=null; draw(); } if(!pts.size) down=null; });
 cv.addEventListener('pointerleave',()=>{ if(!pts.size){ hover=null; updateXY(); } });
 function zoomAt(f,x,y){ const s=clampS(view.s*f), ix=(x-view.tx)/view.s, iy=(y-view.ty)/view.s; view={s,tx:x-ix*s,ty:y-iy*s}; draw(); }
 cv.addEventListener('wheel',e=>{ e.preventDefault(); const p=local(e); zoomAt(Math.exp(-e.deltaY*0.0015),p.x,p.y); },{passive:false});
 $('#zin').onclick=()=>{ const r=cv.getBoundingClientRect(); zoomAt(1.4,r.width/2,r.height/2); };
 $('#zout').onclick=()=>{ const r=cv.getBoundingClientRect(); zoomAt(1/1.4,r.width/2,r.height/2); };
 $('#zfit').onclick=fit;
-function onTap(x,y){ const w=s2w(x,y); if(mode==='align1'||mode==='align2'){ handleAlign(w); return; } const p=panelAt(w.X,w.Y); if(!p) return; selectPanel(p, keepFromFor(p)); }
+// Area corners snap to a gridline when within 10 px of it, otherwise to the nearest 10 mm.
+function snapW(w){ const tol=10/view.s, sn=(v,lines)=>{ let best=null; lines.forEach(l=>{ if(Math.abs(l-v)<=tol&&(best===null||Math.abs(l-v)<Math.abs(best-v))) best=l; }); return best!==null?best:Math.round(v/10)*10; };
+  return {X:sn(w.X,Object.values(GEO.xPos)), Y:sn(w.Y,Object.values(GEO.yPos))}; }
+/* ---------------- no-access area shapes ---------------- */
+// An area is a list of points (mm). Boxes keep rect:true and stay rectangular when resized,
+// with points ordered x0y0, x1y0, x1y1, x0y1.
+const rectArea=r=>({rect:true, pts:[{X:r.x0,Y:r.y0},{X:r.x1,Y:r.y0},{X:r.x1,Y:r.y1},{X:r.x0,Y:r.y1}]});
+const normArea=A=>A.pts?A:{id:A.id, note:A.note||'', ...rectArea(A)};
+function bbox(pts){ const xs=pts.map(p=>p.X), ys=pts.map(p=>p.Y); return {x0:Math.min(...xs), x1:Math.max(...xs), y0:Math.min(...ys), y1:Math.max(...ys)}; }
+function polyArea(pts){ let a=0; pts.forEach((p,i)=>{ const q=pts[(i+1)%pts.length]; a+=p.X*q.Y-q.X*p.Y; }); return a/2; }
+function centroid(pts){ const a=polyArea(pts); if(Math.abs(a)<1){ const b=bbox(pts); return {X:(b.x0+b.x1)/2, Y:(b.y0+b.y1)/2}; }
+  let cx=0, cy=0; pts.forEach((p,i)=>{ const q=pts[(i+1)%pts.length], f=p.X*q.Y-q.X*p.Y; cx+=(p.X+q.X)*f; cy+=(p.Y+q.Y)*f; }); return {X:cx/(6*a), Y:cy/(6*a)}; }
+function inPoly(w,pts){ let inside=false; for(let i=0,j=pts.length-1;i<pts.length;j=i++){ const a=pts[i], b=pts[j];
+  if((a.Y>w.Y)!==(b.Y>w.Y) && w.X<(b.X-a.X)*(w.Y-a.Y)/(b.Y-a.Y)+a.X) inside=!inside; } return inside; }
+const areaAt=w=>[...S.areas].reverse().find(A=>inPoly(w,A.pts))||null;
+function handles(A){ const n=A.pts.length, out=A.pts.map((p,i)=>({k:'v',i,X:p.X,Y:p.Y}));
+  A.pts.forEach((p,i)=>{ const q=A.pts[(i+1)%n]; out.push({k:'e',i,X:(p.X+q.X)/2,Y:(p.Y+q.Y)/2}); }); return out; }
+// What is under the pointer on the selected area: a corner (v), a side dot (e) or its inside (m, move).
+function handleAt(x,y){ if(mode!=='select'||!selArea) return null; const A=S.areas.find(a=>a.id===selArea); if(!A) return null;
+  let best=null, bd=12; handles(A).forEach(hd=>{ const q=W2S(view,hd.X,hd.Y), d=Math.hypot(q.x-x,q.y-y); if(d<bd){ bd=d; best=hd; } });
+  if(best) return {A, k:best.k, i:best.i}; return inPoly(s2w(x,y),A.pts) ? {A, k:'m'} : null; }
+function applyEdit(E,w){
+  const A=E.A;
+  if(!E.started){ E.started=true; snap();
+    if(E.k==='e'&&!A.rect){ A.pts.splice(E.i+1,0,{X:w.X,Y:w.Y}); E.k='v'; E.i++; } }
+  const P=A.pts;
+  if(E.k==='m'){ const dx=Math.round((w.X-E.w0.X)/10)*10, dy=Math.round((w.Y-E.w0.Y)/10)*10; P.forEach((p,i)=>{ p.X=E.orig[i].X+dx; p.Y=E.orig[i].Y+dy; }); }
+  else { const q=snapW(w);
+    if(E.k==='v'){ P[E.i].X=q.X; P[E.i].Y=q.Y;
+      if(A.rect){ const nx=(E.i+1)%4, pv=(E.i+3)%4; if(E.i%2===0){ P[nx].Y=q.Y; P[pv].X=q.X; } else { P[nx].X=q.X; P[pv].Y=q.Y; } } }
+    else { const a=E.i, b=(E.i+1)%4; if(E.i%2===0){ P[a].Y=q.Y; P[b].Y=q.Y; } else { P[a].X=q.X; P[b].X=q.X; } } }
+  E.changed=true;
+}
+let lastV=null;
+function onTap(x,y){ const w=s2w(x,y); if(mode==='align1'||mode==='align2'){ handleAlign(w); return; } if(mode==='area') return;
+  if(mode==='poly'){
+    if(polyPts.length>=3){ const f=W2S(view,polyPts[0].X,polyPts[0].Y); if(Math.hypot(f.x-x,f.y-y)<12){ finishPoly(); return; } }
+    polyPts.push(snapW(w)); updPolyBtn(); draw(); return; }
+  const hd=handleAt(x,y);
+  if(hd&&hd.k==='v'){ const now=Date.now();
+    if(lastV&&lastV.id===hd.A.id&&lastV.i===hd.i&&now-lastV.t<450){ lastV=null; removeVertex(hd.A,hd.i); return; }
+    lastV={id:hd.A.id,i:hd.i,t:now}; return; }
+  if(hd&&hd.k==='e') return;
+  const A=areaAt(w); selArea=A?A.id:null; const p=panelAt(w.X,w.Y); if(!p){ renderList(); draw(); return; } selectPanel(p, keepFromFor(p)); }
 function keepFromFor(p){
   if(!selFrom) return 'x:'+p.xa; const [ax,nm]=selFrom.split(':');
   if(ax==='y' && (nm===p.ya||nm===p.yb)) return selFrom; if(ax==='x' && (nm===p.xa||nm===p.xb)) return selFrom;
@@ -1072,31 +1228,37 @@ function findReading(p, from, type){ if(!p||!from) return null; const [ax,nm]=fr
 function selectPanel(p, from){
   if(commitT) commitRows();
   sessionSnapped=false; sel=p; selFrom=from;
-  renderPanelForm(); renderList(); draw();
+  showView('panel'); renderPanelForm(); renderList(); draw();
 }
 const STAT_TXT={pt:'Scanned · PT found', nopt:'Scanned · no PT found', noaccess:'No access', none:'Not scanned'};
-function renderPanelForm(){
-  const box=$('#fromOpts'); box.textContent='';
-  const on=!!sel; ['#addOff','#saveNext','#delPanel','#unit','#stNoPT','#stNoAcc'].forEach(id=>$(id).disabled=!on);
-  const chip=$('#pStatChip');
-  if(!sel){ offRows=[]; renderOffT(); chip.className='chip'; chip.textContent='—';
-    $('#pName').textContent='Tap a panel'; $('#pSub').textContent='on the plan to enter its PT'; $('#pWarn').hidden=true; return; }
-  $('#pName').textContent=panelLabel(sel); $('#pSub').textContent='';
-  const st=effStatus(sel); chip.className='chip '+st; chip.textContent=STAT_TXT[st];
-  const any=hasR(sel); $('#stNoPT').disabled=any; $('#stNoAcc').disabled=any;
-  $('#stNoPT').classList.toggle('on',st==='nopt'); $('#stNoAcc').classList.toggle('on',st==='noaccess');
+function renderStat(){
+  const st=sel?effStatus(sel):'none', any=!!sel&&hasR(sel);
+  [['#stPT','pt'],['#stNoPT','nopt'],['#stNoAcc','noaccess']].forEach(([id,v])=>{ const b=$(id); b.classList.toggle('on',st===v); b.setAttribute('aria-pressed',String(st===v)); });
+  $('#stPT').disabled=!sel; $('#stNoPT').disabled=!sel||any; $('#stNoAcc').disabled=!sel||any;
   $('#stNoPT').title=any?'This panel already has PT readings':''; $('#stNoAcc').title=$('#stNoPT').title;
-  const opts=[['x',sel.xa,`PT runs ${sel.ya} → ${sel.yb}`],['x',sel.xb,`PT runs ${sel.ya} → ${sel.yb}`],['y',sel.ya,`PT runs ${sel.xa} → ${sel.xb}`],['y',sel.yb,`PT runs ${sel.xa} → ${sel.xb}`]];
-  opts.forEach(([ax,nm,sub],i)=>{ const v=ax+':'+nm; const l=document.createElement('label'); l.className='opt';
-    const inp=document.createElement('input'); inp.type='radio'; inp.name='from'; inp.value=v; inp.id='from'+i; inp.checked=v===selFrom;
-    inp.onchange=()=>selectPanel(sel,v);
-    const sp=document.createElement('span'); const b=document.createElement('b'); b.textContent='Gridline '+nm; const sm=document.createElement('small'); sm.textContent=sub;
+  $('#pSub').textContent=sel?STAT_TXT[st]:'on the plan to enter its PT';
+}
+// "Measured from" as a picture of the panel: one button per side, placed where that gridline is on the plan.
+function renderPick(){
+  const box=$('#fromPick'); box.textContent=''; if(!sel) return;
+  const top=S.grid.yUp?sel.yb:sel.ya, bot=S.grid.yUp?sel.ya:sel.yb;
+  const sides=[['l','x',sel.xa],['r','x',sel.xb],['t','y',top],['b','y',bot]], cur=sides.find(([,ax,nm])=>ax+':'+nm===selFrom);
+  const sq=document.createElement('div'); sq.className='sq'+(cur?' on-'+cur[0]:''); sq.append(document.createElement('i'),
+    selFrom.startsWith('x:')?`PT runs ${sel.ya} → ${sel.yb}`:`PT runs ${sel.xa} → ${sel.xb}`); box.append(sq);
+  sides.forEach(([pos,ax,nm])=>{ const v=ax+':'+nm, on=v===selFrom, b=document.createElement('button'); b.className=pos+(on?' on':''); b.textContent=nm;
     const cnt=S.readings.filter(r=>samePanel(r,sel)&&r.fromAxis===ax&&r.from===nm).reduce((a,r)=>a+r.offs.length,0);
-    if(cnt) sm.textContent+=` · ${cnt} saved`;
-    sp.append(b,sm); l.append(inp,sp); box.append(l); });
+    b.title=`Measured from gridline ${nm}`+(cnt?` · ${cnt} PT saved`:''); b.setAttribute('aria-label',b.title); b.setAttribute('aria-pressed',String(on));
+    if(cnt){ const c=document.createElement('span'); c.className='cnt'; c.textContent=cnt; b.append(c); }
+    b.onclick=()=>selectPanel(sel,v); box.append(b); });
+}
+function renderPanelForm(){
+  const on=!!sel; ['#addOff','#saveNext','#delPanel','#unit','#prevP','#nextP'].forEach(id=>$(id).disabled=!on);
+  $('#side').classList.toggle('nosel',!on); renderStat(); renderPick();
+  if(!sel){ offRows=[]; renderOffT(); $('#pName').textContent='Tap a panel'; $('#pWarn').hidden=true; return; }
+  $('#pName').textContent=panelLabel(sel);
   const r=findReading(sel,selFrom,curType());
   offRows = r ? [...r.offs].sort((a,b)=>a-b).map(showVal) : ['']; if(r) offRows.push('');
-  $('#offHead').textContent=`Distance of each PT from gridline ${selFrom.split(':')[1]}`;
+  $('#offHead').textContent=`Distance from gridline ${selFrom.split(':')[1]}`;
   renderOffT();
   $('#delPanel').disabled = !r;
   const outs = r ? SEGS.filter(s=>s.r===r && s.outside) : [];
@@ -1105,6 +1267,18 @@ function renderPanelForm(){
 function setStatus(v){ if(!sel||hasR(sel)) return; snap(); const k=pkey(sel); if(S.status[k]===v) delete S.status[k]; else S.status[k]=v; S.isSample=false; persistAll(); }
 $('#stNoPT').onclick=()=>setStatus('nopt');
 $('#stNoAcc').onclick=()=>setStatus('noaccess');
+// "PT found" is set by typing a distance; pressing it clears another status and jumps to the first distance.
+$('#stPT').onclick=()=>{ if(!sel) return; const k=pkey(sel); if(S.status[k]){ snap(); delete S.status[k]; persistAll(); } focusOff(0); };
+
+/* ---------------- side panel views ---------------- */
+let curView='panel';
+function showView(v){
+  curView=v; document.querySelectorAll('#side .view').forEach(x=>x.classList.toggle('on',x.dataset.view===v));
+  document.querySelectorAll('#side .bar button').forEach(b=>{ const o=b.dataset.v===v; b.classList.toggle('on',o); b.setAttribute('aria-pressed',String(o)); });
+  $('#side').scrollTop=0;
+}
+document.querySelectorAll('#side .bar button').forEach(b=>b.onclick=()=>showView(curView===b.dataset.v?'panel':b.dataset.v));
+document.querySelectorAll('#side [data-close]').forEach(b=>b.onclick=()=>showView('panel'));
 
 let offRows=[];
 function toMMval(t){ const v=parseFloat(String(t).replace('−','-').replace(',', '.')); if(isNaN(v)) return null; const a=Math.abs(v); return Math.round((S.unit==='m'&&a<50)?a*1000:a); }
@@ -1155,19 +1329,21 @@ function commitRows(){
   else { if(ex) ex.offs=offs; else S.readings.push({id:S.nid++, xa:sel.xa,xb:sel.xb,ya:sel.ya,yb:sel.yb, fromAxis:ax, from:nm, type, offs}); delete S.status[pkey(sel)]; }
   S.isSample=false; save(); recompute(); renderStatus(); renderList(); draw();
   $('#delPanel').disabled=!findReading(sel,selFrom,type);
-  const st=effStatus(sel), chip=$('#pStatChip'); chip.className='chip '+st; chip.textContent=STAT_TXT[st];
-  const any=hasR(sel); $('#stNoPT').disabled=any; $('#stNoAcc').disabled=any; $('#stNoPT').classList.toggle('on',st==='nopt'); $('#stNoAcc').classList.toggle('on',st==='noaccess');
+  renderStat(); renderPick();
 }
-function snap(){ undoStack.push(JSON.stringify({r:S.readings,st:S.status,n:S.nid})); if(undoStack.length>80) undoStack.shift(); }
+function snap(){ undoStack.push(JSON.stringify({r:S.readings,st:S.status,a:S.areas,n:S.nid})); if(undoStack.length>80) undoStack.shift(); }
 $('#saveNext').onclick=()=>{ commitRows(); nextPanel(); };
-function nextPanel(){
-  if(!sel) return; const [ax]=selFrom.split(':'), g=S.grid;
-  if(ax==='x'){ const i=g.yNames.indexOf(sel.yb); if(i<0||i>=g.yNames.length-1){ toast('Last panel along this gridline.'); return; }
-    selectPanel({...sel, ya:sel.yb, yb:g.yNames[i+1]}, selFrom); }
-  else { const i=g.xNames.indexOf(sel.xb); if(i<0||i>=g.xNames.length-1){ toast('Last panel along this gridline.'); return; }
-    selectPanel({...sel, xa:sel.xb, xb:g.xNames[i+1]}, selFrom); }
+// Step to the neighbouring panel along the gridline being measured from (dir 1 = next, -1 = previous).
+function stepPanel(dir){
+  if(!sel) return; commitRows(); const [ax]=selFrom.split(':'), g=S.grid, names=ax==='x'?g.yNames:g.xNames, [a,b]=ax==='x'?['ya','yb']:['xa','xb'];
+  const j=names.indexOf(dir>0?sel[b]:sel[a])+dir;
+  if(j<0||j>=names.length){ toast(dir>0?'Last panel along this gridline.':'First panel along this gridline.'); return; }
+  selectPanel({...sel, [a]:dir>0?sel[b]:names[j], [b]:dir>0?names[j]:sel[a]}, selFrom);
   focusOff(0);
 }
+const nextPanel=()=>stepPanel(1);
+$('#nextP').onclick=()=>stepPanel(1);
+$('#prevP').onclick=()=>stepPanel(-1);
 $('#delPanel').onclick=()=>{ clearTimeout(commitT); commitT=null; const ex=findReading(sel,selFrom,curType()); if(!ex) return; snap(); S.readings=S.readings.filter(r=>r!==ex); persistAll(); toast('Readings deleted.'); };
 $('#unit').onchange=e=>{ const keep=offRows.map(t=>{ const v=parseFloat(t); if(isNaN(v)) return t; return e.target.value==='mm'? (Math.abs(v)<50? String(Math.round(v*1000)):t) : (Math.abs(v)>=50? trimNum(v/1000):t); });
   S.unit=e.target.value; save(); recompute(); renderStatus(); renderList(); draw(); offRows=keep; renderOffT(); };
@@ -1201,17 +1377,39 @@ $('#showLbl').onchange=e=>{ S.showLabels=e.target.checked; persistAll(); };
 $('#showBuf').onchange=e=>{ S.showBuffer=e.target.checked; persistAll(); };
 $('#showCols').onchange=e=>{ S.showCols=e.target.checked; persistAll(); };
 $('#showGD').onchange=e=>{ S.showGridDims=e.target.checked; persistAll(); };
-$('#undo').onclick=()=>{ if(!undoStack.length) return; clearTimeout(commitT); commitT=null; sessionSnapped=false; const u=JSON.parse(undoStack.pop()); S.readings=u.r; S.status=u.st||{}; S.nid=u.n; persistAll(); };
+$('#undo').onclick=()=>{ if(!undoStack.length) return; clearTimeout(commitT); commitT=null; sessionSnapped=false; const u=JSON.parse(undoStack.pop()); S.readings=u.r; S.status=u.st||{}; S.areas=u.a||[]; S.nid=u.n; persistAll(); };
+$('#drawArea').onclick=()=>setMode(mode==='area'?'select':'area');
+$('#drawPoly').onclick=()=>setMode(mode==='poly'?'select':'poly');
+$('#polyDone').onclick=()=>finishPoly();
+function updPolyBtn(){ $('#polyDone').disabled=polyPts.length<3; $('#polyDone').textContent=`Finish shape (${polyPts.length} points)`; }
+function finishPoly(){ if(polyPts.length<3){ toast('Tap at least 3 corners first.'); return; } const p=polyPts; polyPts=[]; addArea({rect:false, pts:p}); }
+function addArea(A){
+  const B=bbox(A.pts); if(B.x1-B.x0<100||B.y1-B.y0<100){ toast('Area is too small. Draw a bigger shape.'); draw(); return; }
+  snap(); const id=S.nid++; S.areas.push({id, rect:A.rect, pts:A.pts, note:''}); selArea=id; S.isSample=false; setMode('select'); persistAll();
+  toast('No-access area added. Drag its corners to reshape, and type a note in the list below.');
+}
+function removeVertex(A,i){ if(A.pts.length<=3){ toast('A shape needs at least 3 corners.'); return; }
+  snap(); A.pts.splice(i,1); A.rect=false; persistAll(); }
+function areaDesc(A){
+  const B=bbox(A.pts), m2=Math.abs(polyArea(A.pts))/1e6;
+  let t=A.rect ? `${trimNum((B.x1-B.x0)/1000)} × ${trimNum((B.y1-B.y0)/1000)} m (${m2.toFixed(1)} m²)` : `${A.pts.length}-corner shape, ${m2.toFixed(1)} m²`;
+  const c=centroid(A.pts), p=panelAt(c.X,c.Y); if(!p) return t;
+  const gx=GEO.xPos[p.xa], gy=GEO.yPos[p.ya], dx=Math.min(Math.abs(B.x0-gx),Math.abs(B.x1-gx)), dy=Math.min(Math.abs(B.y0-gy),Math.abs(B.y1-gy));
+  return `${t} · in ${panelLabel(p)} · ${trimNum(dx/1000)} m from ${p.xa}, ${trimNum(dy/1000)} m from ${p.ya}`;
+}
 document.addEventListener('keydown',e=>{ if(e.target.matches('input,select,textarea')) return;
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){ e.preventDefault(); $('#undo').click(); }
-  if(e.key==='Escape'&&mode!=='select') setMode('select'); });
+  if(e.key==='Escape'&&mode!=='select') setMode('select');
+  if(mode==='poly'&&e.key==='Enter'){ e.preventDefault(); finishPoly(); }
+  if(mode==='poly'&&e.key==='Backspace'){ e.preventDefault(); polyPts.pop(); updPolyBtn(); draw(); }
+  if(mode==='select'&&selArea&&e.key==='Delete'){ snap(); S.areas=S.areas.filter(a=>a.id!==selArea); selArea=null; persistAll(); } });
 
 /* ---------------- list & summary ---------------- */
 function renderList(){
   const L=$('#list'); L.textContent='';
   const gx=S.grid.xNames, gy=S.grid.yNames;
   const stItems=Object.entries(S.status).filter(([k])=>{ const [xa,xb,ya,yb]=k.split('|'); return !hasR({xa,xb,ya,yb}); });
-  if(!S.readings.length && !stItems.length){ const d=document.createElement('div'); d.className='empty'; d.textContent='No readings yet. Tap a panel on the plan, choose the gridline you measured from, and type the distances.'; L.append(d); }
+  if(!S.readings.length && !stItems.length && !S.areas.length){ const d=document.createElement('div'); d.className='empty'; d.textContent='No readings yet. Tap a panel on the plan, choose the gridline you measured from, and type the distances.'; L.append(d); }
   [...S.readings].sort((a,b)=>(gx.indexOf(a.xa)-gx.indexOf(b.xa))||(gy.indexOf(a.ya)-gy.indexOf(b.ya))||String(a.from).localeCompare(String(b.from))).forEach(r=>{
     const it=document.createElement('div'); const isSel=samePanel(r,sel)&&selFrom===r.fromAxis+':'+r.from; it.className='item'+(isSel?' sel':'');
     const sw=document.createElement('span'); sw.className='sw b';
@@ -1233,8 +1431,21 @@ function renderList(){
     const x=document.createElement('button'); x.className='x'; x.textContent='×'; x.title='Clear status'; x.setAttribute('aria-label','Clear status of panel '+panelLabel(p));
     x.onclick=e=>{ e.stopPropagation(); snap(); delete S.status[k]; persistAll(); };
     it.append(sw,mid,x); it.onclick=()=>selectPanel(p, keepFromFor(p)); L.append(it); });
+  S.areas.forEach(A=>{
+    const it=document.createElement('div'); it.className='item'+(A.id===selArea?' sel':'');
+    const sw=document.createElement('span'); sw.className='sw'; sw.style.background='#8a6a1f';
+    const mid=document.createElement('div'); mid.style.minWidth='0'; const nm=document.createElement('b'); nm.textContent='No-access area';
+    const c=document.createElement('div'); c.className='c'; c.textContent=areaDesc(A); c.title=c.textContent;
+    const inp=document.createElement('input'); inp.type='text'; inp.value=A.note||''; inp.placeholder='Note, e.g. stored materials'; inp.setAttribute('aria-label','Note for no-access area');
+    inp.style.cssText='margin-top:4px;padding:4px 6px;font-size:12px'; inp.onclick=e=>e.stopPropagation();
+    inp.onchange=()=>{ const v=inp.value.trim(); if(v===(A.note||'')) return; snap(); A.note=v; save(); draw(); };
+    mid.append(nm,c,inp);
+    const x=document.createElement('button'); x.className='x'; x.textContent='×'; x.title='Delete area'; x.setAttribute('aria-label','Delete no-access area');
+    x.onclick=e=>{ e.stopPropagation(); snap(); S.areas=S.areas.filter(q=>q!==A); if(selArea===A.id) selArea=null; persistAll(); };
+    it.append(sw,mid,x); it.onclick=()=>{ selArea=selArea===A.id?null:A.id; renderList(); draw(); }; L.append(it); });
   const len=CH.reduce((a,c)=>a+c.len,0), pc=panelCounts();
   const sum=$('#sum'); sum.textContent='';
+  $('#footSum').textContent=`${CH.length} PT · ${(len/1000).toFixed(1)} m · ${pc.pt+pc.nopt}/${allPanels().length} panels`;
   [[CH.length,'PT cables'],[(len/1000).toFixed(1)+' m','Total length'],[`${pc.pt+pc.nopt}/${allPanels().length}`,'Panels scanned']].forEach(([v,l])=>{ const d=document.createElement('div'); const b=document.createElement('b'); b.textContent=v; const s=document.createElement('span'); s.textContent=l; d.append(b,s); sum.append(d); });
 }
 function renderStatus(){
@@ -1252,7 +1463,7 @@ function renderStatus(){
   Object.keys(DEF_REPORT).forEach(k=>{ const el=$('#r_'+k); if(el && document.activeElement!==el) el.value=S.report[k]||''; });
 }
 function refreshAll(){ recompute(); renderStatus(); renderPanelForm(); renderList(); draw(); }
-function save(){ syncLevel(); try{ const o={...S}; delete o.readings; delete o.status; delete o.bg; localStorage.setItem(LS_STATE, JSON.stringify(o)); }catch(e){} }
+function save(){ syncLevel(); try{ const o={...S}; delete o.readings; delete o.status; delete o.areas; delete o.bg; localStorage.setItem(LS_STATE, JSON.stringify(o)); }catch(e){} }
 function persistAll(){ save(); refreshAll(); }
 
 /* ---------------- grid summary + editor ---------------- */
@@ -1395,9 +1606,13 @@ document.querySelectorAll('[data-n]').forEach(b=>b.onclick=()=>nudge(b.dataset.n
 let dragBg=false;
 $('#dragBg').onclick=()=>{ dragBg=!dragBg; $('#dragBg').classList.toggle('on',dragBg); $('#dragBg').textContent=dragBg?'Done moving':'Move by dragging';
   const h=$('#hint'); h.classList.toggle('act',dragBg); h.textContent=dragBg?'Drag on the plan to move the drawing. Pinch or scroll still zooms.':'Tap a panel to enter its PT. Drag to move, pinch or scroll to zoom.'; };
-function setMode(m){ mode=m; cv.classList.toggle('aim', m!=='select'); $('#alignBtn').classList.toggle('on',m!=='select');
+function setMode(m){ mode=m; draft=null; cv.classList.toggle('aim', m!=='select'); $('#alignBtn').classList.toggle('on',m==='align1'||m==='align2');
+  polyPts=[]; updPolyBtn(); $('#polyDone').hidden=m!=='poly';
+  $('#drawArea').classList.toggle('on',m==='area'); $('#drawArea').textContent=m==='area'?'Cancel':'Draw box';
+  $('#drawPoly').classList.toggle('on',m==='poly'); $('#drawPoly').textContent=m==='poly'?'Cancel':'Draw by points';
   const h=$('#hint'); h.classList.toggle('act',m!=='select'); const [c1,c2]=S.bg?alignNames():cornerNames();
-  h.textContent = m==='align1' ? `On the drawing, tap the ${c1} intersection. Zoom in for accuracy.` : m==='align2' ? `Now tap the ${c2} intersection on the drawing.` : 'Tap a panel to enter its PT. Drag to move, pinch or scroll to zoom.';
+  h.textContent = m==='align1' ? `On the drawing, tap the ${c1} intersection. Zoom in for accuracy.` : m==='align2' ? `Now tap the ${c2} intersection on the drawing.` : m==='area' ? 'Drag a box over the part you could not scan. Corners snap to gridlines. Pinch or scroll still zooms; Esc cancels.'
+    : m==='poly' ? 'Tap each corner of the area. Tap the first point or press Finish shape to close. Backspace removes the last point; Esc cancels.' : 'Tap a panel to enter its PT. Drag to move, pinch or scroll to zoom.';
   draw(); }
 function handleAlign(w){
   const {ar,ai,bx,by}=S.bg, den=ar*ar+ai*ai, dx=w.X-bx, dy=w.Y-by;
@@ -1444,6 +1659,7 @@ function legendItems(){ const it=[['line','PT cable (GPR located)']];
   if(CH.some(c=>c.w.some(p=>p.dash))) it.push(['dash','PT assumed through no-access panel']);
   if(S.showBuffer&&S.buffer>0) it.push(['band',`No-drill zone ±${S.buffer} mm`]);
   const pc=panelCounts(); if(pc.nopt) it.push(['nopt','Scanned, no PT found']); if(pc.noaccess) it.push(['noacc','No access, not scanned']);
+  if(S.areas.length) it.push(['area','No-access area, not scanned']);
   return it; }
 function renderPNG(levelName){
   const plan=renderPlan(6000), Wp=plan.width, foot=Math.round(Wp*0.06), c=document.createElement('canvas'); c.width=Wp; c.height=plan.height+foot;
@@ -1461,7 +1677,8 @@ function drawLegendSw(g,t,x,y,w,u){ g.save(); g.setLineDash([]); g.lineCap='butt
   if(t==='line'||t==='dash'){ g.strokeStyle=COL.pt; g.lineWidth=2.5*u; if(t==='dash') g.setLineDash([6*u,4*u]); line(g,{x,y},{x:x+w,y}); }
   else if(t==='band'){ g.strokeStyle=COL.buf; g.lineWidth=10*u; line(g,{x,y},{x:x+w,y}); }
   else if(t==='nopt'){ g.fillStyle='rgba(61,111,179,0.25)'; g.fillRect(x,y-6*u,w,12*u); }
-  else if(t==='noacc'){ g.fillStyle=COL.nna; g.fillRect(x,y-6*u,w,12*u); hatch(g,x,y-6*u,w,12*u,5*u,COL.hatch,1*u); }
+  else if(t==='noacc'||t==='area'){ g.fillStyle=COL.nna; g.fillRect(x,y-6*u,w,12*u); hatch(g,x,y-6*u,w,12*u,5*u,COL.hatch,1*u);
+    if(t==='area'){ g.strokeStyle='#8a6a1f'; g.lineWidth=1.2*u; g.strokeRect(x,y-6*u,w,12*u); } }
   g.restore(); }
 const toBlob=(c,type,q)=>new Promise(r=>c.toBlob(r,type||'image/png',q));
 $('#exPNG').onclick=async()=>{ toast('Preparing image…'); const b=await toBlob(renderPNG(curLevel().name)); await saveFile(`${base()}_${slug(curLevel().name)}_PT_plan.png`, b); };
@@ -1470,7 +1687,7 @@ $('#exPNG').onclick=async()=>{ toast('Preparing image…'); const b=await toBlob
 function dxf(levelName){
   const o=[], P=(...a)=>o.push(...a), n=v=>(Math.round(v*10)/10).toFixed(1), R=S.report;
   const layers=[['GRID',8,'DASHDOT'],['GRID-TEXT',7,'CONTINUOUS'],['GRID-DIM',7,'CONTINUOUS'],['PT',1,'CONTINUOUS'],['PT-ASSUMED',1,'DASHED'],['PT-ID',2,'CONTINUOUS'],
-    ['PT-DIM',3,'CONTINUOUS'],['NO-DRILL',30,'CONTINUOUS'],['PANEL-STATUS',8,'CONTINUOUS'],['PT-SCHEDULE',7,'CONTINUOUS'],['NOTES',7,'CONTINUOUS']];
+    ['PT-DIM',3,'CONTINUOUS'],['NO-DRILL',30,'CONTINUOUS'],['PANEL-STATUS',8,'CONTINUOUS'],['NO-ACCESS',40,'CONTINUOUS'],['PT-SCHEDULE',7,'CONTINUOUS'],['NOTES',7,'CONTINUOUS']];
   P('0','SECTION','2','HEADER','9','$ACADVER','1','AC1009','9','$INSUNITS','70','4','9','$LTSCALE','40','1.0','0','ENDSEC');
   P('0','SECTION','2','TABLES','0','TABLE','2','LTYPE','70','3');
   P('0','LTYPE','2','CONTINUOUS','70','0','3','Solid line','72','65','73','0','40','0.0');
@@ -1516,6 +1733,16 @@ function dxf(levelName){
     const x0=GEO.xPos[p.xa], x1=GEO.xPos[p.xb], y0=GEO.yPos[p.ya], y1=GEO.yPos[p.yb], c={X:(x0+x1)/2,Y:(y0+y1)/2};
     if(st==='noaccess'){ LINE('PANEL-STATUS',{X:x0,Y:y0},{X:x1,Y:y1}); LINE('PANEL-STATUS',{X:x0,Y:y1},{X:x1,Y:y0}); }
     TXT('PANEL-STATUS', c, 250, st==='nopt'?'SCANNED - NO PT FOUND':st==='noaccess'?'NO ACCESS - NOT SCANNED':'NOT SCANNED', 0, 'c'); });
+  // no-access areas: outline, cross and label
+  S.areas.forEach(A=>{ const c=A.pts, B=bbox(c);
+    c.forEach((p,i)=>LINE('NO-ACCESS',p,c[(i+1)%c.length]));
+    // 45° hatch lines (X - Y = k) every ~500 mm, clipped to the shape
+    const ks=c.map(p=>p.X-p.Y); for(let k=Math.min(...ks)+350; k<Math.max(...ks); k+=700){
+      const hits=[]; c.forEach((p,i)=>{ const q=c[(i+1)%c.length], fp=p.X-p.Y-k, fq=q.X-q.Y-k; if((fp<0)!==(fq<0)){ const t=fp/(fp-fq); hits.push({X:p.X+(q.X-p.X)*t, Y:p.Y+(q.Y-p.Y)*t}); } });
+      hits.sort((a,b)=>a.X-b.X); for(let j=0;j+1<hits.length;j+=2) LINE('NO-ACCESS',hits[j],hits[j+1]); }
+    const th=Math.max(60,Math.min(250,(B.x1-B.x0)/24,(B.y1-B.y0)/4)), m=centroid(c);
+    TXT('NO-ACCESS',{X:m.X,Y:m.Y+(A.note?th*0.8:0)},th,'NO ACCESS - NOT SCANNED',0,'c');
+    if(A.note) TXT('NO-ACCESS',{X:m.X,Y:m.Y-th*0.8},th*0.8,A.note.toUpperCase(),0,'c'); });
   // PT schedule table
   const tx=GEO.maxX+3500; let ty=GEO.maxY+1500;
   const cols=[['PT ID',1300],['FROM GRID',1300],['OFFSET mm',1700],['RUNS GRID',2100],['LENGTH mm',1600]], TW=cols.reduce((a,c)=>a+c[1],0), RH=420;
@@ -1531,7 +1758,8 @@ function dxf(levelName){
   const notes=[`PROJECT: ${R.project||S.job||'-'}`, `CLIENT: ${R.client||'-'}`, `LOCATION: ${R.location||'-'}`, `LEVEL: ${levelName}`, `SCAN DATE: ${R.date||'-'}`,
     `SCANNED BY: ${R.scannedBy||'-'}   CHECKED BY: ${R.checkedBy||'-'}`, `EQUIPMENT: ${R.equipment||'-'}`, `COMPANY: ${R.company||'-'}`, '',
     `TOTAL PT: ${CH.length}   TOTAL LENGTH: ${(len/1000).toFixed(1)} m`,
-    `PANELS: ${pc.pt} with PT, ${pc.nopt} no PT found, ${pc.noaccess} no access, ${pc.none} not scanned`, '',
+    `PANELS: ${pc.pt} with PT, ${pc.nopt} no PT found, ${pc.noaccess} no access, ${pc.none} not scanned`,
+    ...(S.areas.length?[`NO-ACCESS AREAS (PART OF A PANEL NOT SCANNED): ${S.areas.length}`]:[]), '',
     `UNITS mm. ORIGIN 0,0 = GRID ${cornerNames()[0]}. DIMENSIONS ARE FROM THE GRIDLINE MEASURED FROM ON SITE.`,
     `NO-DRILL ZONE +/-${S.buffer} mm EACH SIDE OF PT. PT IN NEIGHBOURING PANELS WITHIN ${S.tol} mm JOINED AS ONE CABLE.`];
   const wrap=(t,n)=>{ const out=[]; let l=''; t.split(' ').forEach(w=>{ if((l+' '+w).trim().length>n){ out.push(l); l=w; } else l=(l+' '+w).trim(); }); if(l) out.push(l); return out; };
@@ -1548,13 +1776,18 @@ function csv(rowsByLevel){
   rowsByLevel.forEach(L=>L.chains.forEach(r=>add(r)));
   add([]); add(['PANEL STATUS']); add(['Level','Panel','Status']);
   rowsByLevel.forEach(L=>L.panels.forEach(r=>add(r)));
+  if(rowsByLevel.some(L=>L.areas.length)){ add([]); add(['NO-ACCESS AREAS']); add(['Level','Panel (centre)','Shape','Width mm','Depth mm','Area m2','Corners X Y mm','Note']);
+    rowsByLevel.forEach(L=>L.areas.forEach(r=>add(r))); }
   add([]); add(['Origin 0,0',cornerNames()[0]]);
   return out.join('\r\n')+'\r\n';
 }
 function levelRows(L){
   return { readings:S.readings.flatMap(r=>r.offs.map(d=>[L.name, panelLabel(r).replace(/–/g,'-'), r.from, r.fromAxis==='y'?`${r.xa}-${r.xb}`:`${r.ya}-${r.yb}`, showVal(d)])),
     chains:CH.map(c=>{ const a=c.w[0], b=c.w[c.w.length-1]; return [L.name,c.name,c.ref,c.offs.map(Math.round).join('/'),`${c.from} to ${c.to}`,c.assumed?'yes':'',Math.round(a.X),Math.round(a.Y),Math.round(b.X),Math.round(b.Y),Math.round(c.len),c.segs.length]; }),
-    panels:allPanels().map(p=>[L.name, panelLabel(p).replace(/–/g,'-'), STAT_TXT[effStatus(p)]]) };
+    panels:allPanels().map(p=>[L.name, panelLabel(p).replace(/–/g,'-'), STAT_TXT[effStatus(p)]]),
+    areas:S.areas.map(A=>{ const c=centroid(A.pts), p=panelAt(c.X,c.Y), B=bbox(A.pts);
+      return [L.name, p?panelLabel(p).replace(/–/g,'-'):'', A.rect?'Box':`${A.pts.length} corners`, Math.round(B.x1-B.x0), Math.round(B.y1-B.y0),
+        (Math.abs(polyArea(A.pts))/1e6).toFixed(2), A.pts.map(q=>`${Math.round(q.X)} ${Math.round(q.Y)}`).join('; '), A.note||'']; }) };
 }
 $('#exCSV').onclick=async()=>{ const rows=await forEachLevel(L=>levelRows(L)); await saveFile(base()+'_PT_data.csv', csv(rows)); };
 
@@ -1589,7 +1822,7 @@ async function buildCADzip(){
     '3. Check the GRID layer lines up with your gridlines, then freeze GRID and GRID-TEXT.','',
     'Layers:','  PT            PT cable located by GPR (red)','  PT-ASSUMED    PT carried through a no-access panel (red dashed)',
     '  PT-DIM        dimensions in mm from the gridline measured from on site','  PT-ID         PT reference numbers (match the schedule)',
-    `  NO-DRILL      no-drill zone +/-${S.buffer} mm each side`,'  PANEL-STATUS  no PT found / no access / not scanned',
+    `  NO-DRILL      no-drill zone +/-${S.buffer} mm each side`,'  PANEL-STATUS  no PT found / no access / not scanned','  NO-ACCESS     areas (part of a panel) that could not be scanned',
     '  PT-SCHEDULE   PT table (ID, gridline, offset, run, length)','  NOTES         project details and notes','  GRID, GRID-TEXT, GRID-DIM  gridlines, labels and grid spacing','',
     'PT positions are from GPR scanning and must be verified before coring or drilling.'].join('\r\n');
   files.push({name:'README.txt', data:enc.encode(readme)});
@@ -1626,6 +1859,7 @@ async function buildPDF(){
     doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.text('SUMMARY',x,y); y+=5;
     doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
     [['PT cables',String(CH.length)],['Total PT length',(len/1000).toFixed(1)+' m'],['Panels with PT',String(pc.pt)],['Panels scanned, no PT',String(pc.nopt)],['Panels no access',String(pc.noaccess)],['Panels not scanned',String(pc.none)]]
+      .concat(S.areas.length?[['No-access areas',String(S.areas.length)]]:[])
       .forEach(([a,b])=>{ doc.setTextColor(60); doc.text(a,x,y); doc.setTextColor(20); doc.text(b,x+cw,y,{align:'right'}); y+=4.6; });
     y+=2; doc.line(x,y,x+cw,y); y+=6;
     // legend
@@ -1634,7 +1868,8 @@ async function buildPDF(){
       if(t==='line'||t==='dash'){ doc.setDrawColor(217,21,44); doc.setLineWidth(0.7); if(t==='dash') doc.setLineDashPattern([1.8,1.2],0); doc.line(x,yy,x+10,yy); doc.setLineDashPattern([],0); }
       else if(t==='band'){ doc.setFillColor(248,215,217); doc.rect(x,yy-1.6,10,3.2,'F'); }
       else if(t==='nopt'){ doc.setFillColor(214,226,243); doc.rect(x,yy-1.8,10,3.6,'F'); }
-      else if(t==='noacc'){ doc.setFillColor(232,228,220); doc.rect(x,yy-1.8,10,3.6,'F'); doc.setDrawColor(140,120,80); doc.setLineWidth(0.2); for(let i=0;i<10;i+=1.6) doc.line(x+i,yy+1.8,x+Math.min(10,i+3.6),yy-1.8); }
+      else if(t==='noacc'||t==='area'){ doc.setFillColor(232,228,220); doc.rect(x,yy-1.8,10,3.6,'F'); doc.setDrawColor(140,120,80); doc.setLineWidth(0.2); for(let i=0;i<10;i+=1.6) doc.line(x+i,yy+1.8,x+Math.min(10,i+3.6),yy-1.8);
+        if(t==='area'){ doc.setDrawColor(138,106,31); doc.setLineWidth(0.35); doc.rect(x,yy-1.8,10,3.6,'S'); } }
       doc.setTextColor(30); doc.text(l,x+13,y); y+=5.2; });
     doc.setDrawColor(180); doc.setLineWidth(0.2); y+=1; doc.line(x,y,x+cw,y); y+=6;
     // notes
@@ -1674,7 +1909,7 @@ $('#exPDF').onclick=async()=>{
 
 /* ---------------- job file ---------------- */
 $('#saveProj').onclick=async()=>{ syncLevel(); const bgs={}; for(const L of S.levels){ if(L.bg){ const c=await ensureBg(L.id); if(c) bgs[L.id]=c.data; } }
-  const o={...S}; delete o.readings; delete o.status; delete o.bg;
+  const o={...S}; delete o.readings; delete o.status; delete o.areas; delete o.bg;
   await saveFile(base()+'_PT_job.json', JSON.stringify({app:'pt-cable-mapper-grid',v:3,state:o,bgs})); };
 $('#openProj').onclick=()=>$('#projIn').click();
 $('#projIn').onchange=async e=>{ const f=e.target.files[0]; e.target.value=''; if(!f) return;
@@ -1687,10 +1922,10 @@ $('#projIn').onchange=async e=>{ const f=e.target.files[0]; e.target.value=''; i
   catch(err){ console.error(err); toast('That is not a PT Cable Mapper job file.'); } };
 function migrate(st){
   st={...st};
-  if(!st.levels){ st.levels=[{id:1,name:'Level 1',readings:st.readings||[],status:st.status||{},bg:st.bg||null}]; st.cur=1; st.lnid=2;
+  if(!st.levels){ st.levels=[{id:1,name:'Level 1',readings:st.readings||[],status:st.status||{},areas:[],bg:st.bg||null}]; st.cur=1; st.lnid=2;
     try{ const u=localStorage.getItem(LS_IMG); if(u){ localStorage.setItem(LS_IMG+'.1',u); localStorage.removeItem(LS_IMG); } }catch(e){} }
   if(!st.levels.some(l=>l.id===st.cur)) st.cur=st.levels[0].id;
-  delete st.readings; delete st.status; delete st.bg; return st;
+  delete st.readings; delete st.status; delete st.areas; delete st.bg; return st;
 }
 
 /* ---------------- sample & boot ---------------- */
@@ -1704,6 +1939,7 @@ function loadSample(){
   add('1','2','A','B','y','B',[0.15,0.30,0.45]);
   add('3','4','A','B','y','B',[0.15,0.30]);
   S.levels[0].readings=R; S.levels[0].status={'2|3|A|B':'noaccess','3|4|B|C':'nopt'};
+  S.levels[0].areas=[{id:S.nid++, x0:23000, y0:9150, x1:27450, y1:13000, note:'Stored materials'}];
   loadLevelData(S.levels[0]);
   sel={xa:'1',xb:'2',ya:'B',yb:'C'}; selFrom='x:1';
 }
