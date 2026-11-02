@@ -2,7 +2,7 @@ import { lazy, Suspense, useState, useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import {
   Search, Bell, X, MapPin, Users, Plus, LogOut, ChevronDown, Home, Clock, MessageSquare,
-  FileText, Receipt, CheckSquare, FolderOpen, BarChart3, Settings, LayoutGrid, Coffee, Sparkles,
+  FileText, Receipt, CheckSquare, FolderOpen, BarChart3, Settings, LayoutGrid, Coffee, Sparkles, Cable,
 } from 'lucide-react'
 import { supabase } from './supabase'
 import { AuthProvider, useAuth } from './context/AuthContext'
@@ -28,6 +28,7 @@ const Claim = lazy(() => import('./pages/Claim'))
 const Schedule = lazy(() => import('./pages/Schedule'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const ReportBuilder = lazy(() => import('./pages/ReportBuilder'))
+const PtMapper = lazy(() => import('./pages/PtMapper'))
 const Feed = lazy(() => import('./pages/Feed'))
 const BreakRoom = lazy(() => import('./pages/BreakRoom'))
 const FiveS = lazy(() => import('./pages/FiveS'))
@@ -69,6 +70,7 @@ const NAV = [
       { to: '/claim', label: 'Claims', Icon: Receipt },
       { to: '/tasks', label: 'Tasks', Icon: CheckSquare },
       { to: '/library', label: 'Library', Icon: FolderOpen },
+      { to: '/pt-mapper', label: 'PT Mapper', Icon: Cable },
     ],
   },
   {
@@ -730,6 +732,7 @@ function AppShell() {
             <Route path="/schedule" element={<Navigate to={`/timecard${location.search}`} replace />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/report-builder" element={<ReportBuilder />} />
+            <Route path="/pt-mapper" element={<PtMapper />} />
           </Routes>
         </Suspense>
       </main>
