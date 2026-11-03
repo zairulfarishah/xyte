@@ -213,6 +213,17 @@ select.unit{width:auto;padding:3px 6px}
 .ex2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .ex2 .btn{justify-content:center}
 #side .foot{margin-top:auto;position:sticky;bottom:0;z-index:2;background:var(--panel);border-top:1px solid var(--line);padding:10px 12px;display:flex;gap:8px;align-items:center}
+.jobbtns{display:flex;gap:6px;align-self:center}
+.banner .steps{margin:6px 0 0;padding-left:18px;display:grid;gap:3px}
+#bannerHead{font-weight:600}
+.btn.danger{border-color:var(--accent);color:var(--accent);background:transparent}
+.btn.danger:hover{background:var(--accent);color:var(--accent-ink)}
+.areasel{display:grid;gap:6px;border:1px solid #8a6a1f;border-radius:6px;padding:8px 10px;background:var(--soft)}
+.areasel .ah{display:flex;align-items:center;justify-content:space-between}
+.areasel input{padding:5px 7px;font-size:13px}
+.areasel #areaDel{justify-self:start}
+.njbox{width:min(460px,100%)}
+.njwarn{margin:0;font-size:13.5px;line-height:1.45}
 #footSum{flex:1;min-width:0;text-align:center;font-family:var(--mono);font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 </style>
 
@@ -221,6 +232,10 @@ select.unit{width:auto;padding:3px 6px}
 <header>
   <h1>PT Cable <span>Mapper</span></h1>
   <div class="file" id="fileLabel">Example job</div>
+  <div class="jobbtns">
+    <button class="btn sm primary" id="newJob">New job</button>
+    <button class="btn sm" id="hdrOpen" title="Open a saved job file">Open job</button>
+  </div>
   <div class="levels" id="levels" aria-label="Levels"></div>
 </header>
 
@@ -232,7 +247,7 @@ select.unit{width:auto;padding:3px 6px}
       <button id="zout" title="Zoom out" aria-label="Zoom out">−</button>
       <button id="zfit" title="Fit" aria-label="Fit plan" style="font-size:12px">Fit</button>
     </div>
-    <div class="hint"><span id="hint">Tap a panel to enter its PT. Drag to move, pinch or scroll to zoom.</span><span class="xy" id="xy">—</span></div>
+    <div class="hint"><span id="hint">Tap a panel to enter its PT, or a no-access area to select it. Drag to move, pinch or scroll to zoom.</span><span class="xy" id="xy">—</span></div>
   </div>
 
   <aside id="side">
@@ -246,7 +261,15 @@ select.unit{width:auto;padding:3px 6px}
 
     <!-- Inspector: the panel being worked on -->
     <section class="view on" data-view="panel">
-      <div id="sampleBanner" class="banner">This is an example job with example PT readings. Open <b>Grid</b> above to enter your gridlines, then <b>Start new job</b>.</div>
+      <div id="sampleBanner" class="banner">
+        <div id="bannerHead"></div>
+        <ol class="steps">
+          <li><b>New job</b> (top): name it and type your gridlines.</li>
+          <li><b>Drawing</b> (optional): upload the consultant's drawing and line it up.</li>
+          <li><b>Tap a panel</b> on the plan, tap the gridline you measured from, type the distances. Or mark it <b>No PT found</b> / <b>No access</b>.</li>
+          <li><b>Export</b>: PDF report, CAD (DXF) and a job file to keep.</li>
+        </ol>
+      </div>
       <div class="pnav">
         <button class="nb" id="prevP" aria-label="Previous panel" title="Previous panel"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
         <div class="pt"><span id="pName">Tap a panel</span><small id="pSub"></small></div>
@@ -283,7 +306,13 @@ select.unit{width:auto;padding:3px 6px}
           <button class="btn sm" id="drawPoly">Draw by points</button>
           <button class="btn sm primary" id="polyDone" hidden>Finish shape</button>
         </div>
-        <p class="note">Tap an area to edit it: drag a corner to reshape, a side dot to resize (or add a corner), the inside to move. Double-tap a corner to remove it.</p>
+        <div class="areasel" id="areaSel" hidden>
+          <div class="ah"><b>Selected area</b><button class="btn sm ghost" id="areaDone">Deselect</button></div>
+          <div class="note" id="areaDesc"></div>
+          <input type="text" id="areaNote" placeholder="Note, e.g. stored materials" aria-label="Note for selected no-access area">
+          <button class="btn sm danger" id="areaDel">Delete area</button>
+        </div>
+        <p class="note" id="areaHelp">Tap an area on the plan to select it. Then drag a corner to reshape, a side dot to resize (or add a corner), the inside to move. Double-tap a corner to remove it.</p>
       </div>
     </section>
 
@@ -292,7 +321,6 @@ select.unit{width:auto;padding:3px 6px}
       <div class="gsum" id="gridSum"></div>
       <div class="row">
         <button class="btn primary" id="editGrid">Edit grid</button>
-        <button class="btn" id="newJob">Start new job</button>
       </div>
       <p class="note">All levels share this grid. Use the level tabs at the top to switch floors.</p>
     </section>
@@ -440,6 +468,23 @@ select.unit{width:auto;padding:3px 6px}
     <div class="row dlgfoot">
       <button class="btn" id="gdCancel">Cancel</button>
       <button class="btn primary" id="gdSave">Save grid</button>
+    </div>
+  </div>
+</div>
+<div id="newDlg" class="dlg" hidden role="dialog" aria-modal="true" aria-labelledby="njT">
+  <div class="dlgbox njbox">
+    <div class="dlghead"><h2 id="njT">Start a new job</h2><button class="x" id="njX" aria-label="Close">×</button></div>
+    <p class="njwarn" id="njWarn"></p>
+    <div class="row" id="njSaveRow">
+      <button class="btn" id="njSave">Save current job file first</button>
+      <span class="note" id="njSaved"></span>
+    </div>
+    <label class="f">New job name<input type="text" id="njName" placeholder="Menara ABC Level 3-5"></label>
+    <label class="chk"><input type="checkbox" id="njKeep"><span id="njKeepTxt">Keep the current grid</span></label>
+    <p class="note" id="njNext"></p>
+    <div class="row dlgfoot">
+      <button class="btn" id="njCancel">Cancel</button>
+      <button class="btn primary" id="njGo">Start new job</button>
     </div>
   </div>
 </div>
@@ -1402,7 +1447,16 @@ document.addEventListener('keydown',e=>{ if(e.target.matches('input,select,texta
   if(e.key==='Escape'&&mode!=='select') setMode('select');
   if(mode==='poly'&&e.key==='Enter'){ e.preventDefault(); finishPoly(); }
   if(mode==='poly'&&e.key==='Backspace'){ e.preventDefault(); polyPts.pop(); updPolyBtn(); draw(); }
-  if(mode==='select'&&selArea&&e.key==='Delete'){ snap(); S.areas=S.areas.filter(a=>a.id!==selArea); selArea=null; persistAll(); } });
+  if(mode==='select'&&selArea&&(e.key==='Delete'||e.key==='Backspace')){ e.preventDefault(); delArea(); } });
+function delArea(){ if(!selArea) return; snap(); S.areas=S.areas.filter(a=>a.id!==selArea); selArea=null; persistAll(); toast('No-access area deleted. Undo brings it back.'); }
+// The selected no-access area, with its note and a Delete button, so it can be removed without a keyboard.
+function renderAreaSel(){
+  const A=selArea&&S.areas.find(a=>a.id===selArea); $('#areaSel').hidden=!A; $('#areaHelp').hidden=!!A; if(!A) return;
+  $('#areaDesc').textContent=areaDesc(A); const n=$('#areaNote'); if(document.activeElement!==n) n.value=A.note||'';
+}
+$('#areaDel').onclick=delArea;
+$('#areaDone').onclick=()=>{ selArea=null; renderList(); draw(); };
+$('#areaNote').onchange=e=>{ const A=S.areas.find(a=>a.id===selArea); if(!A) return; const v=e.target.value.trim(); if(v===(A.note||'')) return; snap(); A.note=v; save(); renderList(); draw(); };
 
 /* ---------------- list & summary ---------------- */
 function renderList(){
@@ -1447,12 +1501,16 @@ function renderList(){
   const sum=$('#sum'); sum.textContent='';
   $('#footSum').textContent=`${CH.length} PT · ${(len/1000).toFixed(1)} m · ${pc.pt+pc.nopt}/${allPanels().length} panels`;
   [[CH.length,'PT cables'],[(len/1000).toFixed(1)+' m','Total length'],[`${pc.pt+pc.nopt}/${allPanels().length}`,'Panels scanned']].forEach(([v,l])=>{ const d=document.createElement('div'); const b=document.createElement('b'); b.textContent=v; const s=document.createElement('span'); s.textContent=l; d.append(b,s); sum.append(d); });
+  renderAreaSel();
 }
 function renderStatus(){
   const g=S.grid; $('#st1').textContent=`${g.xNames.length}×${g.yNames.length} grid`;
   const pc=panelCounts(), total=allPanels().length;
   $('#st2').textContent=`${curLevel().name} · ${pc.pt+pc.nopt+pc.noaccess}/${total} panels`; $('#s2').classList.toggle('done', pc.pt+pc.nopt>0);
-  $('#sampleBanner').hidden=!S.isSample; $('#fileLabel').textContent = S.isSample ? 'Example job' : (S.job||'Untitled job');
+  const jc=jobCounts(), empty=!jc.readings&&!jc.status&&!jc.areas;
+  $('#sampleBanner').hidden=!(S.isSample||empty);
+  $('#bannerHead').textContent = S.isSample ? 'This is an example job so you can see how it works. To start your own:' : 'How to start:';
+  $('#fileLabel').textContent = S.isSample ? 'Example job' : (S.job||'Untitled job');
   renderGridSum(); renderLevels();
   $('#tol').value=S.tol; $('#buffer').value=S.buffer; $('#unit').value=S.unit;
   $('#showLbl').checked=S.showLabels; $('#showBuf').checked=S.showBuffer; $('#showCols').checked=S.showCols; $('#showGD').checked=S.showGridDims!==false; $('#jobName').value=S.job; renderAp(); $('#dragBg').classList.toggle('on',dragBg);
@@ -1541,16 +1599,40 @@ function saveGrid(){
 $('#editGrid').onclick=openGrid; $('#gdSave').onclick=saveGrid; $('#gdCancel').onclick=closeGrid; $('#gdX').onclick=closeGrid;
 $('#gridDlg').addEventListener('keydown',e=>{ if(e.key==='Escape'){ e.stopPropagation(); closeGrid(); } });
 $('#gridDlg').addEventListener('pointerdown',e=>{ if(e.target.id==='gridDlg') closeGrid(); });
-let newArmed=false;
-$('#newJob').onclick=()=>{
-  const anyData=S.levels.some(l=>(l===curLevel()?S.readings:l.readings||[]).length);
-  if(!S.isSample && anyData && !newArmed){ newArmed=true; $('#newJob').textContent='Tap again: clears all levels'; setTimeout(()=>{newArmed=false; $('#newJob').textContent='Start new job';},3500); return; }
-  newArmed=false; $('#newJob').textContent='Start new job';
+// What the current job holds across all levels, so New job can say what it is about to clear.
+function jobCounts(){ syncLevel(); const c={levels:S.levels.length, readings:0, status:0, areas:0, bgs:0};
+  S.levels.forEach(l=>{ c.readings+=(l.readings||[]).length; c.status+=Object.keys(l.status||{}).length; c.areas+=(l.areas||[]).length; if(l.bg) c.bgs++; }); return c; }
+const plural=(n,w)=>`${n} ${w}${n===1?'':'s'}`;
+function renderNewDlg(){
+  const c=jobCounts(), has=c.readings||c.status||c.areas||c.bgs, g=S.grid;
+  const what=[c.readings&&plural(c.readings,'panel reading'), c.status&&plural(c.status,'panel')+' marked No PT / No access', c.areas&&plural(c.areas,'no-access area'), c.bgs&&plural(c.bgs,'drawing')].filter(Boolean).join(', ');
+  $('#njWarn').textContent = S.isSample ? 'The example job will be cleared. Nothing of yours is lost.'
+    : has ? `This browser keeps one job at a time. Starting a new job removes "${S.job||'Untitled job'}" (${plural(c.levels,'level')}: ${what}) from this browser. Save a job file first if you want to open it again later.`
+    : `The current job "${S.job||'Untitled job'}" has no readings yet, so nothing is lost.`;
+  $('#njSaveRow').hidden=S.isSample||!has; $('#njSaved').textContent='';
+  $('#njName').value=''; $('#njKeep').checked=!S.isSample;
+  $('#njKeepTxt').textContent=`Keep the current grid (${g.xNames[0]}–${g.xNames[g.xNames.length-1]} × ${g.yNames[0]}–${g.yNames[g.yNames.length-1]})`;
+  updNjNext();
+}
+function updNjNext(){ $('#njNext').textContent = $('#njKeep').checked ? 'Next: tap a panel on the plan to enter its PT.' : 'Next: the grid editor opens so you can type your gridlines.'; }
+$('#njKeep').onchange=updNjNext;
+function openNewDlg(){ renderNewDlg(); $('#newDlg').hidden=false; setTimeout(()=>$('#njName').focus(),30); }
+function closeNewDlg(){ $('#newDlg').hidden=true; $('#newJob').focus(); }
+$('#newJob').onclick=openNewDlg;
+$('#hdrOpen').onclick=()=>$('#projIn').click();
+$('#njX').onclick=closeNewDlg; $('#njCancel').onclick=closeNewDlg;
+$('#newDlg').addEventListener('keydown',e=>{ if(e.key==='Escape'){ e.stopPropagation(); closeNewDlg(); } if(e.key==='Enter'&&e.target.id==='njName'){ e.preventDefault(); $('#njGo').click(); } });
+$('#newDlg').addEventListener('pointerdown',e=>{ if(e.target.id==='newDlg') closeNewDlg(); });
+$('#njSave').onclick=async()=>{ await $('#saveProj').onclick(); $('#njSaved').textContent='Saved. You can start the new job now.'; };
+$('#njGo').onclick=()=>{
+  const keepGrid=$('#njKeep').checked, name=$('#njName').value.trim();
   S.levels.forEach(l=>{ try{ localStorage.removeItem(LS_IMG+'.'+l.id); }catch(e){} }); bgCache={};
   const keep={tol:S.tol,buffer:S.buffer,unit:S.unit,report:{...S.report,project:'',client:'',location:'',date:today()}};
-  S={...defaults(), ...keep, grid:JSON.parse(JSON.stringify(S.grid))}; loadLevelData(S.levels[0]);
-  bgImg=null; bgData=null; undoStack=[]; sel=null; selFrom=null; persistAll(); fit();
-  toast('New job started with this grid. Tap a panel to enter PT.');
+  S={...defaults(), ...keep, job:name, ...(keepGrid?{grid:JSON.parse(JSON.stringify(S.grid))}:{})}; loadLevelData(S.levels[0]);
+  bgImg=null; bgData=null; undoStack=[]; sel=null; selFrom=null; selArea=null; setMode('select'); showView('panel');
+  $('#newDlg').hidden=true; persistAll(); fit();
+  if(keepGrid) toast('New job started with the same grid. Tap a panel to enter PT.');
+  else { openGrid(); toast('New job started. Type your gridlines, then Save grid.'); }
 };
 
 /* ---------------- background drawing ---------------- */
@@ -1605,14 +1687,14 @@ function nudge(k){
 document.querySelectorAll('[data-n]').forEach(b=>b.onclick=()=>nudge(b.dataset.n));
 let dragBg=false;
 $('#dragBg').onclick=()=>{ dragBg=!dragBg; $('#dragBg').classList.toggle('on',dragBg); $('#dragBg').textContent=dragBg?'Done moving':'Move by dragging';
-  const h=$('#hint'); h.classList.toggle('act',dragBg); h.textContent=dragBg?'Drag on the plan to move the drawing. Pinch or scroll still zooms.':'Tap a panel to enter its PT. Drag to move, pinch or scroll to zoom.'; };
+  const h=$('#hint'); h.classList.toggle('act',dragBg); h.textContent=dragBg?'Drag on the plan to move the drawing. Pinch or scroll still zooms.':'Tap a panel to enter its PT, or a no-access area to select it. Drag to move, pinch or scroll to zoom.'; };
 function setMode(m){ mode=m; draft=null; cv.classList.toggle('aim', m!=='select'); $('#alignBtn').classList.toggle('on',m==='align1'||m==='align2');
   polyPts=[]; updPolyBtn(); $('#polyDone').hidden=m!=='poly';
   $('#drawArea').classList.toggle('on',m==='area'); $('#drawArea').textContent=m==='area'?'Cancel':'Draw box';
   $('#drawPoly').classList.toggle('on',m==='poly'); $('#drawPoly').textContent=m==='poly'?'Cancel':'Draw by points';
   const h=$('#hint'); h.classList.toggle('act',m!=='select'); const [c1,c2]=S.bg?alignNames():cornerNames();
   h.textContent = m==='align1' ? `On the drawing, tap the ${c1} intersection. Zoom in for accuracy.` : m==='align2' ? `Now tap the ${c2} intersection on the drawing.` : m==='area' ? 'Drag a box over the part you could not scan. Corners snap to gridlines. Pinch or scroll still zooms; Esc cancels.'
-    : m==='poly' ? 'Tap each corner of the area. Tap the first point or press Finish shape to close. Backspace removes the last point; Esc cancels.' : 'Tap a panel to enter its PT. Drag to move, pinch or scroll to zoom.';
+    : m==='poly' ? 'Tap each corner of the area. Tap the first point or press Finish shape to close. Backspace removes the last point; Esc cancels.' : 'Tap a panel to enter its PT, or a no-access area to select it. Drag to move, pinch or scroll to zoom.';
   draw(); }
 function handleAlign(w){
   const {ar,ai,bx,by}=S.bg, den=ar*ar+ai*ai, dx=w.X-bx, dy=w.Y-by;
