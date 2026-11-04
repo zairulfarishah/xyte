@@ -98,6 +98,11 @@ details .in{padding:0 10px 10px;display:grid;gap:8px}
 .gsum div{display:flex;gap:8px;align-items:baseline;background:var(--field);border:1px solid var(--line);border-radius:6px;padding:7px 9px;min-width:0}
 .gsum b{font-family:var(--display);font-size:15px;white-space:nowrap}
 .colln{display:flex;flex-wrap:wrap;gap:4px}
+.revs{display:grid;gap:4px}
+.revs .rv{display:grid;grid-template-columns:44px 128px 1fr 64px auto;gap:4px;align-items:center}
+.revs .rv input{padding:4px 6px;font-size:12px;min-width:0}
+.revs .rh{font-size:11px;color:var(--muted)}
+@media (max-width:640px){ .revs .rv{grid-template-columns:40px 1fr 56px auto} .revs .rv .rd{grid-column:1/-1;order:5} }
 .colln .btn.sm{font-family:var(--mono);min-width:34px}
 .colln .btn.sm:not(.on){color:var(--muted);text-decoration:line-through}
 .gsum span{font-family:var(--mono);font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
@@ -439,6 +444,9 @@ select.unit{width:auto;padding:3px 6px}
         <div class="lbl">Show on plan</div>
         <div class="row">
           <label class="chk"><input type="checkbox" id="showLbl" checked>Distance labels</label>
+          <label class="chk"><input type="checkbox" id="lblStag" checked>Stagger labels</label>
+          <label class="chk"><input type="checkbox" id="showNorth">North arrow</label>
+          <label class="f" id="northF" hidden>North, degrees clockwise from up<input type="number" id="north" min="-360" max="360" step="5" value="0"></label>
           <label class="chk"><input type="checkbox" id="showBuf" checked>No-drill zone</label>
           <label class="chk"><input type="checkbox" id="showGD" checked>Grid spacing</label>
           <label class="chk"><input type="checkbox" id="showCnt" checked>PT count on panels</label>
@@ -465,7 +473,22 @@ select.unit{width:auto;padding:3px 6px}
           <label class="f">Equipment<input type="text" id="r_equipment"></label>
           <label class="f">Scanned by<input type="text" id="r_scannedBy"></label>
           <label class="f">Checked by<input type="text" id="r_checkedBy"></label>
+          <label class="f">Drawing no.<input type="text" id="r_drawingNo" placeholder="XR-PT-001"></label>
           <label class="f wide">Notes on the report<textarea id="r_notes"></textarea></label>
+          <div class="wide blk">
+            <div class="lbl">Revisions <span class="lt">· the last row is the current revision</span></div>
+            <div class="revs" id="revList"></div>
+            <button class="btn sm" id="revAdd" style="justify-self:start">+ Add revision</button>
+          </div>
+          <div class="wide blk">
+            <div class="lbl">Company logo <span class="lt">· printed on the PDF</span></div>
+            <div class="row" style="align-items:center">
+              <img id="logoPrev" alt="Company logo" hidden style="max-height:40px;max-width:160px;background:#fff;border:1px solid var(--line);border-radius:4px;padding:2px">
+              <button class="btn sm" id="logoPick">Choose image</button>
+              <button class="btn sm" id="logoDel" hidden>Remove</button>
+              <input type="file" id="logoIn" accept="image/png,image/jpeg,image/webp" hidden>
+            </div>
+          </div>
         </div>
       </details>
       <div class="ex2">
@@ -994,7 +1017,7 @@ const COL = {pt:'#d9152c', banded:'#d9152c', distributed:'#0a62d0', buf:'rgba(22
   done:'rgba(29,133,80,0.07)', nopt:'rgba(61,111,179,0.08)', nna:'rgba(120,110,90,0.10)', hatch:'rgba(110,95,60,0.35)'};
 const LS_STATE='ptgrid.state', LS_IMG='ptgrid.img';
 const today=()=>{ const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,10); };
-const DEF_REPORT={company:'Xradar Asia Sdn Bhd', project:'', client:'', location:'', date:'', scannedBy:'', checkedBy:'', equipment:'GSSI SIR 4000, 2 GHz antenna',
+const DEF_REPORT={company:'Xradar Asia Sdn Bhd', project:'', client:'', location:'', date:'', scannedBy:'', checkedBy:'', drawingNo:'', equipment:'GSSI SIR 4000, 2 GHz antenna',
   notes:'PT cable positions were located by Ground Penetrating Radar (GPR) and marked on site. Positions are approximate and must be verified before any coring, drilling or cutting. Keep clear of the no-drill zone shown.'};
 
 function defaults(){ return {job:'', grid:{xNames:['1','2','3','4'], xSp:[9150,9150,9150], yNames:['A','B','C'], ySp:[9150,9150], yUp:true},
@@ -1125,7 +1148,8 @@ function buildChains(segs){
   });
   return chains;
 }
-function labelPos(s){ const along = s.mid + ((s.i%3)-1)*Math.min(1400,(s.s1-s.s0)*0.15); return s.o==='H'?{X:along,Y:s.c}:{X:s.c,Y:along}; }
+// labels step left / middle / right so close PT don't overlap; with stagger off they all sit mid-panel
+function labelPos(s){ const along = s.mid + (S.lblStagger===false?0:((s.i%3)-1)*Math.min(1400,(s.s1-s.s0)*0.15)); return s.o==='H'?{X:along,Y:s.c}:{X:s.c,Y:along}; }
 function trimNum(v){ let s=v.toFixed(3); s=s.replace(/0+$/,''); if(s.endsWith('.')) s=s.slice(0,-1); if(/\.\d$/.test(s)) s+='0'; return s; }
 function showVal(mm){ return S.unit==='mm' ? String(Math.round(mm)) : trimNum(mm/1000); }
 function recompute(){ GEO=geo(); const r=segments(); SEGS=r.segs; BAD=r.bad; CH=buildChains(SEGS); }
@@ -1222,8 +1246,16 @@ function render(g, V, Wpx, Hpx, screen){
       const X=Math.min(GEO.xPos[xa],GEO.xPos[xb]), Y=Math.max(GEO.yPos[ya],GEO.yPos[yb]); const q=P(X,Y);
       const t='✓ '+n+' PT'; g.font='600 11px "IBM Plex Mono", monospace'; const w=g.measureText(t).width+10;
       g.fillStyle='rgba(29,133,80,0.92)'; g.fillRect(q.x+(300*V.s+4), q.y+(300*V.s+4), w, 17); g.fillStyle='#fff'; g.textAlign='left'; g.textBaseline='middle'; g.fillText(t,q.x+(300*V.s+9),q.y+(300*V.s+12.5)); }); }
+  if(S.showNorth){ const r=screen?20:26*u, pad=screen?18:16*u; northArrow(g, pad+r, pad+r+(screen?0:4*u), r, S.north||0, u); }
   if(screen && (mode==='align1'||mode==='align2')){ alignPts.forEach(p=>{ const q=P(p.X,p.Y); g.strokeStyle=COL.sel; g.lineWidth=2; line(g,{x:q.x-10,y:q.y},{x:q.x+10,y:q.y}); line(g,{x:q.x,y:q.y-10},{x:q.x,y:q.y+10}); }); }
 }
+// North arrow in the top-left corner: deg is where north points, clockwise from straight up.
+function northArrow(g,cx,cy,r,deg,u){ g.save(); g.translate(cx,cy);
+  g.beginPath(); g.arc(0,0,r,0,7); g.fillStyle='rgba(255,255,255,0.92)'; g.fill(); g.strokeStyle='#333'; g.lineWidth=1.2*u; g.setLineDash([]); g.stroke();
+  g.rotate(deg*Math.PI/180);
+  g.beginPath(); g.moveTo(0,-r*0.82); g.lineTo(r*0.36,r*0.55); g.lineTo(0,r*0.3); g.closePath(); g.fillStyle='#fff'; g.fill(); g.stroke();
+  g.beginPath(); g.moveTo(0,-r*0.82); g.lineTo(-r*0.36,r*0.55); g.lineTo(0,r*0.3); g.closePath(); g.fillStyle='#222'; g.fill(); g.stroke();
+  g.restore(); const a=deg*Math.PI/180; text(g,'N',cx+Math.sin(a)*r*1.35,cy-Math.cos(a)*r*1.35,Math.max(10,r*0.6),'#222','center',0); }
 function drawArea(g,P,A,u,V,hl,isDraft){
   const B=bbox(A.pts), a=P(B.x0,B.y1), b=P(B.x1,B.y0), x=a.x, y=a.y, w=b.x-a.x, h=b.y-a.y, c=centroid(A.pts), m=P(c.X,c.Y), np=noPT(A), ink=np?'#3d6fb3':'#6b5420';
   g.save(); areaPath(g,P,A.pts); g.fillStyle=np?'rgba(61,111,179,0.16)':COL.nna; g.fill(); g.clip(); if(!np) hatch(g,x,y,w,h,Math.max(8*u,450*V.s),COL.hatch,1*u); g.restore();
@@ -1528,6 +1560,34 @@ $('#quickAdd').onclick=()=>{
 $('#tol').onchange=e=>{ S.tol=Math.max(0,parseFloat(e.target.value)||0); persistAll(); };
 $('#buffer').onchange=e=>{ S.buffer=Math.max(0,parseFloat(e.target.value)||0); persistAll(); };
 $('#showLbl').onchange=e=>{ S.showLabels=e.target.checked; persistAll(); };
+$('#lblStag').onchange=e=>{ S.lblStagger=e.target.checked; persistAll(); };
+$('#showNorth').onchange=e=>{ S.showNorth=e.target.checked; persistAll(); };
+$('#north').onchange=e=>{ S.north=((parseFloat(e.target.value)||0)%360+360)%360; persistAll(); };
+// Revisions: [{rev, date, desc, by}], oldest first; the last one is the current revision on the PDF and DXF.
+const curRev=()=>{ const r=S.report.revs||[]; return r.length ? (r[r.length-1].rev||'-') : '-'; };
+function renderRevs(){
+  const box=$('#revList'), revs=S.report.revs||[]; if(box.contains(document.activeElement)) return; box.textContent='';
+  if(revs.length){ const h=document.createElement('div'); h.className='rv rh'; ['Rev','Date','Description','By',''].forEach(t=>{ const sp=document.createElement('span'); sp.textContent=t; if(t==='Description') sp.className='rd'; h.append(sp); }); box.append(h); }
+  revs.forEach((r,i)=>{ const row=document.createElement('div'); row.className='rv';
+    [['rev','text','Rev'],['date','date','Date'],['desc','text','Description'],['by','text','By']].forEach(([k,t,l])=>{ const inp=document.createElement('input'); inp.type=t; inp.value=r[k]||''; inp.setAttribute('aria-label',`${l} for revision ${i+1}`);
+      if(k==='desc'){ inp.className='rd'; inp.placeholder='First issue'; }
+      inp.onchange=()=>{ r[k]=inp.value.trim(); save(); }; row.append(inp); });
+    const x=document.createElement('button'); x.className='x'; x.textContent='×'; x.title='Remove revision'; x.setAttribute('aria-label',`Remove revision ${r.rev||i+1}`);
+    x.onclick=()=>{ S.report.revs=revs.filter(q=>q!==r); save(); renderRevs(); }; row.append(x); box.append(row); });
+}
+$('#revAdd').onclick=()=>{ const revs=S.report.revs=S.report.revs||[], last=revs[revs.length-1];
+  const next=!last ? 'A' : /^[A-Y]$/i.test(last.rev||'') ? String.fromCharCode(last.rev.toUpperCase().charCodeAt(0)+1) : /^\d+$/.test(last.rev||'') ? String(+last.rev+1) : '';
+  revs.push({rev:next, date:today(), desc:revs.length?'':'First issue', by:S.report.scannedBy||''}); save(); renderRevs();
+  const ins=$('#revList').querySelectorAll('.rd'); if(ins.length) ins[ins.length-1].focus(); };
+// Company logo: kept small (max 600 px) inside the job so it travels with the job file and Xyte projects.
+$('#logoPick').onclick=()=>$('#logoIn').click();
+$('#logoIn').onchange=async e=>{ const f=e.target.files[0]; e.target.value=''; if(!f) return;
+  try{ const url=await new Promise((ok,no)=>{ const r=new FileReader(); r.onload=()=>ok(r.result); r.onerror=no; r.readAsDataURL(f); }), img=await loadImg(url);
+    const k=Math.min(1,600/Math.max(img.width,img.height)), c=document.createElement('canvas'); c.width=Math.round(img.width*k); c.height=Math.round(img.height*k);
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height); S.report.logo={data:c.toDataURL('image/png'), w:c.width, h:c.height}; save(); renderLogo(); toast('Logo added. It prints at the top of each PDF sheet.'); }
+  catch(err){ console.error(err); toast('Could not read that image. Try a PNG or JPG.'); } };
+$('#logoDel').onclick=()=>{ delete S.report.logo; save(); renderLogo(); };
+function renderLogo(){ const L=S.report.logo, im=$('#logoPrev'); im.hidden=!L; if(L) im.src=L.data; else im.removeAttribute('src'); $('#logoDel').hidden=!L; $('#logoPick').textContent=L?'Change':'Choose image'; }
 $('#showBuf').onchange=e=>{ S.showBuffer=e.target.checked; persistAll(); };
 $('#showCols').onchange=e=>{ S.showCols=e.target.checked; persistAll(); };
 $('#showCnt').onchange=e=>{ S.showCount=e.target.checked; persistAll(); };
@@ -1657,7 +1717,8 @@ function renderStatus(){
   $('#fileLabel').textContent = S.isSample ? 'Example job' : (S.job||'Untitled job');
   renderGridSum(); renderLevels();
   $('#tol').value=S.tol; $('#buffer').value=S.buffer; $('#unit').value=S.unit;
-  $('#showLbl').checked=S.showLabels; $('#showBuf').checked=S.showBuffer; $('#showCols').checked=S.showCols; $('#showGD').checked=S.showGridDims!==false;
+  $('#showLbl').checked=S.showLabels; $('#lblStag').checked=S.lblStagger!==false;
+  $('#showNorth').checked=!!S.showNorth; $('#northF').hidden=!S.showNorth; if(document.activeElement!==$('#north')) $('#north').value=S.north||0; renderRevs(); renderLogo(); $('#showBuf').checked=S.showBuffer; $('#showCols').checked=S.showCols; $('#showGD').checked=S.showGridDims!==false;
   $('#showCnt').checked=S.showCount!==false; $('#assumeNA').checked=S.assumeNA!==false; renderCols(); $('#jobName').value=S.job; renderAp(); $('#dragBg').classList.toggle('on',dragBg);
   $('#undo').disabled=!undoStack.length;
   $('#bgCtl').hidden=!bgImg; if(S.bg){ $('#bgShow').checked=S.bg.show; $('#bgOp').value=S.bg.op; }
@@ -1666,7 +1727,8 @@ function renderStatus(){
   Object.keys(DEF_REPORT).forEach(k=>{ const el=$('#r_'+k); if(el && document.activeElement!==el) el.value=S.report[k]||''; });
 }
 function refreshAll(){ recompute(); renderStatus(); renderPanelForm(); renderList(); draw(); }
-function save(){ syncLevel(); try{ const o={...S}; delete o.readings; delete o.status; delete o.areas; delete o.bg; localStorage.setItem(LS_STATE, JSON.stringify(o)); }catch(e){} }
+let quiet=false;
+function save(){ syncLevel(); try{ const o={...S}; delete o.readings; delete o.status; delete o.areas; delete o.bg; localStorage.setItem(LS_STATE, JSON.stringify(o)); }catch(e){} if(!quiet) tellHost('changed'); }
 function persistAll(){ save(); refreshAll(); }
 
 /* ---------------- grid summary + editor ---------------- */
@@ -1829,10 +1891,10 @@ $('#njSave').onclick=async()=>{ await $('#saveProj').onclick(); $('#njSaved').te
 $('#njGo').onclick=()=>{
   const keepGrid=$('#njKeep').checked, name=$('#njName').value.trim();
   S.levels.forEach(l=>{ try{ localStorage.removeItem(LS_IMG+'.'+l.id); }catch(e){} }); bgCache={};
-  const keep={tol:S.tol,buffer:S.buffer,unit:S.unit,report:{...S.report,project:'',client:'',location:'',date:today()}};
+  const keep={tol:S.tol,buffer:S.buffer,unit:S.unit,report:{...S.report,project:'',client:'',location:'',date:today(),drawingNo:'',revs:[]}};
   S={...defaults(), ...keep, job:name, ...(keepGrid?{grid:JSON.parse(JSON.stringify(S.grid))}:{})}; loadLevelData(S.levels[0]);
   bgImg=null; bgData=null; undoStack=[]; sel=null; selFrom=null; selArea=null; setMode('select'); showView('panel');
-  $('#newDlg').hidden=true; persistAll(); fit();
+  $('#newDlg').hidden=true; persistAll(); fit(); tellHost('replaced');
   if(keepGrid) toast('New job started with the same grid. Tap a panel to enter PT.');
   else { openGrid(); toast('New job started. Type your gridlines, then Save grid.'); }
 };
@@ -1938,7 +2000,7 @@ async function forEachLevel(fn){
 function renderPlan(maxPx){
   const E=extent(), w=E.x1-E.x0, h=E.y1-E.y0, k=Math.min(maxPx/w, maxPx/h);
   const c=document.createElement('canvas'); c.width=Math.round(w*k); c.height=Math.round(h*k); const g=c.getContext('2d');
-  render(g,{s:k, tx:-E.x0*k, ty:E.y1*k},c.width,c.height,false); return c;
+  render(g,{s:k, tx:-E.x0*k, ty:E.y1*k},c.width,c.height,false); c.k=k; return c;
 }
 function legendItems(){ const it=[['line','PT cable (GPR located)']];
   if(CH.some(c=>c.w.some(p=>p.dash))) it.push(['dash','PT assumed through no-access panel']);
@@ -1974,7 +2036,7 @@ $('#exPNG').onclick=async()=>{ toast('Preparing image…'); const b=await toBlob
 function dxf(levelName){
   const o=[], P=(...a)=>o.push(...a), n=v=>(Math.round(v*10)/10).toFixed(1), R=S.report;
   const layers=[['GRID',8,'DASHDOT'],['GRID-TEXT',7,'CONTINUOUS'],['GRID-DIM',7,'CONTINUOUS'],['PT',1,'CONTINUOUS'],['PT-ASSUMED',1,'DASHED'],['PT-ID',2,'CONTINUOUS'],
-    ['PT-DIM',3,'CONTINUOUS'],['NO-DRILL',30,'CONTINUOUS'],['PANEL-STATUS',8,'CONTINUOUS'],['NO-ACCESS',40,'CONTINUOUS'],['NO-PT',5,'CONTINUOUS'],['PT-SCHEDULE',7,'CONTINUOUS'],['NOTES',7,'CONTINUOUS']];
+    ['PT-DIM',3,'CONTINUOUS'],['NO-DRILL',30,'CONTINUOUS'],['PANEL-STATUS',8,'CONTINUOUS'],['NO-ACCESS',40,'CONTINUOUS'],['NO-PT',5,'CONTINUOUS'],['PT-SCHEDULE',7,'CONTINUOUS'],['NOTES',7,'CONTINUOUS'],['TITLE',7,'CONTINUOUS'],['NORTH',7,'CONTINUOUS']];
   P('0','SECTION','2','HEADER','9','$ACADVER','1','AC1009','9','$INSUNITS','70','4','9','$LTSCALE','40','1.0','0','ENDSEC');
   P('0','SECTION','2','TABLES','0','TABLE','2','LTYPE','70','3');
   P('0','LTYPE','2','CONTINUOUS','70','0','3','Solid line','72','65','73','0','40','0.0');
@@ -2059,6 +2121,29 @@ function dxf(levelName){
   const wrap=(t,n)=>{ const out=[]; let l=''; t.split(' ').forEach(w=>{ if((l+' '+w).trim().length>n){ out.push(l); l=w; } else l=(l+' '+w).trim(); }); if(l) out.push(l); return out; };
   wrap((R.notes||'').toUpperCase(),70).forEach(t=>notes.push(t));
   let ny=yb-900; TXT('NOTES',{X:tx,Y:ny},250,'NOTES'); ny-=450; notes.forEach(t=>{ if(t) TXT('NOTES',{X:tx,Y:ny},160,t); ny-=300; });
+  // title block below the plan, on its own layer so it can be frozen when pasting into another drawing
+  { const X0=GEO.minX-2400, W=Math.max(24000, GEO.maxX+1400-X0); let y=GEO.minY-2400;
+    const RECT=(x,y0,w,h)=>{ LINE('TITLE',{X:x,Y:y0},{X:x+w,Y:y0}); LINE('TITLE',{X:x+w,Y:y0},{X:x+w,Y:y0-h}); LINE('TITLE',{X:x+w,Y:y0-h},{X:x,Y:y0-h}); LINE('TITLE',{X:x,Y:y0-h},{X:x,Y:y0}); };
+    const fit=(t,w,h)=>{ t=String(t||'-').replace(/[\r\n]+/g,' '); const max=Math.max(4,Math.floor((w-300)/(h*0.85))); return t.length>max ? t.slice(0,max-1)+'~' : t; };
+    // each cell: [label, value, share of width, value text height]
+    const row=(h,cells,sign)=>{ let x=X0; cells.forEach(([lab,val,fr,vh])=>{ const w=W*fr; vh=vh||240; RECT(x,y,w,h);
+        TXT('TITLE',{X:x+150,Y:y-280},130,lab.toUpperCase()); TXT('TITLE',{X:x+150,Y:y-280-200-vh},vh,fit(val,w,vh));
+        if(sign){ LINE('TITLE',{X:x+150,Y:y-h+380},{X:x+w*0.6,Y:y-h+380}); TXT('TITLE',{X:x+150,Y:y-h+150},110,'SIGNATURE');
+          LINE('TITLE',{X:x+w*0.66,Y:y-h+380},{X:x+w-150,Y:y-h+380}); TXT('TITLE',{X:x+w*0.66,Y:y-h+150},110,'DATE'); }
+        x+=w; }); y-=h; };
+    row(1200,[['Company',R.company,0.4,330],['Drawing',`POST-TENSION CABLE LOCATION PLAN - ${levelName}`.toUpperCase(),0.6,300]]);
+    row(950,[['Project',R.project||S.job,0.4],['Client',R.client,0.3],['Location',R.location,0.3]]);
+    row(1500,[['Scanned by',R.scannedBy,0.5],['Checked by',R.checkedBy,0.5]],true);
+    row(950,[['Scan date',R.date,0.2],['Method','GPR scanning',0.2],['Equipment',R.equipment,0.6,200]]);
+    row(950,[['Drawing no.',R.drawingNo,0.4,280],['Rev',curRev(),0.15,280],['Units','mm, 1:1',0.2],['Origin 0,0',`grid ${cornerNames()[0]}`,0.25]]);
+    const revs=R.revs||[];
+    if(revs.length){ const cw=[0.08,0.14,0.62,0.16], rh=450, hdr=['REV','DATE','DESCRIPTION','BY'];
+      [hdr,...revs.map(r=>[r.rev,r.date,r.desc,r.by])].forEach((cells,i)=>{ let x=X0; cells.forEach((t,j)=>{ const w=W*cw[j]; RECT(x,y,w,rh); TXT('TITLE',{X:x+120,Y:y-rh+140},i?160:130,fit(t,w,160)); x+=w; }); y-=rh; }); } }
+  // north arrow above the top-left gridline bubbles
+  if(S.showNorth){ const c={X:GEO.minX-1920, Y:GEO.maxY+3700}, r=650, a=(S.north||0)*Math.PI/180, rot=p=>({X:c.X+p.X*Math.cos(a)+p.Y*Math.sin(a), Y:c.Y-p.X*Math.sin(a)+p.Y*Math.cos(a)});
+    CIRC('NORTH',c,r); const tip=rot({X:0,Y:r*0.82}), l=rot({X:-r*0.36,Y:-r*0.55}), rr=rot({X:r*0.36,Y:-r*0.55}), m=rot({X:0,Y:-r*0.3});
+    LINE('NORTH',tip,l); LINE('NORTH',l,m); LINE('NORTH',m,rr); LINE('NORTH',rr,tip); LINE('NORTH',tip,m);
+    TXT('NORTH',rot({X:0,Y:r*1.4}),300,'N',0,'c'); }
   P('0','ENDSEC','0','EOF'); return o.join('\r\n')+'\r\n';
 }
 function csv(rowsByLevel){
@@ -2117,7 +2202,8 @@ async function buildCADzip(){
     'Layers:','  PT            PT cable located by GPR (red)','  PT-ASSUMED    PT carried through a no-access panel (red dashed)',
     '  PT-DIM        dimensions in mm from the gridline measured from on site','  PT-ID         PT reference numbers (match the schedule)',
     `  NO-DRILL      no-drill zone +/-${S.buffer} mm each side`,'  PANEL-STATUS  no PT found / no access / not scanned','  NO-ACCESS     areas (part of a panel) that could not be scanned','  NO-PT         areas (part of a panel) scanned, no PT found',
-    '  PT-SCHEDULE   PT table (ID, gridline, offset, run, length)','  NOTES         project details and notes','  GRID, GRID-TEXT, GRID-DIM  gridlines, labels and grid spacing','',
+    '  PT-SCHEDULE   PT table (ID, gridline, offset, run, length)','  NOTES         project details and notes',
+    '  TITLE         title block below the plan (freeze it when pasting into another drawing)','  NORTH         north arrow','  GRID, GRID-TEXT, GRID-DIM  gridlines, labels and grid spacing','',
     'PT positions are from GPR scanning and must be verified before coring or drilling.'].join('\r\n');
   files.push({name:'README.txt', data:enc.encode(readme)});
   return zip(files);
@@ -2129,15 +2215,24 @@ $('#exDXF').onclick=async()=>{ if(!S.levels.some(l=>(l.id===S.cur?S.readings:l.r
 async function buildPDF(){
   const J=window.jspdf&&window.jspdf.jsPDF; if(!J) throw new Error('nopdf');
   const doc=new J({orientation:'landscape',unit:'mm',format:'a3'}); const R=S.report, PW=420, PH=297, M=10, TB=96;
-  const pages=[];
+  const pages=[], planPages=[], FH=12, SH=24;   // footer row and signature row heights in the title block
   await forEachLevel(async L=>{
-    if(pages.length) doc.addPage('a3','landscape'); pages.push(L.name);
+    if(pages.length) doc.addPage('a3','landscape'); pages.push(L.name); planPages.push(doc.getNumberOfPages());
     doc.setDrawColor(40); doc.setLineWidth(0.5); doc.rect(M,M,PW-2*M,PH-2*M); doc.line(PW-M-TB,M,PW-M-TB,PH-M);
     // plan
-    const plan=renderPlan(4200), aw=PW-2*M-TB-8, ah=PH-2*M-8, k=Math.min(aw/plan.width, ah/plan.height), w=plan.width*k, h=plan.height*k;
+    const plan=renderPlan(4200), aw=PW-2*M-TB-8, ah=PH-2*M-8-12, k=Math.min(aw/plan.width, ah/plan.height), w=plan.width*k, h=plan.height*k;
     doc.addImage(plan.toDataURL('image/jpeg',0.9),'JPEG', M+4+(aw-w)/2, M+4+(ah-h)/2, w, h);
+    // scale bar and scale under the plan (paper mm per real mm = plan px/mm × paper mm/px)
+    { const pm=plan.k*k, N=1/pm, sig=Math.pow(10,Math.floor(Math.log10(N))-1), Nr=Math.round(N/sig)*sig;
+      const Lm=[1,2,5,10,20,50,100].find(v=>v*1000*pm>=30)||100, bw=Lm*1000*pm, sx=M+6, sy=PH-M-8;
+      doc.setLineWidth(0.25); doc.setDrawColor(30);
+      for(let i=0;i<5;i++){ doc.setFillColor(i%2?255:30); doc.rect(sx+i*bw/5, sy-1.6, bw/5, 1.6, 'FD'); }
+      doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(40);
+      doc.text('0', sx, sy+3, {align:'center'}); doc.text(`${Lm} m`, sx+bw, sy+3, {align:'center'});
+      doc.text(`Scale 1:${Nr} on A3   |   Origin 0,0 = grid ${cornerNames()[0]}   |   Dimensions in ${S.unit==='m'?'metres':'mm'} from the gridline measured from`, sx+bw+10, sy); }
     // title block
     let x=PW-M-TB+5, y=M+9, cw=TB-10;
+    if(R.logo){ const lh=Math.min(12, cw*R.logo.h/R.logo.w), lw=lh*R.logo.w/R.logo.h; try{ doc.addImage(R.logo.data,'PNG',x,y-4,lw,lh); y+=lh+2; }catch(e){ console.error(e); } }
     doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(20); doc.text(doc.splitTextToSize(R.company||'',cw), x, y); y+=8;
     doc.setFontSize(10.5); doc.setTextColor(200,30,40); doc.text('POST-TENSION CABLE LOCATION PLAN', x, y); y+=4;
     doc.setDrawColor(180); doc.setLineWidth(0.2); doc.line(x,y,x+cw,y); y+=6;
@@ -2146,7 +2241,7 @@ async function buildPDF(){
     field('Project', R.project||S.job); field('Client', R.client); field('Location', R.location); field('Level', L.name);
     const half=cw/2; const pair=(l1,v1,l2,v2)=>{ const y0=y; doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(110); doc.text(l1.toUpperCase(),x,y0); doc.text(l2.toUpperCase(),x+half,y0);
       doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(20); doc.text(doc.splitTextToSize(String(v1||'-'),half-2)[0],x,y0+4.2); doc.text(doc.splitTextToSize(String(v2||'-'),half-2)[0],x+half,y0+4.2); y=y0+10.5; };
-    pair('Scan date',R.date,'Method','GPR scanning'); pair('Scanned by',R.scannedBy,'Checked by',R.checkedBy); field('Equipment', R.equipment);
+    pair('Scan date',R.date,'Method','GPR scanning'); field('Equipment', R.equipment);
     doc.line(x,y-1,x+cw,y-1); y+=5;
     // summary
     const pc=panelCounts(), len=CH.reduce((a,c)=>a+c.len,0);
@@ -2172,8 +2267,28 @@ async function buildPDF(){
     doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(20); doc.text('NOTES',x,y); y+=4.6; doc.setFont('helvetica','normal'); doc.setFontSize(7.8); doc.setTextColor(50);
     const nts=[`Distances are measured from the gridline shown, in ${S.unit==='m'?'metres':'millimetres'}.`, `No-drill zone of ${S.buffer} mm each side of each PT.`,
       `PT readings in neighbouring panels within ${S.tol} mm are shown as one continuous cable.`, R.notes].filter(Boolean);
-    nts.forEach((t,i)=>{ const ls=doc.splitTextToSize(`${i+1}. ${t}`,cw); if(y+ls.length*3.4<PH-M-14){ doc.text(ls,x,y); y+=ls.length*3.4+1.4; } });
-    doc.setFontSize(7.5); doc.setTextColor(110); doc.text(`Origin 0,0 = grid ${cornerNames()[0]}`, x, PH-M-9);
+    // bottom of the title block, built upwards: drawing no / rev / sheet, signatures, revisions
+    const revs=(R.revs||[]).slice(-4), RH=5, yF=PH-M-FH, yS=yF-SH, yR=revs.length ? yS-RH*(revs.length+1)-2 : yS, X0=PW-M-TB;
+    // notes shrink to fit above the bottom block rather than dropping any (the last one is the GPR disclaimer)
+    let fs=7.8, lh=3.4, wrapped; for(;;){ doc.setFontSize(fs); wrapped=nts.map((t,i)=>doc.splitTextToSize(`${i+1}. ${t}`,cw)); if(fs<=5.6 || y+wrapped.reduce((a,l)=>a+l.length*lh+1.4,0)<yR-3) break; fs-=0.4; lh=fs*0.436; }
+    wrapped.forEach(ls=>{ if(y+ls.length*lh<yR-3){ doc.text(ls,x,y); y+=ls.length*lh+1.4; } });
+    doc.setDrawColor(40); doc.setLineWidth(0.35);
+    if(revs.length){ const cx=[X0, X0+12, X0+34, X0+TB-18, X0+TB]; doc.line(X0,yR,X0+TB,yR);
+      doc.setFillColor(238,240,241); doc.rect(X0,yR,TB,RH,'F'); doc.line(X0,yR,X0+TB,yR);
+      doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(60); ['REV','DATE','DESCRIPTION','BY'].forEach((t,i)=>doc.text(t,cx[i]+1.5,yR+3.5));
+      doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(20);
+      revs.forEach((r,i)=>{ const yy=yR+RH*(i+1); doc.setDrawColor(200); doc.setLineWidth(0.15); doc.line(X0,yy,X0+TB,yy);
+        [r.rev,r.date,r.desc,r.by].forEach((t,j)=>doc.text(doc.splitTextToSize(String(t||'-'),cx[j+1]-cx[j]-3)[0],cx[j]+1.5,yy+3.5)); });
+      doc.setDrawColor(200); doc.setLineWidth(0.15); cx.slice(1,-1).forEach(c=>doc.line(c,yR,c,yS)); }
+    doc.setDrawColor(40); doc.setLineWidth(0.35); doc.line(X0,yS,X0+TB,yS); doc.line(X0,yF,X0+TB,yF); doc.line(X0+TB/2,yS,X0+TB/2,yF);
+    [['Scanned by',R.scannedBy],['Checked by',R.checkedBy]].forEach(([l,v],i)=>{ const sx=X0+i*TB/2+3, sw=TB/2-6;
+      doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(110); doc.text(l.toUpperCase(),sx,yS+4);
+      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(20); doc.text(doc.splitTextToSize(String(v||'-'),sw)[0],sx,yS+8.5);
+      doc.setDrawColor(150); doc.setLineWidth(0.2); doc.line(sx,yS+18,sx+sw*0.58,yS+18); doc.line(sx+sw*0.66,yS+18,sx+sw,yS+18);
+      doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(110); doc.text('Signature',sx,yS+21); doc.text('Date',sx+sw*0.66,yS+21); });
+    doc.setDrawColor(40); doc.setLineWidth(0.35); const fc=[X0, X0+TB*0.5, X0+TB*0.72, X0+TB]; fc.slice(1,-1).forEach(c=>doc.line(c,yF,c,PH-M));
+    [['Drawing no.',R.drawingNo],['Rev',curRev()],['Sheet','']].forEach(([l,v],i)=>{ doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(110); doc.text(l.toUpperCase(),fc[i]+2,yF+3.6);
+      if(v){ doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(20); doc.text(doc.splitTextToSize(String(v),fc[i+1]-fc[i]-4)[0],fc[i]+2,yF+9); } });
   });
   // schedule pages
   await forEachLevel(async L=>{
@@ -2196,7 +2311,9 @@ async function buildPDF(){
       if(rows.some(r=>r.assumed)){ doc.setFontSize(7.5); doc.setTextColor(110); doc.text('* part of the run is assumed through a no-access panel', M+8, PH-M-4); }
     }
   });
-  const n=doc.getNumberOfPages(); for(let p=1;p<=n;p++){ doc.setPage(p); doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(110); doc.text(`Sheet ${p} of ${n}`, PW-M-4, PH-M-3, {align:'right'}); }
+  const n=doc.getNumberOfPages(); for(let p=1;p<=n;p++){ doc.setPage(p);
+    if(planPages.includes(p)){ doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(20); doc.text(`${p} of ${n}`, PW-M-TB+TB*0.72+2, PH-M-FH+9); }
+    else { doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(110); doc.text(`Sheet ${p} of ${n}${R.drawingNo?'   |   '+R.drawingNo+' rev '+curRev():''}`, PW-M-4, PH-M-3, {align:'right'}); } }
   return doc.output('blob');
 }
 $('#exPDF').onclick=async()=>{
@@ -2204,18 +2321,31 @@ $('#exPDF').onclick=async()=>{
   toast('Preparing report…'); try{ const b=await buildPDF(); await saveFile(base()+'_PT_report.pdf', b); }catch(e){ console.error(e); toast('Could not build the report.'); } };
 
 /* ---------------- job file ---------------- */
-$('#saveProj').onclick=async()=>{ syncLevel(); const bgs={}; for(const L of S.levels){ if(L.bg){ const c=await ensureBg(L.id); if(c) bgs[L.id]=c.data; } }
+// The whole job (every level, plus each level's drawing) as one object: the job file format.
+async function jobData(){ syncLevel(); const bgs={}; for(const L of S.levels){ if(L.bg){ const c=await ensureBg(L.id); if(c) bgs[L.id]=c.data; } }
   const o={...S}; delete o.readings; delete o.status; delete o.areas; delete o.bg;
-  await saveFile(base()+'_PT_job.json', JSON.stringify({app:'pt-cable-mapper-grid',v:3,state:o,bgs})); };
+  return {app:'pt-cable-mapper-grid',v:3,state:o,bgs}; }
+async function openJobData(j){ if(!j||j.app!=='pt-cable-mapper-grid') throw new Error('not a job');
+  let st=migrate(j.state); S={...defaults(),...st,isSample:false}; S.report={...DEF_REPORT,...(st.report||{})};
+  bgCache={}; const bgs=j.bgs||(j.bg?{[S.levels[0].id]:j.bg}:{});
+  for(const L of S.levels){ try{ localStorage.removeItem(LS_IMG+'.'+L.id); }catch(_){} if(bgs[L.id]){ bgCache[L.id]={img:await loadImg(bgs[L.id]),data:bgs[L.id]}; try{ localStorage.setItem(LS_IMG+'.'+L.id,bgs[L.id]); }catch(_){} } }
+  loadLevelData(curLevel()); const c=bgCache[S.cur]; bgImg=c?c.img:null; bgData=c?c.data:null;
+  undoStack=[]; sel=null; selFrom=null; selArea=null; quiet=true; try{ persistAll(); } finally { quiet=false; } fit(); }
+$('#saveProj').onclick=async()=>{ await saveFile(base()+'_PT_job.json', JSON.stringify(await jobData())); };
 $('#openProj').onclick=()=>$('#projIn').click();
 $('#projIn').onchange=async e=>{ const f=e.target.files[0]; e.target.value=''; if(!f) return;
-  try{ const j=JSON.parse(await f.text()); if(j.app!=='pt-cable-mapper-grid') throw 0;
-    let st=migrate(j.state); S={...defaults(),...st,isSample:false}; S.report={...DEF_REPORT,...(st.report||{})};
-    bgCache={}; const bgs=j.bgs||(j.bg?{[S.levels[0].id]:j.bg}:{});
-    for(const L of S.levels){ try{ localStorage.removeItem(LS_IMG+'.'+L.id); }catch(_){} if(bgs[L.id]){ bgCache[L.id]={img:await loadImg(bgs[L.id]),data:bgs[L.id]}; try{ localStorage.setItem(LS_IMG+'.'+L.id,bgs[L.id]); }catch(_){} } }
-    loadLevelData(curLevel()); const c=bgCache[S.cur]; bgImg=c?c.img:null; bgData=c?c.data:null;
-    undoStack=[]; sel=null; selFrom=null; persistAll(); fit(); toast('Job opened.'); }
+  try{ await openJobData(JSON.parse(await f.text())); tellHost('replaced'); toast('Job opened.'); }
   catch(err){ console.error(err); toast('That is not a PT Cable Mapper job file.'); } };
+// When Xyte shows this page in a frame it saves jobs to the team's project list through
+// window.ptMapper, and hears about edits ('changed') and a different job being loaded here ('replaced').
+function tellHost(type){ if(window.parent!==window) try{ window.parent.postMessage({source:'pt-mapper', type}, location.origin); }catch(e){} }
+window.ptMapper = {
+  getJob: jobData,
+  loadJob: async j=>{ await openJobData(j); },
+  info: ()=>{ syncLevel(); return { name:S.job||S.report.project||'', isSample:!!S.isSample, levels:S.levels.length, readings:S.levels.reduce((a,l)=>a+(l.readings||[]).length,0) }; },
+  setName: n=>{ S.job=n; save(); refreshAll(); $('#jobName').value=n; $('#fileLabel').textContent=n; },
+  toast,
+};
 function migrate(st){
   st={...st};
   if(!st.levels){ st.levels=[{id:1,name:'Level 1',readings:st.readings||[],status:st.status||{},areas:[],bg:st.bg||null}]; st.cur=1; st.lnid=2;
