@@ -115,7 +115,12 @@ details .in{padding:0 10px 10px;display:grid;gap:8px}
 .gt td{padding:3px 4px;border-bottom:1px solid var(--line)}
 .gt tr:last-child td{border-bottom:0}
 .gt td.i{width:26px;text-align:center;color:var(--muted);font-family:var(--mono);font-size:11.5px}
-.gt td.d{width:30px;text-align:center}
+.gt td.d{width:58px;text-align:center;white-space:nowrap}
+.gt tr.ins td.i{color:var(--accent);font-weight:700}
+.gtot .off{color:var(--accent);display:block}
+.mv{display:grid;gap:8px;border:1px solid var(--line);border-radius:6px;padding:10px;background:var(--field)}
+.mv .row{flex-wrap:nowrap}
+.mv .row .f{flex:1;min-width:0}
 .gt input{padding:6px 7px}
 .gt input:disabled{background:transparent;border-style:dashed}
 .gt .del{border:0;background:none;color:var(--muted);font-size:17px;cursor:pointer;padding:2px 6px}
@@ -293,7 +298,23 @@ select.unit{width:auto;padding:3px 6px}
             <button class="btn sm" id="addOff">+ Add PT</button>
             <span class="note" id="offCount"></span>
             <span style="flex:1"></span>
+            <button class="btn sm ghost" id="mvBtn" title="Move or copy these readings to another panel or gridline">Move / copy</button>
             <button class="btn sm ghost" id="delPanel">Delete readings</button>
+          </div>
+          <div class="mv" id="mvBox" hidden>
+            <b>Move or copy these readings</b>
+            <div class="row">
+              <label class="f">Numbers<select id="mvX"></select></label>
+              <label class="f">Letters<select id="mvY"></select></label>
+            </div>
+            <label class="f">Measured from<select id="mvFrom"></select></label>
+            <label class="chk"><input type="checkbox" id="mvKeep" checked><span>Keep PT in the same place (work out the new distances)</span></label>
+            <p class="warn" id="mvWarn" hidden></p>
+            <div class="row" style="justify-content:flex-end">
+              <button class="btn sm ghost" id="mvCancel">Cancel</button>
+              <button class="btn sm" id="mvCopy">Copy</button>
+              <button class="btn sm primary" id="mvMove">Move</button>
+            </div>
           </div>
           <p class="warn" id="pWarn" hidden></p>
           <p class="note">Saved as you type. <b>Enter</b> goes to the next row; Enter on an empty last row goes to the next panel.</p>
@@ -1272,7 +1293,7 @@ function findReading(p, from, type){ if(!p||!from) return null; const [ax,nm]=fr
   return S.readings.find(r=>samePanel(r,p)&&r.fromAxis===ax&&r.from===nm&&r.type===type)||null; }
 function selectPanel(p, from){
   if(commitT) commitRows();
-  sessionSnapped=false; sel=p; selFrom=from;
+  sessionSnapped=false; sel=p; selFrom=from; $('#mvBox').hidden=true;
   showView('panel'); renderPanelForm(); renderList(); draw();
 }
 const STAT_TXT={pt:'Scanned · PT found', nopt:'Scanned · no PT found', noaccess:'No access', none:'Not scanned'};
@@ -1299,13 +1320,13 @@ function renderPick(){
 function renderPanelForm(){
   const on=!!sel; ['#addOff','#saveNext','#delPanel','#unit','#prevP','#nextP'].forEach(id=>$(id).disabled=!on);
   $('#side').classList.toggle('nosel',!on); renderStat(); renderPick();
-  if(!sel){ offRows=[]; renderOffT(); $('#pName').textContent='Tap a panel'; $('#pWarn').hidden=true; return; }
+  if(!sel){ offRows=[]; renderOffT(); $('#mvBtn').disabled=true; $('#mvBox').hidden=true; $('#pName').textContent='Tap a panel'; $('#pWarn').hidden=true; return; }
   $('#pName').textContent=panelLabel(sel);
   const r=findReading(sel,selFrom,curType());
   offRows = r ? [...r.offs].sort((a,b)=>a-b).map(showVal) : ['']; if(r) offRows.push('');
   $('#offHead').textContent=`Distance from gridline ${selFrom.split(':')[1]}`;
   renderOffT();
-  $('#delPanel').disabled = !r;
+  $('#delPanel').disabled = !r; $('#mvBtn').disabled = !r; if(!r) $('#mvBox').hidden=true;
   const outs = r ? SEGS.filter(s=>s.r===r && s.outside) : [];
   $('#pWarn').hidden=!outs.length; if(outs.length) $('#pWarn').textContent=`${outs.map(s=>showVal(s.d)).join(', ')} is beyond the panel width. Check the value or unit.`;
 }
@@ -1390,6 +1411,50 @@ const nextPanel=()=>stepPanel(1);
 $('#nextP').onclick=()=>stepPanel(1);
 $('#prevP').onclick=()=>stepPanel(-1);
 $('#delPanel').onclick=()=>{ clearTimeout(commitT); commitT=null; const ex=findReading(sel,selFrom,curType()); if(!ex) return; snap(); S.readings=S.readings.filter(r=>r!==ex); persistAll(); toast('Readings deleted.'); };
+
+/* ---------------- move / copy readings ---------------- */
+function mvOpts(el, list, cur){ el.textContent=''; list.forEach(([v,t])=>{ const o=document.createElement('option'); o.value=v; o.textContent=t; el.append(o); });
+  if(list.some(([v])=>v===cur)) el.value=cur; }
+// Pick the panel span that holds this gridline pair, or the first one starting at its first gridline.
+function mvSpan(names,a,b){ const s=a+'|'+b; if(names.indexOf(b)===names.indexOf(a)+1) return s; const i=names.indexOf(a);
+  return i>=0&&i<names.length-1 ? a+'|'+names[i+1] : names[0]+'|'+names[1]; }
+function mvFromOpts(){ const [xa,xb]=$('#mvX').value.split('|'), [ya,yb]=$('#mvY').value.split('|'), cur=$('#mvFrom').value||selFrom;
+  mvOpts($('#mvFrom'), [['x:'+xa,`Gridline ${xa}`],['x:'+xb,`Gridline ${xb}`],['y:'+ya,`Gridline ${ya}`],['y:'+yb,`Gridline ${yb}`]], cur);
+  if(!$('#mvFrom').value) $('#mvFrom').selectedIndex=0; }
+function openMove(){
+  if(commitT) commitRows(); const r=findReading(sel,selFrom,curType()); if(!r) return;
+  const g=S.grid, sp=n=>n.slice(0,-1).map((a,i)=>[a+'|'+n[i+1],`${a} – ${n[i+1]}`]);
+  mvOpts($('#mvX'), sp(g.xNames), mvSpan(g.xNames,r.xa,r.xb)); mvOpts($('#mvY'), sp(g.yNames), mvSpan(g.yNames,r.ya,r.yb));
+  $('#mvFrom').value=''; mvFromOpts();
+  $('#mvKeep').checked=!BAD.includes(r); $('#mvKeep').disabled=BAD.includes(r); $('#mvWarn').hidden=true; $('#mvBox').hidden=false; $('#mvX').focus();
+}
+function closeMove(){ $('#mvBox').hidden=true; }
+function doMove(copy){
+  const w=$('#mvWarn'), fail=t=>{ w.textContent=t; w.hidden=false; };
+  const r=findReading(sel,selFrom,curType()); if(!r){ closeMove(); return; }
+  const [xa,xb]=$('#mvX').value.split('|'), [ya,yb]=$('#mvY').value.split('|'), [ax,nm]=$('#mvFrom').value.split(':'), to={xa,xb,ya,yb};
+  if(samePanel(r,to)&&r.fromAxis===ax&&r.from===nm) return fail('That is where these readings are now. Pick another panel or gridline.');
+  let offs=[...r.offs];
+  if($('#mvKeep').checked){
+    if(ax!==r.fromAxis) return fail('To change direction (number ↔ letter gridline), untick "Keep PT in the same place".');
+    const P=GEO, pos=ax==='y'?P.yPos:P.xPos, oth=(p,f)=>ax==='y'?(f===p.ya?p.yb:p.ya):(f===p.xa?p.xb:p.xa);
+    const g0=pos[r.from], s0=Math.sign(pos[oth(r,r.from)]-g0)||1, g1=pos[nm], o1=pos[oth(to,nm)], s1=Math.sign(o1-g1)||1, wd=Math.abs(o1-g1);
+    offs=r.offs.map(d=>Math.round((g0+s0*d-g1)*s1*10)/10);
+    const out=offs.filter(d=>d<-0.5||d>wd+0.5).length;
+    if(out) return fail(`${out} of ${offs.length} PT would fall outside panel ${panelLabel(to)}. Pick the panel they are in, or untick "Keep PT in the same place" to keep the distances as typed.`);
+    offs=offs.map(d=>Math.max(0,d));
+  }
+  snap();
+  if(!copy) S.readings=S.readings.filter(q=>q!==r);
+  addReading(S.readings,{id:S.nid++, ...to, fromAxis:ax, from:nm, type:r.type, offs}); delete S.status[pkey(to)];
+  S.isSample=false; closeMove(); toast(`${offs.length} PT ${copy?'copied':'moved'} to ${panelLabel(to)}, from gridline ${nm}.`);
+  selectPanel(to, ax+':'+nm); persistAll();
+}
+$('#mvBtn').onclick=()=>{ if($('#mvBox').hidden) openMove(); else closeMove(); };
+$('#mvCancel').onclick=closeMove;
+$('#mvX').onchange=mvFromOpts; $('#mvY').onchange=mvFromOpts;
+['#mvX','#mvY','#mvFrom','#mvKeep'].forEach(id=>$(id).addEventListener('change',()=>{ $('#mvWarn').hidden=true; }));
+$('#mvMove').onclick=()=>doMove(false); $('#mvCopy').onclick=()=>doMove(true);
 $('#unit').onchange=e=>{ const keep=offRows.map(t=>{ const v=parseFloat(t); if(isNaN(v)) return t; return e.target.value==='mm'? (Math.abs(v)<50? String(Math.round(v*1000)):t) : (Math.abs(v)>=50? trimNum(v/1000):t); });
   S.unit=e.target.value; save(); recompute(); renderStatus(); renderList(); draw(); offRows=keep; renderOffT(); };
 function parseOffs(txt){
@@ -1559,10 +1624,17 @@ function renderGT(ax){
     const ts=document.createElement('td'); const si=document.createElement('input'); si.type='number'; si.min='1'; si.inputMode='decimal'; si.id=`g${ax}-s-${i}`;
     si.setAttribute('aria-label',`Distance from gridline ${i+1} to the next`);
     if(last){ si.disabled=true; si.placeholder='— last gridline'; si.value=''; } else { si.value=r.sp===''?'':r.sp; si.placeholder='mm'; }
-    si.oninput=()=>{ const v=parseFloat(si.value); r.sp=v>0?v:''; totals(ax); }; ts.append(si);
-    const td=document.createElement('td'); td.className='d'; const del=document.createElement('button'); del.className='del'; del.textContent='×'; del.title='Remove gridline';
+    si.oninput=()=>{ const v=parseFloat(si.value); r.sp=v>0?v:'';
+      // Typing the first part of a split span fills in the rest so the old total is kept.
+      const nx=L[i+1]; if(nx&&nx.ins&&nx.ins.from===r&&v>0&&v<nx.ins.total&&L[i+2]===nx.ins.to){ nx.sp=Math.round((nx.ins.total-v)*10)/10; const ni2=$(`#g${ax}-s-${i+1}`); if(ni2) ni2.value=nx.sp; }
+      totals(ax); }; ts.append(si);
+    if(r.ins) tr.className='ins';
+    const td=document.createElement('td'); td.className='d';
+    const ins=document.createElement('button'); ins.className='del'; ins.textContent='+'; ins.title=last?'Use + Add gridline below to add after the last one':'Insert a gridline after this one';
+    ins.setAttribute('aria-label',`Insert gridline after ${r.n||i+1}`); ins.disabled=last; ins.onclick=()=>insertRow(ax,i);
+    const del=document.createElement('button'); del.className='del'; del.textContent='×'; del.title='Remove gridline';
     del.setAttribute('aria-label',`Remove gridline ${r.n||i+1}`); del.disabled=L.length<=2; del.onclick=()=>{ L.splice(i,1); renderGT(ax); };
-    td.append(del);
+    td.append(ins,del);
     [ni,si].forEach(inp=>{
       inp.addEventListener('keydown',e=>{ if(e.key!=='Enter') return; e.preventDefault();
         if(i<L.length-1){ const nx=$(`#g${ax}-n-${i+1}`); nx.focus(); nx.select(); } else addRow(ax); });
@@ -1577,7 +1649,19 @@ function renderGT(ax){
   });
   totals(ax);
 }
-function totals(ax){ const L=D[ax], s=L.slice(0,-1).reduce((a,r)=>a+(+r.sp||0),0); $('#tot'+ax.toUpperCase()).textContent=`${L.length} gridlines · total ${fmtN(s)} mm`; }
+function totals(ax){ const L=D[ax], s=L.slice(0,-1).reduce((a,r)=>a+(+r.sp||0),0), box=$('#tot'+ax.toUpperCase());
+  box.textContent=`${L.length} gridlines · total ${fmtN(s)} mm`;
+  // Warn when the parts of a split span no longer add up to the distance it had before.
+  L.forEach(r=>{ if(!r.ins) return; const a=L.indexOf(r.ins.from), b=L.indexOf(r.ins.to); if(a<0||b<0||b<=a) return;
+    const now=L.slice(a,b).reduce((t,q)=>t+(+q.sp||0),0); if(Math.abs(now-r.ins.total)<0.5) return;
+    const w=document.createElement('span'); w.className='off'; w.textContent=`${L[a].n} → ${L[b].n} was ${fmtN(r.ins.total)} mm, now ${fmtN(now)} mm`; box.append(w); });
+}
+function insName(n){ const used=new Set([...D.x,...D.y].map(r=>r.n)), dig=/\d$/.test(n);
+  for(let k=0;k<26;k++){ const c=n+(dig?String.fromCharCode(97+k):String(k+1)); if(!used.has(c)) return c; } return n+"'"; }
+// Insert a gridline between row i and the next, splitting that spacing in half to start with.
+function insertRow(ax,i){ const L=D[ax], r=L[i], to=L[i+1], sp=+r.sp||0, half=sp>0?Math.round(sp/2):'';
+  const nr={n:insName(r.n), sp:sp>0?sp-half:'', ins:sp>0?{from:r, to, total:sp}:null}; r.sp=half; L.splice(i+1,0,nr); renderGT(ax);
+  const f=$(`#g${ax}-s-${i}`); if(f){ f.focus(); f.select(); } }
 function addRow(ax){ const L=D[ax], last=L[L.length-1];
   if(!(last.sp>0)) last.sp = L.length>1 && L[L.length-2].sp>0 ? L[L.length-2].sp : 9150;
   L.push({n:nextName(last.n||String(L.length)), sp:''}); renderGT(ax);
@@ -1594,7 +1678,45 @@ function saveGrid(){
   else { for(const ax of ['x','y']){ const L=D[ax]; for(let i=0;i<L.length-1;i++) if(!(L[i].sp>0)){ err=`Enter the distance from gridline ${L[i].n} to ${L[i+1].n}.`; break; } if(err) break; } }
   if(err){ w.textContent=err; w.hidden=false; return; }
   S.grid={xNames:D.x.map(r=>r.n), xSp:D.x.slice(0,-1).map(r=>+r.sp), yNames:D.y.map(r=>r.n), ySp:D.y.slice(0,-1).map(r=>+r.sp), yUp:$('#gdUp').value==='1'};
-  sel=null; selFrom=null; closeGrid(); persistAll(); fit(); toast('Grid saved.');
+  const n=remapToGrid();
+  sel=null; selFrom=null; closeGrid(); persistAll(); fit(); toast(n?`Grid saved. Readings on ${n} split panel${n>1?'s':''} moved to the new panels.`:'Grid saved.');
+}
+// Put a reading into a list, joining it with one already saved for the same panel, gridline and type.
+function addReading(list, rd){ const ex=list.find(q=>samePanel(q,rd)&&q.fromAxis===rd.fromAxis&&q.from===rd.from&&q.type===rd.type);
+  if(!ex){ list.push(rd); return; } rd.offs.forEach(d=>{ if(!ex.offs.some(o=>Math.abs(o-d)<1)) ex.offs.push(d); }); }
+// Index spans [a,b] covered by two gridline names, one entry per panel between them.
+function subSpans(names,a,b){ const i=names.indexOf(a), j=names.indexOf(b); if(i<0||j<0||i===j) return null;
+  const out=[]; for(let k=Math.min(i,j);k<Math.max(i,j);k++) out.push([names[k],names[k+1]]); return out; }
+// A reading saved on a panel that a new gridline now splits: send each PT to the part it falls in,
+// measured from that part's gridline on the same side, so it stays in the same place on the plan.
+function splitReading(r, P){
+  const g=S.grid, H=r.fromAxis==='y', mN=H?g.yNames:g.xNames, mP=H?P.yPos:P.xPos;
+  const [ma,mb,ra,rb]=H?['ya','yb','xa','xb']:['xa','xb','ya','yb'];
+  const mS=subSpans(mN,r[ma],r[mb]), rS=subSpans(H?g.xNames:g.yNames,r[ra],r[rb]);
+  if(!mS||!rS||(mS.length===1&&rS.length===1)) return null;
+  const iF=mN.indexOf(r.from), iO=mN.indexOf(r.from===r[ma]?r[mb]:r[ma]), dir=Math.sign(iO-iF);
+  if(iF<0||!dir||(r.from!==r[ma]&&r.from!==r[mb])) return null;
+  const groups=new Map(), at=k=>Math.abs(mP[mN[k]]-mP[r.from]);
+  r.offs.forEach(d=>{ let k=iF; while(k+dir!==iO && at(k+dir)<=d+1e-6) k+=dir;
+    if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(Math.round((d-at(k))*10)/10); });
+  const out=[];
+  groups.forEach((offs,k)=>{ const a=mN[Math.min(k,k+dir)], b=mN[Math.max(k,k+dir)];
+    rS.forEach(([c,e])=>out.push({id:S.nid++, [ma]:a, [mb]:b, [ra]:c, [rb]:e, fromAxis:r.fromAxis, from:mN[k], type:r.type, offs:[...offs]})); });
+  return out;
+}
+// After the grid changes, move readings and statuses of every level off panels that were split.
+function remapToGrid(){
+  syncLevel(); const P=geo(), g=S.grid; let n=0;
+  S.levels.forEach(L=>{
+    const keep=[], add=[];
+    (L.readings||[]).forEach(r=>{ const parts=splitReading(r,P); if(parts){ n++; add.push(...parts); } else keep.push(r); });
+    add.forEach(rd=>addReading(keep,rd)); L.readings=keep;
+    const st={}; Object.entries(L.status||{}).forEach(([k,v])=>{ const [xa,xb,ya,yb]=k.split('|'), xs=subSpans(g.xNames,xa,xb), ys=subSpans(g.yNames,ya,yb);
+      if(!xs||!ys||(xs.length===1&&ys.length===1)){ st[k]=v; return; }
+      n++; xs.forEach(([a,b])=>ys.forEach(([c,e])=>{ const kk=[a,b,c,e].join('|'); if(!(kk in st)) st[kk]=v; })); });
+    L.status=st;
+  });
+  loadLevelData(curLevel()); return n;
 }
 $('#editGrid').onclick=openGrid; $('#gdSave').onclick=saveGrid; $('#gdCancel').onclick=closeGrid; $('#gdX').onclick=closeGrid;
 $('#gridDlg').addEventListener('keydown',e=>{ if(e.key==='Escape'){ e.stopPropagation(); closeGrid(); } });
