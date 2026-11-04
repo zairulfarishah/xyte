@@ -13,6 +13,8 @@ import {
 } from '../utils/siteDays'
 import DashboardBento from './DashboardBento'
 import { activeMembers } from '../utils/members'
+import { shrinkPhoto } from '../utils/photo'
+import { cachedPage, rememberPage } from '../utils/pageCache'
 import LocationPicker from '../components/LazyLocationPicker'
 
 const SITE_TYPES = [
@@ -55,7 +57,8 @@ const EMPTY_FORM = {
   site_photo_url: '',
 }
 
-async function uploadSitePhoto(file) {
+async function uploadSitePhoto(original) {
+  const file = await shrinkPhoto(original)
   const ext = file.name.split('.').pop()
   const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
   const { error } = await supabase.storage.from('site-photos').upload(path, file)
@@ -108,10 +111,10 @@ function getTrendText(value, kind = 'default') {
 export default function Dashboard() {
   const { fullName, firstName, isZairul, memberId } = useAuth()
   const { isMobile } = useViewport()
-  const [members, setMembers] = useState([])
-  const [sites, setSites] = useState([])
-  const [upcoming, setUpcoming] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [members, setMembers] = useState(() => cachedPage('dashboard')?.members || [])
+  const [sites, setSites] = useState(() => cachedPage('dashboard')?.sites || [])
+  const [upcoming, setUpcoming] = useState(() => cachedPage('dashboard')?.upcoming || [])
+  const [loading, setLoading] = useState(() => !cachedPage('dashboard'))
   const [showAdd, setShowAdd] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
@@ -120,7 +123,7 @@ export default function Dashboard() {
   const [updateSite, setUpdateSite] = useState(null)
   const [quickAssign, setQuickAssign] = useState(null)
   const [quickAssignSaving, setQuickAssignSaving] = useState(false)
-  const [leaves, setLeaves] = useState([])
+  const [leaves, setLeaves] = useState(() => cachedPage('dashboard')?.leaves || [])
 
   useEffect(() => {
     fetchAll()
@@ -144,15 +147,13 @@ export default function Dashboard() {
     return () => window.removeEventListener('xyte:leaves-updated', refreshLeaves)
   }, [])
 
+  // Refreshes in place: the spinner only shows on the very first visit
   async function fetchAll() {
-    setLoading(true)
-
-    const { data: memberData } = await supabase
-      .from('team_members')
-      .select('*')
-      .order('full_name')
-
-    const [{ data: allSites }, leaveData] = await Promise.all([
+    const [{ data: memberData }, { data: allSites }, leaveData] = await Promise.all([
+      supabase
+        .from('team_members')
+        .select('*')
+        .order('full_name'),
       supabase
         .from('sites')
         .select('*, site_assignments(assignment_role, member_id, work_date, team_members(id, full_name, avatar_url))')
@@ -177,6 +178,7 @@ export default function Dashboard() {
     setUpcoming(upcomingSites)
     setLeaves(leaveData || [])
     setLoading(false)
+    rememberPage('dashboard', { members: memberRecords, sites: siteList, upcoming: upcomingSites, leaves: leaveData || [] })
   }
 
   function getUnavailableAssignments(memberIds, date) {

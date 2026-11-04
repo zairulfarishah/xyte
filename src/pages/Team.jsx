@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { supabase } from '../supabase'
+import { cachedPage, rememberPage } from '../utils/pageCache'
 import { useAuth } from '../context/AuthContext'
 import { fetchTeamLeaves, isOffDay, leaveAbbr } from '../utils/teamLeaves'
 import { publicHolidayName } from '../utils/holidays'
@@ -38,7 +39,7 @@ const initialsOf = m => (m.full_name || '?').split(' ').filter(Boolean).map(p =>
 function Avatar({ m, size = 40 }) {
   return (
     <div className="tm-av" style={{ width: size, height: size, fontSize: size * 0.36, background: m.color }}>
-      {m.avatar_url ? <img src={m.avatar_url} alt="" /> : initialsOf(m)}
+      {m.avatar_url ? <img src={m.avatar_url} alt="" loading="lazy" decoding="async" /> : initialsOf(m)}
     </div>
   )
 }
@@ -56,10 +57,10 @@ export default function Team() {
   const view = VIEWS.some(v => v.key === params.get('view')) ? params.get('view') : 'roster'
   const setView = key => setParams(key === 'roster' ? {} : { view: key }, { replace: true })
 
-  const [rawMembers, setRawMembers] = useState([])
-  const [sites, setSites]           = useState([])
-  const [leaves, setLeaves]         = useState([])
-  const [loading, setLoading]       = useState(true)
+  const [rawMembers, setRawMembers] = useState(() => cachedPage('team')?.members || [])
+  const [sites, setSites]           = useState(() => cachedPage('team')?.sites || [])
+  const [leaves, setLeaves]         = useState(() => cachedPage('team')?.leaves || [])
+  const [loading, setLoading]       = useState(() => !cachedPage('team'))
   const [openId, setOpenId]         = useState(null)
 
   const today = isoOf(new Date())
@@ -80,6 +81,7 @@ export default function Team() {
     setSites(siteData || [])
     setLeaves(leaveData || [])
     setLoading(false)
+    rememberPage('team', { members: activeMembers(memberData), sites: siteData || [], leaves: leaveData || [] })
   }
 
   useEffect(() => {

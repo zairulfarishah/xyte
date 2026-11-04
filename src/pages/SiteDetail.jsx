@@ -6,6 +6,7 @@ import { getSiteHeaderImage } from '../utils/siteHeader'
 import { parseCompletionMeta } from '../utils/completionMeta'
 import { useViewport } from '../utils/useViewport'
 import { SiteFeedPosts } from '../components/FeedWidgets'
+import { shrinkPhoto } from '../utils/photo'
 import {
   crewForDate, formatDayLabel, getSiteDates, hasDailyCrew, isPic,
   memberDatesOnSite, picForDate, uniqueAssignments,
@@ -118,7 +119,8 @@ export default function SiteDetail() {
     const files = Array.from(e.target.files)
     if (!files.length) return
     setUploading(true)
-    for (const file of files) {
+    for (const original of files) {
+      const file = await shrinkPhoto(original)
       const ext  = file.name.split('.').pop()
       const path = `${id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
       await supabase.storage.from('site-photos').upload(path, file)
@@ -246,7 +248,7 @@ export default function SiteDetail() {
               <div style={{ padding: '16px', display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : isTablet ? 'repeat(3, 1fr)' : 'repeat(4, 1fr)', gap: '10px' }}>
                 {photos.map(photo => (
                   <div key={photo.name} style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', aspectRatio: '4/3', background: '#f1f5f9' }}>
-                    <img src={photo.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    <img src={photo.url} alt="" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                     <button
                       onClick={() => handleDeletePhoto(photo.name)}
                       style={{ position: 'absolute', top: '6px', right: '6px', width: '22px', height: '22px', borderRadius: '50%', background: 'rgba(0,0,0,0.6)', border: 'none', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}

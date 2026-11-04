@@ -18,6 +18,7 @@ import { useViewport } from '../utils/useViewport'
 import { buildAssignmentMessage, buildSitesBrief, openWhatsApp, openWhatsAppShare, shortNameOf } from '../utils/whatsapp'
 import { getSiteTitle } from '../utils/siteTitle'
 import { isActiveMember } from '../utils/members'
+import { shrinkPhoto } from '../utils/photo'
 import {
   assignmentMemberId, assignmentsForDate, crewForDate, getSiteDates, hasDailyCrew,
   isPic, picForDate, siteCrew, sitePic, uniqueAssignments,
@@ -220,7 +221,7 @@ function MemberAvatar({ member, index = 0, className = '' }) {
   const initials = name.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0,2).toUpperCase() || '?'
   return (
     <span className={`ss-av ${className}`} title={name} style={{ '--c':AVATAR_COLORS[Math.max(0, index) % AVATAR_COLORS.length] }}>
-      {member?.avatar_url ? <img src={member.avatar_url} alt={name} /> : initials}
+      {member?.avatar_url ? <img src={member.avatar_url} alt={name} loading="lazy" decoding="async" /> : initials}
     </span>
   )
 }
@@ -244,25 +245,6 @@ function getPageNumbers(current, total, siblingCount = 1) {
     return [1, '…', ...Array.from({ length: total - start + 1 }, (_, i) => start + i)]
   }
   return [1, '…', ...Array.from({ length: right - left + 1 }, (_, i) => left + i), '…', total]
-}
-
-// Phone photos are often several MB; scale down to 1600px JPEG so the upload is quick.
-async function shrinkPhoto(file, maxSide = 1600) {
-  if (!file.type.startsWith('image/') || file.type === 'image/gif' || file.size < 400 * 1024) return file
-  try {
-    const bitmap = await createImageBitmap(file)
-    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height))
-    const canvas = document.createElement('canvas')
-    canvas.width = Math.round(bitmap.width * scale)
-    canvas.height = Math.round(bitmap.height * scale)
-    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height)
-    bitmap.close?.()
-    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.82))
-    if (!blob || blob.size >= file.size) return file
-    return new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' })
-  } catch {
-    return file
-  }
 }
 
 async function uploadSitePhoto(original) {

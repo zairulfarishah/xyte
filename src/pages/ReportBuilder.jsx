@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { useViewport } from '../utils/useViewport'
+import { shrinkPhoto } from '../utils/photo'
 import { Plus, Trash2, ArrowLeft, Printer, X, AlertTriangle, Upload, ChevronRight, Check } from 'lucide-react'
 
 const TEAL = '#00b8cc'
@@ -174,10 +175,11 @@ function ImageUploader({ value, onChange, reportId }) {
   const [uploading, setUploading] = useState(false)
 
   async function handleFile(e) {
-    const file = e.target.files[0]
-    if (!file) return
+    const picked = e.target.files[0]
+    if (!picked) return
     setUploading(true)
     try {
+      const file = await shrinkPhoto(picked)
       const ext = file.name.split('.').pop()
       const path = `${reportId}/${uid()}.${ext}`
       const { error } = await supabase.storage.from('report-images').upload(path, file)

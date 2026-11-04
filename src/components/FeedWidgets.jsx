@@ -41,7 +41,7 @@ export function PinnedFeedCard() {
           const image = (post.attachments || []).find(isImageAttachment)
           return (
             <Link key={post.id} to="/feed" style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', textDecoration: 'none', color: 'inherit', paddingTop: i ? '10px' : 0, borderTop: i ? '1px solid #f1f5f9' : 'none' }}>
-              {image && <img src={feedPublicUrl(image.path)} alt="" style={{ width: '56px', height: '56px', borderRadius: '10px', objectFit: 'cover', flexShrink: 0 }} />}
+              {image && <img src={feedPublicUrl(image.path)} alt="" loading="lazy" decoding="async" style={{ width: '56px', height: '56px', borderRadius: '10px', objectFit: 'cover', flexShrink: 0 }} />}
               <div style={{ minWidth: 0, flex: 1 }}>
                 <p style={{ fontSize: '14px', color: '#0f172a', fontWeight: '600', lineHeight: 1.45, whiteSpace: 'pre-wrap', ...clamp(2) }}>{post.body || (image ? 'Shared a photo' : 'Shared a file')}</p>
                 <p style={{ fontSize: '11.5px', color: '#94a3b8', marginTop: '3px' }}>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { MapContainer, TileLayer, Marker, Tooltip } from 'react-leaflet'
 import L from 'leaflet'
 import { supabase } from '../supabase'
+import { cachedPage, rememberPage } from '../utils/pageCache'
 import { Search } from 'lucide-react'
 import PlaceSearchBox from '../components/PlaceSearchBox'
 import SitesViewSwitch from '../components/SitesViewSwitch'
@@ -43,18 +44,17 @@ const TABS = ['All','Upcoming','Ongoing','Completed','Cancelled','Postponed']
 
 export default function MapView() {
   const { isMobile, isTablet } = useViewport()
-  const [sites, setSites]       = useState([])
+  const [sites, setSites]       = useState(() => cachedPage('map') || [])
   const [selected, setSelected] = useState(null)
   const [tab, setTab]           = useState('All')
   const [search, setSearch]     = useState('')
   const [placeQuery, setPlaceQuery] = useState('')
   const [placeResult, setPlaceResult] = useState(null)
-  const [loading, setLoading]   = useState(true)
+  const [loading, setLoading]   = useState(() => !cachedPage('map'))
 
   useEffect(() => { fetchSites() }, [])
 
   async function fetchSites() {
-    setLoading(true)
     const { data } = await supabase
       .from('sites')
       .select(`*, site_assignments(assignment_role, work_date, member_id, team_members(full_name))`)
@@ -62,6 +62,7 @@ export default function MapView() {
       .order('scheduled_date', { ascending: true })
     setSites(data || [])
     setLoading(false)
+    if (data) rememberPage('map', data)
   }
 
   const filtered = sites

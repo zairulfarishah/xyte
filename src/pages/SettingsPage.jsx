@@ -13,6 +13,7 @@ import { toast } from '../utils/toast'
 import { formatPhoneDisplay, isValidPhone, normalizePhone } from '../utils/whatsapp'
 import { activeMembers, isActiveMember } from '../utils/members'
 import NotificationSettings from '../components/NotificationSettings'
+import { shrinkPhoto } from '../utils/photo'
 import './Settings.css'
 
 const TABS = [
@@ -78,7 +79,7 @@ function Avatar({ m, size = 40, onUpload = null, uploading = false }) {
       title={onUpload ? 'Change photo' : undefined}
       style={{ width: size, height: size, fontSize: size * 0.36, background: m?.color || '#64748b' }}
     >
-      {m?.avatar_url ? <img src={m.avatar_url} alt="" /> : initials}
+      {m?.avatar_url ? <img src={m.avatar_url} alt="" loading="lazy" decoding="async" /> : initials}
       {onUpload && (
         <div className={`cam${uploading ? ' busy' : ''}`}>
           {uploading
@@ -197,9 +198,11 @@ function MembersTab({ members, setRawMembers }) {
     if (!file.type.startsWith('image/')) { setNotice({ tone: 'err', text: 'Please choose an image file.' }); return }
     setUploading(memberId)
     try {
+      // Avatars only ever show small, so 512px is plenty
+      const photo = await shrinkPhoto(file, 512)
       // Unique filename per upload avoids the CDN serving the cached old photo
-      const fileName = `${memberId}_${Date.now()}.${file.name.split('.').pop()}`
-      const { error: upErr } = await supabase.storage.from('team-avatars').upload(fileName, file)
+      const fileName = `${memberId}_${Date.now()}.${photo.name.split('.').pop()}`
+      const { error: upErr } = await supabase.storage.from('team-avatars').upload(fileName, photo)
       if (upErr) throw new Error(upErr.message)
       const avatarUrl = supabase.storage.from('team-avatars').getPublicUrl(fileName).data?.publicUrl
       const { error } = await supabase.from('team_members').update({ avatar_url: avatarUrl }).eq('id', memberId)

@@ -33,7 +33,7 @@ function getGreeting() {
 function Avatar({ m, size = 30 }) {
   return (
     <span className="db-av" title={m?.full_name} style={{ width: size, height: size, fontSize: size * 0.36, background: m?.color || '#64748b' }}>
-      {m?.avatar_url ? <img src={m.avatar_url} alt="" /> : initials(m)}
+      {m?.avatar_url ? <img src={m.avatar_url} alt="" loading="lazy" decoding="async" /> : initials(m)}
     </span>
   )
 }

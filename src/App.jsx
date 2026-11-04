@@ -9,6 +9,7 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import { useViewport } from './utils/useViewport'
 import { PushToggle, PushPrompt } from './components/PushControls'
 import Toaster from './components/Toaster'
+import { clearPageCache } from './utils/pageCache'
 import './components/ui.css'
 
 const LoginPage = lazy(() => import('./pages/LoginPage'))
@@ -39,6 +40,8 @@ const PREFETCH = [
   () => import('./pages/Sites'), () => import('./pages/SiteDetail'), () => import('./pages/Calendar'),
   () => import('./pages/Schedule'), () => import('./pages/Team'), () => import('./pages/Feed'),
   () => import('./pages/BreakRoom'), () => import('./pages/Claim'), () => import('./pages/Reports'),
+  () => import('./pages/Dashboard'), () => import('./pages/MapView'), () => import('./pages/Task'),
+  () => import('./pages/Library'), () => import('./pages/SettingsPage'),
 ]
 function usePrefetchPages(user) {
   useEffect(() => {
@@ -439,6 +442,7 @@ function AppShell() {
 
   async function handleSignOut() {
     await supabase.auth.signOut()
+    clearPageCache()
   }
 
   function handleOpenAddSite() {

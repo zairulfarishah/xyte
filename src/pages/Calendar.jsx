@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { supabase } from '../supabase'
+import { cachedPage, rememberPage } from '../utils/pageCache'
 import { ChevronLeft, ChevronRight, SlidersHorizontal } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useViewport } from '../utils/useViewport'
@@ -103,7 +104,10 @@ export default function CalendarPage() {
   }
 
   async function fetchSites() {
-    setLoading(true)
+    const key = `calendar:${year}-${month}`
+    const seen = cachedPage(key)
+    // A month seen before shows straight away; the fresh copy replaces it when it arrives
+    if (seen) { setSites(seen); setLoading(false) } else setLoading(true)
     const from = `${year}-${String(month + 1).padStart(2, '0')}-01`
     const last = new Date(year, month + 1, 0).getDate()
     const to   = `${year}-${String(month + 1).padStart(2, '0')}-${String(last).padStart(2, '0')}`
@@ -117,6 +121,7 @@ export default function CalendarPage() {
       .order('scheduled_date')
     setSites(data || [])
     setLoading(false)
+    if (data) rememberPage(key, data)
   }
 
   const days = useMemo(() => {
@@ -410,6 +415,8 @@ export default function CalendarPage() {
                               <img
                                 src={site.site_photo_url}
                                 alt=""
+                                loading="lazy"
+                                decoding="async"
                                 style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }}
                               />
                             )}

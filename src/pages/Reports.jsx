@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabase'
+import { cachedPage, rememberPage } from '../utils/pageCache'
 import { FileText, CheckCircle, Clock, AlertCircle, Search, MinusCircle } from 'lucide-react'
 import { notify } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
@@ -38,7 +39,7 @@ function Avatar({ name, size = 28, index = 0, avatarUrl = null }) {
   const initials = name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?'
   return (
     <div style={{ width:size, height:size, borderRadius:'50%', flexShrink:0, overflow:'hidden', background: avatarUrl ? '#0f172a' : AV_COLORS[index % AV_COLORS.length], display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontWeight:'700', fontSize:size*0.36 }}>
-      {avatarUrl ? <img src={avatarUrl} alt={name} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : initials}
+      {avatarUrl ? <img src={avatarUrl} alt={name} loading="lazy" decoding="async" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : initials}
     </div>
   )
 }
@@ -56,9 +57,9 @@ function StatusPill({ status, meta }) {
 export default function Reports() {
   const { isZairul, fullName } = useAuth()
   const { isMobile } = useViewport()
-  const [sites, setSites]         = useState([])
-  const [members, setMembers]     = useState([])
-  const [loading, setLoading]     = useState(true)
+  const [sites, setSites]         = useState(() => cachedPage('reports')?.sites || [])
+  const [members, setMembers]     = useState(() => cachedPage('reports')?.members || [])
+  const [loading, setLoading]     = useState(() => !cachedPage('reports'))
   const [tab, setTab]             = useState('All')
   const [search, setSearch]       = useState('')
   const [page, setPage]           = useState(1)
@@ -69,7 +70,6 @@ export default function Reports() {
   useEffect(() => { fetchAll() }, [])
 
   async function fetchAll() {
-    setLoading(true)
     const [{ data: s }, { data: m }] = await Promise.all([
       supabase.from('sites')
         .select(`*, site_assignments(assignment_role, work_date, member_id, team_members(id, full_name, avatar_url))`)
@@ -80,6 +80,7 @@ export default function Reports() {
     setSites(s || [])
     setMembers(m || [])
     setLoading(false)
+    rememberPage('reports', { sites: s || [], members: m || [] })
   }
 
   async function updateReportStatus(siteId, newStatus) {

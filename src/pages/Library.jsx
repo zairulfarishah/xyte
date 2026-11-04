@@ -1,6 +1,7 @@
 import { activeMembers, isActiveMember } from '../utils/members'
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../supabase'
+import { cachedPage, rememberPage } from '../utils/pageCache'
 import { useAuth } from '../context/AuthContext'
 import { Download, Upload, ChevronRight, ChevronUp, FileText, Folder, X, Trash2, Eye, Plus } from 'lucide-react'
 import { useViewport } from '../utils/useViewport'
@@ -90,14 +91,14 @@ export default function Library() {
   const { isZairul, memberId: myMemberId } = useAuth()
   const { isMobile } = useViewport()
 
-  const [docs, setDocs]                       = useState([])
-  const [members, setMembers]                 = useState([])
-  const [loading, setLoading]                 = useState(true)
+  const [docs, setDocs]                       = useState(() => cachedPage('library')?.docs || [])
+  const [members, setMembers]                 = useState(() => cachedPage('library')?.members || [])
+  const [loading, setLoading]                 = useState(() => !cachedPage('library'))
   const [selected, setSelected]               = useState(SECTIONS[0].key)
   const [dragOver, setDragOver]               = useState(false)
   const [modalDragOver, setModalDragOver]     = useState(false)
-  const [customSections, setCustomSections]   = useState([])
-  const [customFormSubs, setCustomFormSubs]   = useState([])
+  const [customSections, setCustomSections]   = useState(() => cachedPage('library')?.custom || [])
+  const [customFormSubs, setCustomFormSubs]   = useState(() => cachedPage('library')?.formSubs || [])
 
   const [showUpload, setShowUpload]           = useState(false)
   const [uploading, setUploading]             = useState(false)
@@ -154,6 +155,7 @@ export default function Library() {
     setCustomSections(custom)
     setCustomFormSubs(formSubs)
     setLoading(false)
+    rememberPage('library', { docs: d || [], members: m || [], custom, formSubs })
   }
 
   function openUploadFor(sectionKey, subcat = '', forceMemberId = null, dropped = []) {

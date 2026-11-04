@@ -3,6 +3,7 @@ import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { useViewport } from '../utils/useViewport'
 import { notify, notifyAdmin } from '../utils/notify'
+import { shrinkPhoto } from '../utils/photo'
 import { Plus, X, Check, Trash2, Paperclip, Receipt, Wallet, Clock, CircleCheck, Ban } from 'lucide-react'
 
 // 'mileage' is kept here only so older claims still show a proper label — new
@@ -106,9 +107,11 @@ export default function ExpenseClaims() {
 
     let receipt_path = null
     if (receipt) {
-      const safe = receipt.name.replace(/[^\w.-]/g, '_')
+      // A little larger than site photos so small print on receipts stays readable
+      const file = await shrinkPhoto(receipt, 2000)
+      const safe = file.name.replace(/[^\w.-]/g, '_')
       const path = `${memberId}/${Date.now()}-${safe}`
-      const { error: upErr } = await supabase.storage.from('claim-receipts').upload(path, receipt)
+      const { error: upErr } = await supabase.storage.from('claim-receipts').upload(path, file)
       if (upErr) { setFormError(`Receipt upload failed: ${upErr.message}`); setSaving(false); return }
       receipt_path = path
     }

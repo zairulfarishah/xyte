@@ -1,6 +1,7 @@
 import { activeMembers } from '../utils/members'
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../supabase'
+import { cachedPage, rememberPage } from '../utils/pageCache'
 import { useAuth } from '../context/AuthContext'
 import { useViewport } from '../utils/useViewport'
 import { Plus, Trash2, Check, X, Calendar } from 'lucide-react'
@@ -25,9 +26,9 @@ const input  = { width: '100%', padding: '9px 12px', borderRadius: '8px', border
 export default function TaskPage() {
   const { memberId } = useAuth()
   const { isMobile } = useViewport()
-  const [members, setMembers] = useState([])
-  const [tasks, setTasks]     = useState([])
-  const [loading, setLoading] = useState(true)
+  const [members, setMembers] = useState(() => cachedPage('tasks')?.members || [])
+  const [tasks, setTasks]     = useState(() => cachedPage('tasks')?.tasks || [])
+  const [loading, setLoading] = useState(() => !cachedPage('tasks'))
   const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState({ title: '', description: '', priority: 'medium', due_date: '', assignees: [] })
   const [saving, setSaving]     = useState(false)
@@ -37,7 +38,6 @@ export default function TaskPage() {
   useEffect(() => { fetchAll() }, [])
 
   async function fetchAll() {
-    setLoading(true)
     const [{ data: m }, { data: t }] = await Promise.all([
       supabase.from('team_members').select('id, full_name, short_name, avatar_url, is_hidden').order('full_name'),
       supabase.from('tasks')
@@ -47,6 +47,7 @@ export default function TaskPage() {
     setMembers(activeMembers(m))
     setTasks(t || [])
     setLoading(false)
+    rememberPage('tasks', { members: activeMembers(m), tasks: t || [] })
   }
 
   function toggleAssignee(id) {

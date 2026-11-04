@@ -8,7 +8,7 @@ export function Avatar({ m, name, size }) {
   const label = m?.full_name || name
   return (
     <span className="mk-av" style={{ '--c': avatarColor(m?.id || name), ...(size ? { width: size, height: size } : {}) }} title={label}>
-      {m?.avatar_url ? <img src={m.avatar_url} alt="" /> : initials(label)}
+      {m?.avatar_url ? <img src={m.avatar_url} alt="" loading="lazy" decoding="async" /> : initials(label)}
     </span>
   )
 }

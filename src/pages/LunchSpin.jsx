@@ -17,7 +17,7 @@ const tickets = idea => Math.max(1, (idea.backers || []).length)
 function Avatar({ m, name }) {
   return (
     <span className="mk-av" style={{ '--c': avatarColor(m?.id || name) }} title={m?.full_name || name}>
-      {m?.avatar_url ? <img src={m.avatar_url} alt="" /> : initials(m?.full_name || name)}
+      {m?.avatar_url ? <img src={m.avatar_url} alt="" loading="lazy" decoding="async" /> : initials(m?.full_name || name)}
     </span>
   )
 }

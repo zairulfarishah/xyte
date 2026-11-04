@@ -2,10 +2,12 @@ import { activeMembers, isActiveMember } from '../utils/members'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../supabase'
+import { cachedPage, rememberPage } from '../utils/pageCache'
 import { useAuth } from '../context/AuthContext'
 import { useViewport } from '../utils/useViewport'
 import { notify, notifyMany } from '../utils/notify'
 import { undoableDelete } from '../utils/toast'
+import { shrinkPhoto } from '../utils/photo'
 import {
   FEED_BUCKET, feedPublicUrl, isImageAttachment, notExpiredFilter, isExpired,
   timeAgo, fmtDateTime, fmtShortDate, expiryFromDate, dateFromExpiry,
@@ -130,7 +132,7 @@ function Avatar({ person, name, size = 36 }) {
   return (
     <div style={{ width: size, height: size, borderRadius: '50%', background: '#1d4ed8', color: 'white', flexShrink: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.32, fontWeight: '700' }}>
       {person?.avatar_url
-        ? <img src={person.avatar_url} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        ? <img src={person.avatar_url} alt={name} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         : initials}
     </div>
   )
@@ -191,7 +193,8 @@ function Composer({ members, sites, onPosted, onClose }) {
 
     const attachments = []
     const cleanup = () => attachments.length && supabase.storage.from(FEED_BUCKET).remove(attachments.map(a => a.path))
-    for (const file of files) {
+    for (const original of files) {
+      const file = await shrinkPhoto(original)
       const safe = file.name.replace(/[^\w.-]/g, '_')
       const path = `${memberId}/${Date.now()}-${safe}`
       const { error: upErr } = await supabase.storage.from(FEED_BUCKET).upload(path, file)
@@ -662,12 +665,14 @@ function PostCard({ post, comments, reactions, members, sites, onChange, onToggl
 export default function Feed() {
   const { memberId, isZairul } = useAuth()
   const { isMobile } = useViewport()
-  const [posts, setPosts] = useState([])
-  const [comments, setComments] = useState([])
-  const [reactions, setReactions] = useState([])
-  const [members, setMembers] = useState([])
-  const [sites, setSites] = useState([])
-  const [loading, setLoading] = useState(true)
+  // The default view (first page, no search) is kept for the session so the feed opens instantly
+  const seen = cachedPage('feed')
+  const [posts, setPosts] = useState(() => seen?.posts || [])
+  const [comments, setComments] = useState(() => seen?.comments || [])
+  const [reactions, setReactions] = useState(() => seen?.reactions || [])
+  const [members, setMembers] = useState(() => seen?.members || [])
+  const [sites, setSites] = useState(() => seen?.sites || [])
+  const [loading, setLoading] = useState(() => !seen)
   const [loadingMore, setLoadingMore] = useState(false)
   const [setupError, setSetupError] = useState(null)
   const [limit, setLimit] = useState(PAGE)
@@ -685,6 +690,7 @@ export default function Feed() {
     ]).then(([{ data: m }, { data: s }]) => {
       setMembers(m || [])
       setSites(s || [])
+      rememberPage('feed', { ...cachedPage('feed'), members: m || [], sites: s || [] })
     })
   }, [])
 
@@ -726,6 +732,9 @@ export default function Feed() {
       setHasMore((p || []).length === limit)
       setLoading(false)
       setLoadingMore(false)
+      if (!error && limit === PAGE && !search && !showExpired) {
+        rememberPage('feed', { ...cachedPage('feed'), posts: p || [], comments: c || [], reactions: r || [] })
+      }
     })
     return () => { cancelled = true }
   }, [limit, search, showExpired, refreshKey])
