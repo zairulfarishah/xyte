@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import {
   AppWindow, BrickWall, Copy, DoorOpen, FilePlus2, FolderOpen, Hand, Maximize, MousePointer2, Plus, Redo2, Ruler, Save,
-  Square, SquareDashed, Trash2, Type, Undo2, Grid3x3, RectangleHorizontal,
+  Square, SquareDashed, Trash2, Type, Undo2, Grid3x3, RectangleHorizontal, Box,
 } from 'lucide-react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
@@ -15,6 +15,7 @@ import { newPlan, newLevel, activeLevel, updateLevel, updateItems, uid, planStat
 // Layout: draw a floor plan in 2D (walls, rooms/slabs, columns, doors, windows,
 // dimensions, labels) over a blank grid or an imported PDF/image. Work in progress
 // is kept in this browser; Save puts it in Xyte for the team (sql/setup-layouts.sql).
+const View3D = lazy(() => import('./layout/View3D'))   // three.js loads only when 3D is opened
 const DRAFT_KEY = 'xyte.layout.draft'   // { plan, link } — the layout open in this browser
 
 const readDraft = () => { try { return JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null') } catch { return null } }
@@ -45,6 +46,7 @@ export default function Layout() {
   const [link, setLink] = useState(start?.link || null)       // { id, name, updated_at, dirty } when saved in Xyte
   const cleanRef = useRef(plan)                                // the plan as last opened / saved
   const [tool, setTool] = useState('select')
+  const [mode, setMode] = useState('2d')                       // '2d' drawing or '3d' view
   const [sel, setSel] = useState(null)
   const [fitSignal, setFitSignal] = useState(0)
   const [busy, setBusy] = useState(false)
@@ -303,12 +305,18 @@ export default function Layout() {
         <button style={S.btn} onClick={() => addLevel(true)} title="Add a level on top with a copy of everything on this one"><Copy size={14} /> Copy level</button>
         {plan.levels.length > 1 && <button style={{ ...S.iconBtn, color: '#dc2626' }} onClick={deleteLevel} title="Delete this level" aria-label="Delete level"><Trash2 size={15} /></button>}
         <span style={{ flex: 1 }} />
-        <button style={S.btn} onClick={() => setFitSignal(n => n + 1)} title="Zoom to fit"><Maximize size={14} /> Fit</button>
+        {mode === '2d' && <button style={S.btn} onClick={() => setFitSignal(n => n + 1)} title="Zoom to fit"><Maximize size={14} /> Fit</button>}
+        <div style={S.seg} role="group" aria-label="View">
+          <button style={{ ...S.segBtn, ...(mode === '2d' ? S.segOn : null) }} aria-pressed={mode === '2d'} onClick={() => setMode('2d')}>2D</button>
+          <button style={{ ...S.segBtn, ...(mode === '3d' ? S.segOn : null) }} aria-pressed={mode === '3d'} onClick={() => { setMode('3d'); setTool('select') }}>
+            <Box size={14} /> 3D
+          </button>
+        </div>
       </div>
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         {/* tools */}
-        <div style={S.rail}>
+        {mode === '2d' && <div style={S.rail}>
           {TOOLS.map(t => (
             <button key={t.id} onClick={() => setTool(t.id)} title={`${t.label} (${t.key})`} aria-label={t.label} aria-pressed={tool === t.id}
               style={{ ...S.tool, ...(tool === t.id ? S.toolOn : null) }}>
@@ -316,13 +324,21 @@ export default function Layout() {
               <span style={{ fontSize: '10px' }}>{t.label}</span>
             </button>
           ))}
-        </div>
+        </div>}
 
         {/* canvas */}
         <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
-          <Canvas2D plan={plan} tool={tool} setTool={setTool} sel={sel} setSel={setSel} update={update} undo={undo} redo={redo}
-            fitSignal={fitSignal} ask={ask} onGridAt={setGridAt} />
-          {hint && <div style={S.hint}>{hint}</div>}
+          {mode === '2d' ? (
+            <>
+              <Canvas2D plan={plan} tool={tool} setTool={setTool} sel={sel} setSel={setSel} update={update} undo={undo} redo={redo}
+                fitSignal={fitSignal} ask={ask} onGridAt={setGridAt} />
+              {hint && <div style={S.hint}>{hint}</div>}
+            </>
+          ) : (
+            <Suspense fallback={<div style={{ ...S.hint, top: '10px', bottom: 'auto' }}>Loading 3D…</div>}>
+              <View3D plan={plan} />
+            </Suspense>
+          )}
         </div>
 
         {/* properties */}
@@ -353,13 +369,16 @@ const S = {
   name: { fontSize: '14px', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   btn: { display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '5px 10px', fontSize: '13px', fontWeight: 600, borderRadius: '7px',
     border: '1px solid #cbd5e1', background: '#fff', color: '#334155', cursor: 'pointer', whiteSpace: 'nowrap' },
-  primary: { background: '#2563eb', borderColor: '#2563eb', color: '#fff' },
+  primary: { background: '#2563eb', border: '1px solid #2563eb', color: '#fff' },
   iconBtn: { display: 'inline-flex', padding: '6px', background: 'transparent', border: 0, color: '#334155', cursor: 'pointer', borderRadius: '6px' },
   sep: { width: '1px', height: '20px', background: '#e2e8f0', margin: '0 4px' },
   select: { padding: '5px 8px', fontSize: '13px', border: '1px solid #cbd5e1', borderRadius: '7px', background: '#fff', color: '#0f172a' },
+  seg: { display: 'inline-flex', border: '1px solid #cbd5e1', borderRadius: '8px', overflow: 'hidden', background: '#fff' },
+  segBtn: { display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '5px 14px', fontSize: '13px', fontWeight: 700, border: 0, background: 'transparent', color: '#475569', cursor: 'pointer' },
+  segOn: { background: '#2563eb', color: '#fff' },
   rail: { width: '64px', flexShrink: 0, borderRight: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '2px', padding: '6px 4px', overflowY: 'auto' },
   tool: { display: 'grid', justifyItems: 'center', gap: '2px', padding: '7px 2px', border: '1px solid transparent', borderRadius: '8px', background: 'transparent', color: '#475569', cursor: 'pointer' },
-  toolOn: { background: '#eff6ff', borderColor: '#93c5fd', color: '#1d4ed8' },
+  toolOn: { background: '#eff6ff', border: '1px solid #93c5fd', color: '#1d4ed8' },
   side: { width: '270px', flexShrink: 0, borderLeft: '1px solid #e2e8f0', background: '#fff', overflowY: 'auto' },
   hint: { position: 'absolute', left: '10px', bottom: '10px', maxWidth: 'calc(100% - 20px)', padding: '6px 10px', fontSize: '12.5px', color: '#334155',
     background: 'rgba(255,255,255,.92)', border: '1px solid #e2e8f0', borderRadius: '8px', pointerEvents: 'none' },

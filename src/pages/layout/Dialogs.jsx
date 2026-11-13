@@ -166,7 +166,7 @@ export function ProjectList({ current, busy, onOpen, onClose, onDeleted }) {
       {rows && !shown.length && <p style={S.note}>{rows.length ? 'No layout matches.' : 'No layouts yet. Use Save to add the one you are drawing.'}</p>}
       <div style={{ display: 'grid', gap: '6px', maxHeight: '60vh', overflowY: 'auto' }}>
         {shown.map(r => (
-          <div key={r.id} style={{ ...S.row, ...(r.id === current ? { borderColor: '#2563eb', background: '#eff6ff' } : null) }}>
+          <div key={r.id} style={{ ...S.row, ...(r.id === current ? { border: '1px solid #2563eb', background: '#eff6ff' } : null) }}>
             <button onClick={() => onOpen(r)} disabled={busy} style={S.rowMain}>
               <b style={{ fontSize: '14px', color: '#0f172a' }}>{r.name}{r.id === current ? ' · open' : ''}</b>
               <span style={{ fontSize: '12px', color: '#64748b' }}>
@@ -191,7 +191,7 @@ const S = {
   err: { color: '#dc2626', fontSize: '13px', marginRight: 'auto' },
   btn: { display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '5px 10px', fontSize: '13px', fontWeight: 600, borderRadius: '7px',
     border: '1px solid #cbd5e1', background: '#fff', color: '#334155', cursor: 'pointer', whiteSpace: 'nowrap' },
-  primary: { background: '#2563eb', borderColor: '#2563eb', color: '#fff' },
+  primary: { background: '#2563eb', border: '1px solid #2563eb', color: '#fff' },
   row: { display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid #e2e8f0', borderRadius: '8px', paddingRight: '4px' },
   rowMain: { flex: 1, minWidth: 0, display: 'grid', gap: '2px', textAlign: 'left', padding: '8px 10px', background: 'transparent', border: 0, cursor: 'pointer' },
   icon: { display: 'inline-flex', padding: '6px', background: 'transparent', border: 0, color: '#64748b', cursor: 'pointer', borderRadius: '6px' },

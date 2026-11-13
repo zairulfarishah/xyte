@@ -252,7 +252,7 @@ const S = {
   hint: { margin: 0, fontSize: '12px', color: '#64748b', lineHeight: 1.45 },
   btn: { display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 9px', fontSize: '12.5px', fontWeight: 600, borderRadius: '7px',
     border: '1px solid #cbd5e1', background: '#fff', color: '#334155', cursor: 'pointer' },
-  on: { background: '#eff6ff', borderColor: '#2563eb', color: '#1d4ed8' },
+  on: { background: '#eff6ff', border: '1px solid #2563eb', color: '#1d4ed8' },
   iconBtn: { display: 'inline-flex', padding: '5px', background: 'transparent', border: 0, color: '#dc2626', cursor: 'pointer', borderRadius: '6px' },
 }
 
