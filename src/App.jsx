@@ -2,7 +2,7 @@ import { lazy, Suspense, useState, useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import {
   Search, Bell, X, MapPin, Users, Plus, LogOut, Home, Clock, MessageSquare,
-  FileText, Receipt, CheckSquare, FolderOpen, BarChart3, Settings, LayoutGrid, Coffee, Sparkles, Cable, Crosshair,
+  FileText, Receipt, CheckSquare, FolderOpen, BarChart3, Settings, LayoutGrid, Coffee, Sparkles, Cable, Crosshair, LayoutTemplate,
 } from 'lucide-react'
 import { supabase } from './supabase'
 import { AuthProvider, useAuth } from './context/AuthContext'
@@ -31,6 +31,7 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const ReportBuilder = lazy(() => import('./pages/ReportBuilder'))
 const PtMapper = lazy(() => import('./pages/PtMapper'))
 const ScanMarker = lazy(() => import('./pages/ScanMarker'))
+const Layout = lazy(() => import('./pages/Layout'))
 const Feed = lazy(() => import('./pages/Feed'))
 const BreakRoom = lazy(() => import('./pages/BreakRoom'))
 const FiveS = lazy(() => import('./pages/FiveS'))
@@ -81,6 +82,7 @@ const NAV = [
     items: [
       { to: '/pt-mapper', label: 'PT Mapper', Icon: Cable },
       { to: '/scan-points', label: 'Scan Points', Icon: Crosshair },
+      { to: '/layout', label: 'Layout', Icon: LayoutTemplate },
     ],
   },
   {
@@ -683,6 +685,7 @@ function AppShell() {
             <Route path="/report-builder" element={<ReportBuilder />} />
             <Route path="/pt-mapper" element={<PtMapper />} />
             <Route path="/scan-points" element={<ScanMarker />} />
+            <Route path="/layout" element={<Layout />} />
           </Routes>
         </Suspense>
       </main>
