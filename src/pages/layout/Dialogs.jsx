@@ -4,6 +4,7 @@ import { supabase } from '../../supabase'
 import { undoableDelete } from '../../utils/toast'
 import { TABLE, BUCKET, SELECT, who, when } from './store'
 import { parseSpacings, colName, rowName } from './geometry'
+import { detailGroups } from './details'
 
 
 export function Modal({ title, onClose, wide, children }) {
@@ -166,6 +167,8 @@ export function ScanProjectPicker({ onPick, onClose }) {
 // CAD export: the level on screen, or every level side by side in one file.
 export function ExportDialog({ plan, levelId, onExport, onClose }) {
   const [which, setWhich] = useState('one')
+  const nDetails = detailGroups(plan).length
+  const [details, setDetails] = useState(nDetails > 0)
   const level = plan.levels.find(l => l.id === levelId)
   return (
     <Modal title="Export to CAD (DXF)" onClose={onClose}>
@@ -180,9 +183,13 @@ export function ExportDialog({ plan, levelId, onExport, onClose }) {
         beams, slabs, walls, doors, windows, rooms, dimensions and labels each on their own layer (S-GRID, S-COLS, S-BEAM, S-SLAB, A-WALL…).
         The imported drawing underlay is not included.
       </p>
+      <label style={{ ...S.label, display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 500 }}>
+        <input type="checkbox" checked={details} disabled={!nDetails} onChange={e => setDetails(e.target.checked)} />
+        {nDetails ? `Add reinforcement details beside the plan: length view and cross-section of each bar type (${nDetails})` : 'Reinforcement details (enter bars on a beam, column, slab or footing first)'}
+      </label>
       <div style={S.actions}>
         <button style={S.btn} onClick={onClose}>Cancel</button>
-        <button style={{ ...S.btn, ...S.primary }} onClick={() => onExport(which === 'all' ? plan.levels.map(l => l.id) : [levelId], which === 'all')}>Download DXF</button>
+        <button style={{ ...S.btn, ...S.primary }} onClick={() => onExport(which === 'all' ? plan.levels.map(l => l.id) : [levelId], which === 'all', details && nDetails > 0)}>Download DXF</button>
       </div>
     </Modal>
   )

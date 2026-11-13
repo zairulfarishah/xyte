@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { Crosshair, ExternalLink, Eye, EyeOff, FlipHorizontal2, Link2Off, Move, Plus, ScanLine, Trash2, Upload, X } from 'lucide-react'
 import { SCAN_STATUS, openInScanMarker } from './scan'
 import NoteBody from './NoteBody'
+import { SlabLoads, BeamLoads, ColumnLoads, FootingLoads, LoadItemBody } from './LoadsInfo'
+import { DESIGN_KINDS, designsOf, rebarOf, newDesign, barText } from './rebar'
 import {
   activeLevel, updateItems, updateLevel, removeItem, dist, same, wallAxes, clampOpening,
   polyArea, polyPerimeter, fmtMm, fmtArea, planStats, syncGrid, gridMembers, nodeName, bayName,
@@ -79,11 +81,13 @@ const Info = ({ label, value }) => (
   <div style={{ ...S.field, alignItems: 'baseline' }}><span style={S.lab}>{label}</span><b style={{ fontSize: '13px', color: '#0f172a' }}>{value}</b></div>
 )
 
-export default function Inspector({ plan, sel, setSel, update, tool, setTool, onImport, importing, scanPts = [], scanError, onLinkScan, onViewSection, layoutId }) {
+export default function Inspector({ plan, sel, setSel, picked = [], update, tool, setTool, onImport, importing, scanPts = [], scanError, onLinkScan, onViewSection, layoutId, td }) {
   const navigate = useNavigate()
   const level = activeLevel(plan)
   const items = level.items
   const grids = plan.grids || []
+
+  if (picked.length > 1) return <MultiPanel plan={plan} picked={picked} setSel={setSel} update={update} />
 
   if (sel?.startsWith('scan:')) {
     const sp = scanPts.find(p => `scan:${p.id}` === sel)
@@ -125,7 +129,7 @@ export default function Inspector({ plan, sel, setSel, update, tool, setTool, on
     )
   }
 
-  const title = { note: 'Site note', wall: 'Wall', void: 'Slab opening', room: 'Room', slab: 'Slab', column: 'Column', opening: it.kind === 'door' ? 'Door' : 'Window', dim: 'Dimension', label: 'Label', beam: 'Beam', grid: 'Column grid' }[it.type]
+  const title = { footing: it.kind === 'pile' ? 'Pile cap' : 'Footing', load: it.kind === 'debris' ? 'Debris' : 'Equipment', note: 'Site note', wall: 'Wall', void: 'Slab opening', room: 'Room', slab: 'Slab', column: 'Column', opening: it.kind === 'door' ? 'Door' : 'Window', dim: 'Dimension', label: 'Label', beam: 'Beam', grid: 'Column grid' }[it.type]
   let body = null
 
   if (it.type === 'wall') {
@@ -206,6 +210,41 @@ export default function Inspector({ plan, sel, setSel, update, tool, setTool, on
           : <p style={S.hint}>Drag the square corners to reshape.</p>}
       </>
     )
+  } else if (it.type === 'footing') {
+    body = (
+      <>
+        <label style={S.field}>
+          <span style={S.lab}>Type</span>
+          <select value={it.kind === 'pile' ? 'pile' : 'pad'} onChange={e => set({ kind: e.target.value })} style={S.input}>
+            <option value="pad">Pad footing</option>
+            <option value="pile">Pile cap</option>
+          </select>
+        </label>
+        <Num label="Width (X)" value={it.w} onChange={v => set({ w: v })} min={10} step={50} />
+        <Num label="Length (Y)" value={it.d} onChange={v => set({ d: v })} min={10} step={50} />
+        <Num label="Thickness" value={it.h} onChange={v => set({ h: v })} min={10} step={50} />
+        <Num label="Top, below floor" value={it.top ?? 0} onChange={v => set({ top: v })} min={0} step={50} />
+        {it.kind === 'pile' && <>
+          <Num label="Number of piles" value={it.piles || 4} onChange={v => set({ piles: Math.max(1, Math.round(v)) })} min={1} step={1} suffix="" />
+          <Num label="Safe load per pile" value={it.pileCap || 0} onChange={v => set({ pileCap: v || undefined })} step={50} suffix="kN" />
+          <Num label="Pile size" value={it.pileDia || 300} onChange={v => set({ pileDia: v })} min={10} step={50} />
+        </>}
+        <Info label="Concrete" value={`${((it.w / 1000) * (it.d / 1000) * (it.h / 1000)).toFixed(2)} m³`} />
+        {it.grid
+          ? <>
+              <Info label="On grid" value={nodeName(it.grid, grids)} />
+              <Num label="Off grid X" value={it.ex || 0} onChange={v => setSynced({ ex: v })} min={-1e6} step={25} />
+              <Num label="Off grid Y" value={it.ey || 0} onChange={v => setSynced({ ey: v })} min={-1e6} step={25} />
+            </>
+          : <>
+              <Num label="Centre X" value={it.x} onChange={v => set({ x: v })} min={-1e9} />
+              <Num label="Centre Y" value={it.y} onChange={v => set({ y: v })} min={-1e9} />
+            </>}
+        <p style={S.hint}>Below the floor, so it is drawn dashed. The column standing on it passes its load down to it.</p>
+      </>
+    )
+  } else if (it.type === 'load') {
+    body = <LoadItemBody it={it} set={set} td={td} plan={plan} level={level} />
   } else if (it.type === 'note') {
     body = <NoteBody it={it} set={set} layoutId={layoutId} n={items.filter(i => i.type === 'note').indexOf(it) + 1} />
   } else if (it.type === 'void') {
@@ -288,9 +327,113 @@ export default function Inspector({ plan, sel, setSel, update, tool, setTool, on
         <b>{title}</b>
         <button onClick={del} style={S.iconBtn} title="Delete (Del)" aria-label="Delete"><Trash2 size={15} /></button>
       </div>
-      {['column', 'beam', 'slab', 'wall'].includes(it.type) && <Verified it={it} set={set} />}
+      {['column', 'beam', 'slab', 'wall', 'footing'].includes(it.type) && <Verified it={it} set={set} />}
       {body}
-      <p style={S.hint}>{it.type === 'grid' ? 'Del deletes · Esc deselects' : 'Ctrl+D duplicates · Del deletes · Esc deselects'}</p>
+      {it.type === 'slab' && <SlabLoads it={it} set={set} td={td} plan={plan} update={update} level={level} scanPts={scanPts} />}
+      {it.type === 'beam' && <BeamLoads it={it} set={set} td={td} plan={plan} update={update} />}
+      {it.type === 'column' && <ColumnLoads it={it} set={set} td={td} plan={plan} update={update} />}
+      {it.type === 'footing' && <FootingLoads it={it} set={set} td={td} plan={plan} update={update} />}
+      <p style={S.hint}>{it.type === 'grid' ? 'Del deletes · Esc deselects' : 'Ctrl+click to select more · Ctrl+D duplicates · Del deletes · Esc deselects'}</p>
+    </div>
+  )
+}
+
+const NAMES = {
+  wall: ['wall', 'walls'], room: ['room', 'rooms'], slab: ['slab', 'slabs'], void: ['opening', 'openings'], column: ['column', 'columns'],
+  beam: ['beam', 'beams'], footing: ['footing', 'footings'], opening: ['door / window', 'doors / windows'], dim: ['dimension', 'dimensions'],
+  label: ['label', 'labels'], note: ['note', 'notes'], load: ['load', 'loads'],
+}
+const STRUCT_TYPES = ['column', 'beam', 'slab', 'wall', 'footing']
+// sizes that can be set on many at once
+const SIZES = {
+  beam: [['width', 'Width'], ['depth', 'Depth (overall)']],
+  column: [['w', 'Width (X)'], ['d', 'Depth (Y)'], ['height', 'Height']],
+  slab: [['thickness', 'Thickness']],
+  footing: [['w', 'Width (X)'], ['d', 'Length (Y)'], ['h', 'Thickness'], ['top', 'Top, below floor']],
+  wall: [['thickness', 'Thickness'], ['height', 'Height']],
+}
+
+// Number box for many items: blank when they differ.
+function ManyNum({ label, its, k, onChange }) {
+  const vals = its.map(i => i[k])
+  const common = vals.every(v => v === vals[0]) && vals[0] != null ? String(vals[0]) : ''
+  const [text, setText] = useState(common)
+  const [prev, setPrev] = useState(common)
+  if (prev !== common) { setPrev(common); setText(common) }
+  const commit = () => {
+    const v = parseFloat(text)
+    if (Number.isFinite(v) && v >= 0 && String(v) !== common) onChange(v)
+    else setText(common)
+  }
+  return (
+    <label style={S.field}>
+      <span style={S.lab}>{label}</span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <input value={text} placeholder="mixed" inputMode="decimal" onChange={e => setText(e.target.value)} onBlur={commit}
+          onKeyDown={e => { if (e.key === 'Enter') { commit(); e.target.blur() } }} style={S.input} />
+        <span style={S.suffix}>mm</span>
+      </span>
+    </label>
+  )
+}
+
+// Several items selected (Ctrl+click, or Ctrl+drag a box).
+function MultiPanel({ plan, picked, setSel, update }) {
+  const level = activeLevel(plan)
+  const ids = new Set(picked)
+  const its = level.items.filter(i => ids.has(i.id))
+  const counts = {}
+  for (const i of its) counts[i.type] = (counts[i.type] || 0) + 1
+  const types = Object.keys(counts)
+  const one = types.length === 1 ? types[0] : null
+  const setAll = fn => update(p => updateItems(p, list => syncGrid(list.map(i => (ids.has(i.id) ? { ...i, ...(typeof fn === 'function' ? fn(i) : fn) } : i)), p.grids)))
+  const delAll = () => {
+    update(p => updateItems(p, list => syncGrid(list.filter(i => !ids.has(i.id) && !ids.has(i.wallId)), p.grids)))
+    setSel(null)
+  }
+  const struct = its.filter(i => STRUCT_TYPES.includes(i.type))
+  const allVerified = struct.length > 0 && struct.every(i => i.verified)
+  const kind = one && DESIGN_KINDS[one]
+  const designIds = [...new Set(its.map(i => i.design || ''))]
+  const chooseDesign = v => {
+    if (v === '__mixed') return
+    if (v === '') setAll(i => ({ design: undefined, rebar: { ...rebarOf(i, plan) } }))
+    else if (v === '__new') {
+      const nd = newDesign(plan, one, rebarOf(its[0], plan))
+      update(p => updateItems({ ...p, designs: [...(p.designs || []), nd] }, list => list.map(i => (ids.has(i.id) ? { ...i, design: nd.id } : i))))
+    } else setAll({ design: v })
+  }
+  return (
+    <div style={S.panel}>
+      <div style={S.head}>
+        <b>{its.length} selected</b>
+        <button onClick={delAll} style={S.iconBtn} title="Delete all of them (Del)" aria-label="Delete selected"><Trash2 size={15} /></button>
+      </div>
+      <div style={{ fontSize: '12.5px', color: '#334155' }}>
+        {types.map(t => `${counts[t]} ${(NAMES[t] || [t, t])[counts[t] === 1 ? 0 : 1]}`).join(', ')}
+      </div>
+      <button style={{ ...S.btn, color: '#dc2626', justifyContent: 'center' }} onClick={delAll}><Trash2 size={13} /> Delete all {its.length}</button>
+      {struct.length > 0 && (
+        <button style={{ ...S.btn, justifyContent: 'center' }} onClick={() => setAll(i => (STRUCT_TYPES.includes(i.type) ? { verified: allVerified ? undefined : true } : {}))}>
+          {allVerified ? 'Mark as not measured' : `✓ Mark ${struct.length} as measured on site`}
+        </button>
+      )}
+      {one && SIZES[one] && <>
+        <div style={S.sub}>Size, for all {counts[one]}</div>
+        {SIZES[one].map(([k, label]) => <ManyNum key={k} label={label} its={its} k={k} onChange={v => setAll({ [k]: v })} />)}
+      </>}
+      {kind && <>
+        <div style={S.sub}>Design (bars), for all {counts[one]}</div>
+        <select value={designIds.length === 1 ? designIds[0] : '__mixed'} onChange={e => chooseDesign(e.target.value)} style={{ ...S.input, width: '100%' }}>
+          {designIds.length > 1 && <option value="__mixed">Mixed</option>}
+          <option value="">Own bars (each keeps its own)</option>
+          {designsOf(plan, one).map(t => <option key={t.id} value={t.id}>{t.mark}{barText(one, t.rebar) ? ` · ${barText(one, t.rebar)}` : ''}</option>)}
+          <option value="__new">+ New type for these {kind.plural}</option>
+        </select>
+        <p style={S.hint}>Pick a type to give them all the same bars, then select any one of them to change the bars of the type.</p>
+      </>}
+      {!one && <p style={S.hint}>To change sizes or bars together, select only one kind (e.g. only beams).</p>}
+      <p style={S.hint}>Ctrl+click adds or removes one · Ctrl+drag on empty space selects an area · Ctrl+A selects all · drag one to move them all · Ctrl+D duplicates · Del deletes · Esc clears.</p>
     </div>
   )
 }

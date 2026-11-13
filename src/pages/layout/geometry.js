@@ -15,7 +15,10 @@
 //   opening { kind: 'door'|'window', wallId, offset (centre, from wall start), width, height, sill, flip, side }
 //   dim     { a, b }
 //   label   { x, y, text, size }
+//   load    { x, y, w, d, kn | h, name, kind: 'equipment' | 'debris' }  equipment or debris on the slab (see loads.js)
 //   note    { x, y, text, photos: [{ path, name }] }  site note pinned on the plan, photos in the layouts bucket
+//   footing { x, y, w, d, h, top, rot?, grid?, ex?, ey?, kind: 'pad'|'pile', piles?, pileCap? }  under a column of the lowest level; top = depth below the floor
+// slab, beam, column and footing may carry rebar or design (a shared design type, plan.designs): see rebar.js
 // bg = { src (data URL), w, h (px), x, y (mm, top-left), mmPerPx, opacity, show }
 
 export const uid = () => Math.random().toString(36).slice(2, 10)
@@ -155,7 +158,7 @@ export function snapPoints(items, grids = []) {
   for (const it of items) {
     if (it.type === 'wall' || it.type === 'dim') out.push(it.a, it.b)
     else if (it.pts) out.push(...it.pts)   // room, slab, void
-    else if (it.type === 'column') out.push({ x: it.x, y: it.y })
+    else if (it.type === 'column' || it.type === 'footing') out.push({ x: it.x, y: it.y })
     else if (it.type === 'beam') out.push(it.a, it.b)
   }
   for (const g of grids) for (let i = 0; i <= g.xs.length; i++) for (let j = 0; j <= g.ys.length; j++) out.push(gridNode(g, i, j))
@@ -171,8 +174,9 @@ export function itemPoints(it, items) {
       const W = it.xs.reduce((s, v) => s + v, 0), H = it.ys.reduce((s, v) => s + v, 0)
       return [gridPoint(it, -2500, -2500), gridPoint(it, W + 1000, -2500), gridPoint(it, -2500, H + 1000), gridPoint(it, W + 1000, H + 1000)]
     }
-    case 'column': return [{ x: it.x - it.w / 2, y: it.y - it.d / 2 }, { x: it.x + it.w / 2, y: it.y + it.d / 2 }]
+    case 'column': case 'footing': return [{ x: it.x - it.w / 2, y: it.y - it.d / 2 }, { x: it.x + it.w / 2, y: it.y + it.d / 2 }]
     case 'label': case 'note': return [{ x: it.x, y: it.y }]
+    case 'load': return [{ x: it.x - it.w / 2, y: it.y - it.d / 2 }, { x: it.x + it.w / 2, y: it.y + it.d / 2 }]
     case 'opening': {
       const w = items.find(i => i.id === it.wallId)
       return w ? [onWall(w, it.offset)] : []
@@ -217,13 +221,13 @@ export function moveItem(it, dx, dy) {
     case 'beam': return { ...it, a: mv(it.a), b: mv(it.b), ga: undefined, gb: undefined }
     case 'grid': return { ...it, x: it.x + dx, y: it.y + dy }
     // a column on the grid stays on it, offset from its gridline intersection
-    case 'column': return it.grid
+    case 'column': case 'footing': return it.grid
       ? { ...it, x: it.x + dx, y: it.y + dy, ex: (it.ex || 0) + dx, ey: (it.ey || 0) + dy }
       : { ...it, x: it.x + dx, y: it.y + dy }
     case 'room': return { ...it, pts: it.pts.map(mv) }
     case 'slab': return { ...it, pts: it.pts.map(mv), bay: undefined }
     case 'void': return { ...it, pts: it.pts.map(mv) }
-    case 'label': case 'note': return { ...it, x: it.x + dx, y: it.y + dy }
+    case 'label': case 'note': case 'load': return { ...it, x: it.x + dx, y: it.y + dy }
     default: return it
   }
 }
@@ -232,7 +236,7 @@ export function moveItem(it, dx, dy) {
 export function cloneItems(it, items, dx, dy) {
   if (it.type === 'grid' || it.type === 'opening') return []
   const copy = { ...moveItem(it, dx, dy), id: uid() }
-  if (it.type === 'column') { copy.grid = undefined; copy.ex = undefined; copy.ey = undefined }
+  if (it.type === 'column' || it.type === 'footing') { copy.grid = undefined; copy.ex = undefined; copy.ey = undefined }
   if (it.type !== 'wall') return [copy]
   return [copy, ...items.filter(o => o.wallId === it.id).map(o => ({ ...o, id: uid(), wallId: copy.id }))]
 }
@@ -310,7 +314,7 @@ export function syncGrid(items, grids = []) {
   }
   const out = []
   for (const it of items) {
-    if (it.type === 'column' && it.grid) {
+    if ((it.type === 'column' || it.type === 'footing') && it.grid) {
       const p = node(it.grid)
       if (p === false) continue
       if (!p) { out.push({ ...it, grid: undefined, ex: undefined, ey: undefined }); continue }
@@ -373,7 +377,7 @@ function remapGrid(plan, gid, axis, ng, line, bay) {
         if (b == null) return []
         return (Array.isArray(b) ? b : [b]).map((n, k) => ({ ...it, id: k ? uid() : it.id, bay: { ...it.bay, [ik]: n } }))
       }
-      if (it.type === 'column' && it.grid?.g === gid) {
+      if ((it.type === 'column' || it.type === 'footing') && it.grid?.g === gid) {
         const r = ref(it.grid)
         return r ? [{ ...it, grid: r }] : []
       }
@@ -577,3 +581,22 @@ export function segInPoly(a, b, pts) {
   return out
 }
 
+
+// Where the piles of a pile cap go, as plan points (n piles spread over the cap, turned with it).
+export function pileLayout(f) {
+  const n = Math.max(1, Math.round(f.piles || 4)), D = f.pileDia || 300
+  const ex = Math.max(0, f.w / 2 - D / 2 - 150), ey = Math.max(0, f.d / 2 - D / 2 - 150)
+  let loc
+  if (n === 1) loc = [[0, 0]]
+  else if (n === 2) loc = f.w >= f.d ? [[-ex, 0], [ex, 0]] : [[0, -ey], [0, ey]]
+  else if (n === 3) loc = [[-ex, ey], [ex, ey], [0, -ey]]
+  else {
+    const cols = Math.ceil(Math.sqrt(n)), rows = Math.ceil(n / cols)
+    loc = []
+    for (let j = 0; j < rows; j++) for (let i = 0; i < cols && loc.length < n; i++) {
+      loc.push([cols > 1 ? -ex + 2 * ex * i / (cols - 1) : 0, rows > 1 ? -ey + 2 * ey * j / (rows - 1) : 0])
+    }
+  }
+  const r = (f.rot || 0) * Math.PI / 180, cs = Math.cos(r), sn = Math.sin(r)
+  return loc.map(([lx, ly]) => ({ x: f.x + lx * cs - ly * sn, y: f.y + lx * sn + ly * cs }))
+}

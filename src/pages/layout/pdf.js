@@ -2,6 +2,7 @@
 // title block. What is drawn comes from drawing.js, the same as the CAD export.
 import { LAYERS, drawLevel, drawnBounds } from './drawing'
 import { computeSection } from './sections'
+import { detailGroups, drawGroup, groupBounds, groupTitle } from './details'
 
 export const SHEETS = { A4: [297, 210], A3: [420, 297], A2: [594, 420], A1: [841, 594] }     // landscape, mm
 const STANDARD = [1, 2, 5, 10, 20, 25, 50, 75, 100, 125, 150, 200, 250, 300, 400, 500, 750, 1000, 1250, 1500, 2000, 2500, 5000, 10000]
@@ -14,7 +15,7 @@ const safe = s => String(s ?? '').replace(/[\u2212\u2012]/g, '-').replace(/[^\x2
 
 export async function planToPdf(plan, opts) {
   const { PDFDocument, StandardFonts, rgb, degrees, pushGraphicsState, popGraphicsState, moveTo, lineTo, closePath, clip, endPath } = await import('pdf-lib')
-  const { levelIds, sheet = 'A3', scale = 'auto', underlay = false, sections = false, tb = {}, scanBy = {} } = opts
+  const { levelIds, sheet = 'A3', scale = 'auto', underlay = false, sections = false, details = false, tb = {}, scanBy = {} } = opts
   const [W, H] = SHEETS[sheet]
   const doc = await PDFDocument.create()
   doc.setTitle(safe(`${tb.project || plan.name} - layout`))
@@ -26,13 +27,15 @@ export async function planToPdf(plan, opts) {
 
   // drawing area on the sheet (mm from the top-left)
   const area = { x0: MARGIN + 2, y0: MARGIN + 2, x1: W - MARGIN - 2, y1: H - MARGIN - BAND - 2 }
-  const pickScale = (w, h) => {
+  const DETAIL = [10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200]          // detail sheets may also use 1:30 and 1:40
+  const pickScale = (w, h, auto = scale === 'auto', list = STANDARD) => {
     const need = Math.max(w / (area.x1 - area.x0 - 8), h / (area.y1 - area.y0 - 8))
-    return scale === 'auto' ? (STANDARD.find(s => s >= need) || Math.ceil(need)) : +scale
+    return auto ? (list.find(s => s >= need) || Math.ceil(need)) : +scale
   }
   const sheets = []      // { title, scale, overflow }
   let sheetNo = 0
-  const total = levelIds.length + (sections ? (plan.sections || []).length : 0)
+  const groups = details ? detailGroups(plan) : []
+  const total = levelIds.length + (sections ? (plan.sections || []).length : 0) + groups.length
 
   function newPage(title, S) {
     sheetNo++
@@ -100,6 +103,50 @@ export async function planToPdf(plan, opts) {
     return { page, P, txt, fit, done: () => page.pushOperators(popGraphicsState()) }
   }
 
+  // drawing primitives on a page, from plan / detail mm through M (mm → sheet mm) at scale 1:S
+  function makeSink(page, M, S) {
+    const Q = q => { const m = M(q); return { x: m.x * PT, y: (H - m.y) * PT } }
+    const svgPt = q => { const m = M(q); return `${(m.x * PT).toFixed(2)} ${(m.y * PT).toFixed(2)}` }
+    const style = layer => LAYERS[layer] || LAYERS['A-TEXT']
+    return {
+      line: (layer, a, c) => {
+        const st = style(layer)
+        page.drawLine({ start: Q(a), end: Q(c), thickness: st.w * PT * 0.6, color: C(st.rgb), dashArray: st.dash?.map(v => v * PT) })
+      },
+      pline: (layer, pts, closed = true) => {
+        const st = style(layer)
+        const d = pts.map((q, k) => `${k ? 'L' : 'M'}${svgPt(q)}`).join('') + (closed ? 'Z' : '')
+        page.drawSvgPath(d, { x: 0, y: H * PT, borderColor: C(st.rgb), borderWidth: st.w * PT * 0.6, color: st.fill ? C(st.fill) : undefined, borderDashArray: st.dash?.map(v => v * PT) })
+      },
+      disc: (layer, c, r) => { const st = style(layer); page.drawCircle({ ...Q(c), size: r / S * PT, color: C(st.rgb) }) },
+      circle: (layer, c, r, color) => {
+        const st = style(layer)
+        page.drawCircle({ ...Q(c), size: r / S * PT, borderColor: color?.color ? C(hex(color.color)) : C(st.rgb), borderWidth: st.w * PT * 0.6, color: layer === 'S-COLS' && st.fill ? C(st.fill) : undefined })
+      },
+      arc: (layer, c, r, from, to) => {
+        const st = style(layer)
+        const f = M(from), t = M(to), m = M(c)
+        const sweep = (f.x - m.x) * (t.y - m.y) - (f.y - m.y) * (t.x - m.x) > 0 ? 1 : 0
+        const R = r / S * PT
+        page.drawSvgPath(`M${(f.x * PT).toFixed(2)} ${(f.y * PT).toFixed(2)}A${R.toFixed(2)} ${R.toFixed(2)} 0 0 ${sweep} ${(t.x * PT).toFixed(2)} ${(t.y * PT).toFixed(2)}`,
+          { x: 0, y: H * PT, borderColor: C(st.rgb), borderWidth: st.w * PT * 0.5, borderDashArray: [1 * PT, 1 * PT] })
+      },
+      label: (layer, q, h, s, rot = 0, color) => {
+        const text = safe(s)
+        if (!text.trim()) return
+        const size = Math.max(0.9, h / S) * PT           // never smaller than ~0.9 mm on paper
+        const f = layer === 'TITLE' || layer === 'S-GRID-TEXT' || layer === 'S-SECTION' ? bold : font
+        const w = f.widthOfTextAtSize(text, size)
+        const a = -rot * Math.PI / 180, d = { x: Math.cos(a), y: Math.sin(a) }, up = { x: -Math.sin(a), y: Math.cos(a) }
+        const p = Q(q)
+        page.drawText(text, {
+          x: p.x - d.x * w / 2 - up.x * size * 0.35, y: p.y - d.y * w / 2 - up.y * size * 0.35,
+          size, font: f, color: color?.color ? C(hex(color.color)) : C(style(layer).rgb), rotate: degrees(-rot),
+        })
+      },
+    }
+  }
+
   // ── plan sheets ──
   const levels = plan.levels.filter(l => levelIds.includes(l.id)).sort((a, b) => b.elevation - a.elevation)
   for (const lv of levels) {
@@ -135,43 +182,7 @@ export async function planToPdf(plan, opts) {
       }
     }
 
-    const style = layer => LAYERS[layer] || LAYERS['A-TEXT']
-    const sink = {
-      line: (layer, a, c) => {
-        const st = style(layer)
-        page.drawLine({ start: Q(a), end: Q(c), thickness: st.w * PT * 0.6, color: C(st.rgb), dashArray: st.dash?.map(v => v * PT) })
-      },
-      pline: (layer, pts, closed = true) => {
-        const st = style(layer)
-        const d = pts.map((q, k) => `${k ? 'L' : 'M'}${svgPt(q)}`).join('') + (closed ? 'Z' : '')
-        page.drawSvgPath(d, { x: 0, y: H * PT, borderColor: C(st.rgb), borderWidth: st.w * PT * 0.6, color: st.fill ? C(st.fill) : undefined, borderDashArray: st.dash?.map(v => v * PT) })
-      },
-      circle: (layer, c, r, color) => {
-        const st = style(layer)
-        page.drawCircle({ ...Q(c), size: r / S * PT, borderColor: color?.color ? C(hex(color.color)) : C(st.rgb), borderWidth: st.w * PT * 0.6, color: layer === 'S-COLS' && st.fill ? C(st.fill) : undefined })
-      },
-      arc: (layer, c, r, from, to) => {
-        const st = style(layer)
-        const f = M(from), t = M(to), m = M(c)
-        const sweep = (f.x - m.x) * (t.y - m.y) - (f.y - m.y) * (t.x - m.x) > 0 ? 1 : 0
-        const R = r / S * PT
-        page.drawSvgPath(`M${(f.x * PT).toFixed(2)} ${(f.y * PT).toFixed(2)}A${R.toFixed(2)} ${R.toFixed(2)} 0 0 ${sweep} ${(t.x * PT).toFixed(2)} ${(t.y * PT).toFixed(2)}`,
-          { x: 0, y: H * PT, borderColor: C(st.rgb), borderWidth: st.w * PT * 0.5, borderDashArray: [1 * PT, 1 * PT] })
-      },
-      label: (layer, q, h, s, rot = 0, color) => {
-        const text = safe(s)
-        if (!text.trim()) return
-        const size = Math.max(0.9, h / S) * PT           // never smaller than ~0.9 mm on paper
-        const f = layer === 'TITLE' || layer === 'S-GRID-TEXT' || layer === 'S-SECTION' ? bold : font
-        const w = f.widthOfTextAtSize(text, size)
-        const a = -rot * Math.PI / 180, d = { x: Math.cos(a), y: Math.sin(a) }, up = { x: -Math.sin(a), y: Math.cos(a) }
-        const p = Q(q)
-        page.drawText(text, {
-          x: p.x - d.x * w / 2 - up.x * size * 0.35, y: p.y - d.y * w / 2 - up.y * size * 0.35,
-          size, font: f, color: color?.color ? C(hex(color.color)) : C(style(layer).rgb), rotate: degrees(-rot),
-        })
-      },
-    }
+    const sink = makeSink(page, M, S)
     drawLevel(sink, plan, lv, pts)
 
     // pinned site notes: numbered pins here, the text in a box at the top-left
@@ -228,8 +239,8 @@ export async function planToPdf(plan, opts) {
         page.drawLine({ start: P(hx, Y(l.elevation)), end: P(hx, Y(l.top)), thickness: 0.15 * PT, color: C([0.7, 0.33, 0.04]) })
         T(String(l.top - l.elevation), hx + 1.2, (Y(l.elevation) + Y(l.top)) / 2, 1.9, font, C([0.7, 0.33, 0.04]))
       }
-      const FILL = { slab: [[0.8, 0.84, 0.88], [0.2, 0.25, 0.33]], beam: [[1, 0.84, 0.67], [0.6, 0.2, 0.07]], column: [[0.58, 0.64, 0.72], [0.12, 0.16, 0.23]], rcwall: [[0.39, 0.45, 0.55], [0.06, 0.09, 0.16]], wall: [[0.95, 0.96, 0.98], [0.4, 0.45, 0.52]] }
-      const order = ['wall', 'rcwall', 'column', 'slab', 'beam']
+      const FILL = { slab: [[0.8, 0.84, 0.88], [0.2, 0.25, 0.33]], beam: [[1, 0.84, 0.67], [0.6, 0.2, 0.07]], column: [[0.58, 0.64, 0.72], [0.12, 0.16, 0.23]], rcwall: [[0.39, 0.45, 0.55], [0.06, 0.09, 0.16]], wall: [[0.95, 0.96, 0.98], [0.4, 0.45, 0.52]], footing: [[0.84, 0.78, 0.71], [0.47, 0.21, 0.06]] }
+      const order = ['wall', 'rcwall', 'footing', 'column', 'slab', 'beam']
       for (const p of [...parts].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))) {
         const [fill, stroke] = FILL[p.kind]
         rect(p.s0, p.s1, p.z0, p.z1, p.seen ? null : fill, stroke, p.seen)
@@ -240,6 +251,19 @@ export async function planToPdf(plan, opts) {
       }
       done()
     }
+  }
+
+  // ── reinforcement detail sheets: one per bar design, length view and section ──
+  for (const g of groups) {
+    const b = groupBounds(plan, g)
+    const S = pickScale(b.x1 - b.x0, b.y1 - b.y0, true, DETAIL)          // details always fit their sheet
+    const title = `${groupTitle(g)} - reinforcement`
+    const { page, done } = newPage(title, S)
+    const cx = (area.x0 + area.x1) / 2, cy = (area.y0 + area.y1) / 2, bx = (b.x0 + b.x1) / 2, byy = (b.y0 + b.y1) / 2
+    const M = q => ({ x: cx + (q.x - bx) / S, y: cy + (q.y - byy) / S })
+    sheets.push({ title, scale: S, overflow: false })
+    drawGroup(makeSink(page, M, S), plan, g)
+    done()
   }
 
   return { bytes: await doc.save(), sheets }

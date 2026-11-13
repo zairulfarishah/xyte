@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { Box, Eye, Layers, Maximize, MoveHorizontal, Square } from 'lucide-react'
-import { activeLevel, wallAxes, same, gridPoint, dist, beamAxis, pointInPoly, centroid } from './geometry'
+import { activeLevel, wallAxes, same, gridPoint, dist, beamAxis, pointInPoly, centroid, columnCorners, pileLayout } from './geometry'
 
 // 3D view of the plan, built from the 2D data every time it changes.
 // Plan x → 3D x, plan y → 3D z, heights → 3D y. Units are metres in 3D.
@@ -15,6 +15,8 @@ function makeMaterials() {
     rcwall: std('#a8a29e'),
     slab: std('#cbd5e1'),
     column: std('#94a3b8'),
+    footing: std('#b8a48c'),
+    pile: std('#a8a29e', { transparent: true, opacity: 0.6 }),
     beam: std('#fdba74'),
     glass: std('#93c5fd', { transparent: true, opacity: 0.35, depthWrite: false }),
     edge: new THREE.LineBasicMaterial({ color: '#334155' }),
@@ -218,6 +220,28 @@ function build(c, plan, only) {
         group.add(mesh)
       } else {
         addBox(mats.column, col.x * M, base * M + h / 2, col.y * M, col.w * M, h, col.d * M, -(col.rot || 0) * Math.PI / 180)
+      }
+    }
+
+    // footings below the floor, with the column carried down to them and pile stubs under pile caps
+    for (const f of items.filter(i => i.type === 'footing')) {
+      const top = base - (f.top ?? 0), rot = -(f.rot || 0) * Math.PI / 180
+      addBox(mats.footing, f.x * M, (top - f.h / 2) * M, f.y * M, f.w * M, f.h * M, f.d * M, rot)
+      const col = items.find(c => c.type === 'column' && (c.shape === 'round' ? dist(c, f) <= Math.max(f.w, f.d) / 2 : pointInPoly(c, columnCorners(f))))
+      if (col && f.top > 0) {
+        if (col.shape === 'round') {
+          const mesh = new THREE.Mesh(new THREE.CylinderGeometry(col.w / 2 * M, col.w / 2 * M, f.top * M, 24), mats.column)
+          mesh.position.set(col.x * M, (base - f.top / 2) * M, col.y * M)
+          group.add(mesh)
+        } else addBox(mats.column, col.x * M, (base - f.top / 2) * M, col.y * M, col.w * M, f.top * M, col.d * M, -(col.rot || 0) * Math.PI / 180)
+      }
+      if (f.kind === 'pile') {
+        const L = 3000, D = f.pileDia || 300
+        for (const q of pileLayout(f)) {
+          const mesh = new THREE.Mesh(new THREE.CylinderGeometry(D / 2 * M, D / 2 * M, L * M, 20), mats.pile)
+          mesh.position.set(q.x * M, (top - f.h - L / 2) * M, q.y * M)
+          group.add(mesh)
+        }
       }
     }
 

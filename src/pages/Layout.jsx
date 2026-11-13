@@ -1,7 +1,7 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AppWindow, BrickWall, Copy, Download, DoorOpen, FilePlus2, FolderOpen, Hand, Maximize, MousePointer2, Plus, Redo2, Ruler, Save,
-  Square, SquareDashed, Trash2, Type, Undo2, Grid3x3, RectangleHorizontal, Box, Layers, SquareX, Slice, History, MapPin, StickyNote,
+  Square, SquareDashed, Trash2, Type, Undo2, Grid3x3, RectangleHorizontal, Box, Layers, SquareX, Slice, History, MapPin, StickyNote, Weight, Calculator, SquareDashedBottom,
 } from 'lucide-react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
@@ -11,6 +11,8 @@ import Inspector from './layout/Inspector'
 import { AskDialog, ExportDialog, GridDialog, NameDialog, ProjectList, ScanProjectPicker } from './layout/Dialogs'
 import { downloadDxf } from './layout/dxf'
 import { useScanPoints, fetchScanPoints } from './layout/scan'
+import { takedown, PRESETS } from './layout/loads'
+import LoadsDialog, { LoadItemDialog } from './layout/LoadsDialog'
 import { ExportMenu, PrintDialog, RevisionsDialog, ScheduleDialog, SitePicker } from './layout/Output'
 import { useSearchParams } from 'react-router-dom'
 import { TABLE, BUCKET, SELECT, who, when } from './layout/store'
@@ -34,14 +36,16 @@ const hasWork = p => p.grids?.length || p.levels.some(l => l.items.length || l.b
 
 // Structure first, then architecture.
 const TOOLS = [
-  { id: 'select', label: 'Select', key: 'V', Icon: MousePointer2, hint: 'Click to select, drag to move. Drag a gridline to move it. Drag empty space to pan.' },
+  { id: 'select', label: 'Select', key: 'V', Icon: MousePointer2, hint: 'Click to select, drag to move. Ctrl+click to select more, Ctrl+drag a box to select an area. Drag a gridline to move it. Drag empty space to pan.' },
   { id: 'pan', label: 'Pan', key: 'H', Icon: Hand, hint: 'Drag to move around. Scroll to zoom.' },
   { id: 'grid', label: 'Grid', key: 'G', Icon: Grid3x3, hint: 'Click where the first gridlines cross (e.g. A/1), then enter the spacings. The grid is shared by every level.' },
   { id: 'column', label: 'Column', key: 'C', Icon: Square, hint: 'Click to place a column. Change its size on the right.' },
   { id: 'beam', label: 'Beam', key: 'B', Icon: RectangleHorizontal, hint: 'Click column to column. Keeps going from the last point; Esc or right-click to stop. Type a length + Enter for exact.' },
+  { id: 'footing', label: 'Footing', key: 'F', Icon: SquareDashedBottom, hint: 'Click on a column of the lowest level to put a footing under it (sized for its load when Loads is on). Pile caps: change the type on the right.' },
   { id: 'slab', label: 'Slab', key: 'S', Icon: Layers, hint: 'Click each corner of the slab, then the first corner (or Enter) to close. For a grid, select it and use "Slabs in all bays".' },
   { id: 'void', label: 'Opening', key: 'O', Icon: SquareX, hint: 'Slab opening (lift, stair, shaft): click each corner, then the first corner (or Enter) to close.' },
   { id: 'section', label: 'Section', key: 'X', Icon: Slice, hint: 'Click two points to cut a section through the building. It looks to the left of the line you draw.' },
+  { id: 'load', label: 'Load', key: 'L', Icon: Weight, hint: 'Click on a slab where equipment or debris will go.' },
   { id: 'wall', label: 'Wall', key: 'W', Icon: BrickWall, hint: 'Click point to point. Type a length + Enter for exact walls. Shift = straight. Esc or right-click to stop. Set RC (concrete) walls on the right.' },
   { id: 'room', label: 'Room', key: 'R', Icon: SquareDashed, hint: 'Click each corner, then click the first corner (or Enter) to close.' },
   { id: 'door', label: 'Door', key: 'D', Icon: DoorOpen, hint: 'Click on a wall to put a door in it.' },
@@ -68,7 +72,11 @@ export default function Layout() {
   const cleanRef = useRef(plan)                                // the plan as last opened / saved
   const [tool, setTool] = useState('select')
   const [mode, setMode] = useState('2d')                       // '2d' drawing or '3d' view
-  const [sel, setSel] = useState(null)
+  // selection: one item (sel), or several (picked, Ctrl+click / Ctrl+box). Setting one clears the other.
+  const [sel, setSelOne] = useState(null)
+  const [picked, setPickedRaw] = useState([])
+  const setSel = useCallback(v => { setSelOne(v); setPickedRaw([]) }, [])
+  const setPicked = useCallback(ids => { setSelOne(null); setPickedRaw(ids) }, [])
   const [fitSignal, setFitSignal] = useState(0)
   const [busy, setBusy] = useState(false)
   const [importing, setImporting] = useState(false)
@@ -81,12 +89,17 @@ export default function Layout() {
   const [sectionId, setSectionId] = useState(null)
   const sectionShown = (plan.sections || []).find(x => x.id === sectionId)
   const [gridAt, setGridAt] = useState(null)                   // where a new column grid starts
+  const [loadAt, setLoadAt] = useState(null)                   // where new equipment / debris goes
+  const [loadsOn, setLoadsOn] = useState(false)                // show loads on the plan
+  const [loadsDlg, setLoadsDlg] = useState(false)
   const boxRef = useRef(null)
   const [height, setHeight] = useState(null)
 
   const level = activeLevel(plan)
   const scan = useScanPoints(level.scan?.id)
   const scanPts = level.scan && level.bg?.ptScale ? scan.points.filter(p => p.page === level.scan.page) : []
+  // load takedown, worked out only while loads are shown
+  const td = useMemo(() => (loadsOn || loadsDlg ? takedown(plan) : null), [loadsOn, loadsDlg, plan])
 
   // ── history ──────────────────────────────────────────────
   const update = useCallback((fn, push = true) => setHist(h => {
@@ -94,9 +107,9 @@ export default function Layout() {
     if (next === h.present) return h
     return push ? { past: [...h.past.slice(-99), h.present], present: next, future: [] } : { ...h, present: next }
   }), [])
-  const undo = useCallback(() => { setSel(null); setHist(h => h.past.length ? { past: h.past.slice(0, -1), present: h.past[h.past.length - 1], future: [h.present, ...h.future] } : h) }, [])
-  const redo = useCallback(() => { setSel(null); setHist(h => h.future.length ? { past: [...h.past, h.present], present: h.future[0], future: h.future.slice(1) } : h) }, [])
-  const reset = useCallback(p => { cleanRef.current = p; setHist({ past: [], present: p, future: [] }); setSel(null); setTool('select'); setFitSignal(n => n + 1) }, [])
+  const undo = useCallback(() => { setSel(null); setHist(h => h.past.length ? { past: h.past.slice(0, -1), present: h.past[h.past.length - 1], future: [h.present, ...h.future] } : h) }, [setSel])
+  const redo = useCallback(() => { setSel(null); setHist(h => h.future.length ? { past: [...h.past, h.present], present: h.future[0], future: h.future.slice(1) } : h) }, [setSel])
+  const reset = useCallback(p => { cleanRef.current = p; setHist({ past: [], present: p, future: [] }); setSel(null); setTool('select'); setFitSignal(n => n + 1) }, [setSel])
 
   const ask = useCallback(opts => new Promise(resolve => setAskState({ ...opts, resolve })), [])
 
@@ -429,7 +442,7 @@ export default function Layout() {
     setBusy(true)
     try {
       const { downloadExcel } = await import('./layout/excel')
-      await downloadExcel(plan, `${baseName()} - schedule`, await gatherScan(plan.levels.map(l => l.id)))
+      await downloadExcel(plan, `${baseName()} - schedule`, await gatherScan(plan.levels.map(l => l.id)), takedown(plan))
       toast('Excel schedule downloaded.')
     } catch (err) { toast(`Couldn't make the Excel file: ${err.message}`, { tone: 'err', ms: 7000 }) } finally { setBusy(false) }
   }
@@ -521,6 +534,11 @@ export default function Layout() {
           onClick={() => { setMode('2d'); setSel(null); setTool('section') }} title="Draw a cross-section line (X)">
           <Slice size={14} /> New section
         </button>
+        <button style={{ ...S.btn, ...(loadsOn ? { background: '#eff6ff', border: '1px solid #93c5fd', color: '#1d4ed8' } : null) }} aria-pressed={loadsOn}
+          onClick={() => { setLoadsOn(v => !v); setMode('2d') }} title="Show load takedown on the plan">
+          <Calculator size={14} /> Loads
+        </button>
+        {loadsOn && <button style={S.btn} onClick={() => setLoadsDlg(true)} title="Code, materials, floor loads and results">Load settings & results</button>}
         {(plan.sections || []).length > 0 && (
           <select value="" onChange={e => e.target.value && setSectionId(e.target.value)} style={S.select} aria-label="View a section">
             <option value="">View section…</option>
@@ -555,8 +573,8 @@ export default function Layout() {
         <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
           {mode === '2d' ? (
             <>
-              <Canvas2D plan={plan} tool={tool} setTool={setTool} sel={sel} setSel={setSel} update={update} undo={undo} redo={redo}
-                fitSignal={fitSignal} ask={ask} onGridAt={setGridAt} scanPts={level.scan?.show === false ? [] : scanPts} />
+              <Canvas2D plan={plan} tool={tool} setTool={setTool} sel={sel} setSel={setSel} picked={picked} setPicked={setPicked} update={update} undo={undo} redo={redo}
+                fitSignal={fitSignal} ask={ask} onGridAt={setGridAt} onLoadAt={setLoadAt} td={td} scanPts={level.scan?.show === false ? [] : scanPts} />
               {hint && <div style={S.hint}>{hint}</div>}
             </>
           ) : (
@@ -568,11 +586,20 @@ export default function Layout() {
 
         {/* properties */}
         <div style={S.side}>
-          <Inspector plan={plan} sel={sel} setSel={setSel} update={update} tool={tool} setTool={setTool} onImport={importFile} importing={importing}
-            scanPts={scanPts} scanError={scan.error} onLinkScan={() => setScanPick(true)} onViewSection={sc => setSectionId(sc.id)} layoutId={link?.id} />
+          <Inspector plan={plan} sel={sel} setSel={setSel} picked={picked} update={update} tool={tool} setTool={setTool} onImport={importFile} importing={importing}
+            scanPts={scanPts} scanError={scan.error} onLinkScan={() => setScanPick(true)} onViewSection={sc => setSectionId(sc.id)} layoutId={link?.id} td={td} />
         </div>
       </div>
 
+      {loadAt && <LoadItemDialog presets={PRESETS} onClose={() => setLoadAt(null)} onAdd={o => {
+        const id = uid()
+        update(p => updateItems(p, list => [...list, { id, type: 'load', x: loadAt.x, y: loadAt.y, ...o }]))
+        setLoadAt(null)
+        setTool('select')
+        setSel(id)
+        setLoadsOn(true)
+      }} />}
+      {loadsDlg && <LoadsDialog plan={plan} td={td} update={update} busy={busy} onExcel={doExcel} onClose={() => setLoadsDlg(false)} />}
       {gridAt && <GridDialog plan={plan} onClose={() => setGridAt(null)} onCreate={opts => {
         const g = { id: uid(), type: 'grid', x: gridAt.x, y: gridAt.y, xs: opts.xs, ys: opts.ys, xl: opts.xl, yl: opts.yl, ...(opts.rot ? { rot: opts.rot } : null) }
         update(p => updateItems(
@@ -584,11 +611,11 @@ export default function Layout() {
         setSel(g.id)
         setFitSignal(n => n + 1)
       }} />}
-      {exportOpen && <ExportDialog plan={plan} levelId={level.id} onClose={() => setExportOpen(false)} onExport={async (ids, all) => {
+      {exportOpen && <ExportDialog plan={plan} levelId={level.id} onClose={() => setExportOpen(false)} onExport={async (ids, all, details) => {
         const base = baseName()
         try {
           // scan points of every linked level go on their own layer
-          downloadDxf(plan, ids, all ? `${base} - all levels` : `${base} - ${level.name}`, await gatherScan(ids))
+          downloadDxf(plan, ids, all ? `${base} - all levels` : `${base} - ${level.name}`, await gatherScan(ids), { details })
           toast('DXF downloaded. Open it in AutoCAD or any CAD program.')
           setExportOpen(false)
         } catch (err) { toast(`Couldn't export: ${err.message}`, { tone: 'err', ms: 7000 }) }

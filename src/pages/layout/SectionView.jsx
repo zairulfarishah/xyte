@@ -10,8 +10,9 @@ const FILL = {
   column: { fill: '#94a3b8', stroke: '#1e293b' },
   rcwall: { fill: '#64748b', stroke: '#0f172a' },
   wall: { fill: '#f1f5f9', stroke: '#64748b' },
+  footing: { fill: '#d6c7b4', stroke: '#78350f' },
 }
-const ORDER = ['wall', 'rcwall', 'column', 'slab', 'beam']
+const ORDER = ['wall', 'rcwall', 'footing', 'column', 'slab', 'beam']
 
 export default function SectionView({ plan, sec, onClose }) {
   const svgRef = useRef(null)

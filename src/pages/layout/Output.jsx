@@ -5,6 +5,7 @@ import { Modal } from './Dialogs'
 import { SHEETS } from './pdf'
 import { columnMatrix } from './excel'
 import { nextLabel } from './geometry'
+import { detailGroups } from './details'
 import { when } from './store'
 
 const S = {
@@ -25,6 +26,8 @@ export function PrintDialog({ plan, levelId, defaults, busy, onPrint, onClose })
   const [which, setWhich] = useState('one')
   const [underlay, setUnderlay] = useState(!!plan.print?.underlay)
   const [sections, setSections] = useState((plan.sections || []).length > 0)
+  const nDetails = detailGroups(plan).length
+  const [details, setDetails] = useState(nDetails > 0)
   const [tb, setTb] = useState({ company: 'Sonicon', companyLine: 'Structural survey layout', project: plan.name, ...defaults, ...plan.titleBlock })
   const set = k => e => setTb(t => ({ ...t, [k]: e.target.value }))
   const level = plan.levels.find(l => l.id === levelId)
@@ -48,6 +51,7 @@ export function PrintDialog({ plan, levelId, defaults, busy, onPrint, onClose })
         <label style={S.check}><input type="radio" checked={which === 'one'} onChange={() => setWhich('one')} /> This level only ({level?.name})</label>
         <label style={S.check}><input type="radio" checked={which === 'all'} onChange={() => setWhich('all')} /> All {plan.levels.length} levels, one sheet each</label>
         {(plan.sections || []).length > 0 && <label style={S.check}><input type="checkbox" checked={sections} onChange={e => setSections(e.target.checked)} /> Add a sheet for each section ({plan.sections.map(s => s.name).join(', ')})</label>}
+        {nDetails > 0 && <label style={S.check}><input type="checkbox" checked={details} onChange={e => setDetails(e.target.checked)} /> Add reinforcement details: length view and section of each bar type ({nDetails} sheet{nDetails > 1 ? 's' : ''})</label>}
         <label style={S.check}><input type="checkbox" checked={underlay} onChange={e => setUnderlay(e.target.checked)} /> Include the client's drawing underneath (faint)</label>
       </div>
       <div style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '.04em', borderTop: '1px solid #f1f5f9', paddingTop: '8px' }}>Title block</div>
@@ -63,7 +67,7 @@ export function PrintDialog({ plan, levelId, defaults, busy, onPrint, onClose })
       <div style={S.actions}>
         <button style={S.btn} onClick={onClose}>Cancel</button>
         <button style={{ ...S.btn, ...S.primary }} disabled={busy}
-          onClick={() => onPrint({ levelIds: which === 'all' ? plan.levels.map(l => l.id) : [levelId], sheet, scale, underlay, sections, tb: { ...tb, rev: plan.titleBlock?.rev } }, which === 'all')}>
+          onClick={() => onPrint({ levelIds: which === 'all' ? plan.levels.map(l => l.id) : [levelId], sheet, scale, underlay, sections, details, tb: { ...tb, rev: plan.titleBlock?.rev } }, which === 'all')}>
           <Printer size={14} /> {busy ? 'Making PDF…' : 'Download PDF'}
         </button>
       </div>

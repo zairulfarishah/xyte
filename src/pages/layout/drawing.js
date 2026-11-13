@@ -6,9 +6,11 @@
 //   label(layer, p, h, text, rot?, color?)   text centred on p, rot = degrees clockwise on the page
 // }
 import {
-  gridPoint, gridLabels, columnCorners, beamAxis, wallAxes, wallCorners, onWall, same, dist, centroid, polyArea, slabNetArea,
+  gridPoint, gridLabels, columnCorners, beamAxis, wallAxes, wallCorners, onWall, same, dist, centroid, polyArea, slabNetArea, pileLayout,
 } from './geometry'
+import { markOf } from './rebar'
 import { SCAN_STATUS, scanToPlan } from './scan'
+import { loadKN } from './loads'
 
 // layer: colour (AutoCAD colour number), linetype, and how it prints
 export const LAYERS = {
@@ -28,6 +30,14 @@ export const LAYERS = {
   'A-DIMS': { aci: 2, lt: 'CONTINUOUS', rgb: [0.7, 0.33, 0.04], w: 0.25 },
   'A-TEXT': { aci: 7, lt: 'CONTINUOUS', rgb: [0.06, 0.09, 0.16], w: 0.3 },
   'S-SECTION': { aci: 6, lt: 'CENTER', rgb: [0.49, 0.23, 0.93], w: 0.5, dash: [8, 2, 1.5, 2] },
+  'S-FOOT': { aci: 32, lt: 'HIDDEN', rgb: [0.57, 0.25, 0.05], w: 0.35, dash: [3, 1.5] },
+  'S-FOOT-TEXT': { aci: 32, lt: 'CONTINUOUS', rgb: [0.57, 0.25, 0.05], w: 0.3 },
+  'S-DETAIL': { aci: 7, lt: 'CONTINUOUS', rgb: [0.06, 0.09, 0.16], w: 0.4 },
+  'S-DETAIL-HID': { aci: 8, lt: 'HIDDEN', rgb: [0.45, 0.5, 0.58], w: 0.25, dash: [3, 1.5] },
+  'S-DETAIL-TEXT': { aci: 7, lt: 'CONTINUOUS', rgb: [0.06, 0.09, 0.16], w: 0.25 },
+  'S-REBAR': { aci: 1, lt: 'CONTINUOUS', rgb: [0.8, 0.1, 0.1], w: 0.6 },
+  'S-REBAR-TOP': { aci: 1, lt: 'HIDDEN', rgb: [0.8, 0.1, 0.1], w: 0.6, dash: [3, 1.5] },
+  'S-LOAD': { aci: 40, lt: 'CONTINUOUS', rgb: [0.72, 0.42, 0.04], w: 0.35 },
   'SCAN-POINTS': { aci: 30, lt: 'CONTINUOUS', rgb: [0.91, 0.35, 0.05], w: 0.4 },
   'TITLE': { aci: 7, lt: 'CONTINUOUS', rgb: [0.06, 0.09, 0.16], w: 0.4 },
 }
@@ -76,7 +86,16 @@ export function drawLevel(sink, plan, lv, scanPts = []) {
   // slabs, with thickness (and drop below floor level)
   for (const s of items.filter(i => i.type === 'slab')) {
     pline('S-SLAB', s.pts, true)
-    if (polyArea(s.pts) > 4e6) label('S-SLAB-TEXT', centroid(s.pts), 200, `S${s.thickness}${s.drop ? ` (-${s.drop})` : ''}`)
+    const mk = markOf(s, plan)
+    if (polyArea(s.pts) > 4e6) label('S-SLAB-TEXT', centroid(s.pts), 200, `${mk ? `${mk} ` : 'S'}${s.thickness}${s.drop ? ` (-${s.drop})` : ''}`)
+  }
+
+  // footings and pile caps (below the floor: hidden line), with their mark and size
+  for (const f of items.filter(i => i.type === 'footing')) {
+    pline('S-FOOT', columnCorners(f), true)
+    if (f.kind === 'pile') for (const q of pileLayout(f)) circle('S-FOOT', q, (f.pileDia || 300) / 2)
+    const mk = markOf(f, plan)
+    label('S-FOOT-TEXT', { x: f.x, y: f.y + f.d / 2 - 220 }, 160, `${mk ? `${mk} ` : ''}${f.w}x${f.d}x${f.h}`)
   }
 
   // slab openings: outline with a cross
@@ -108,13 +127,16 @@ export function drawLevel(sink, plan, lv, scanPts = []) {
     const L = dist(ax.a, ax.b)
     if (L < 1) continue
     pline('S-BEAM', wallCorners({ a: ax.a, b: ax.b, thickness: bm.width }), true)
-    if (L > 1500) label('S-BEAM-TEXT', { x: (ax.a.x + ax.b.x) / 2, y: (ax.a.y + ax.b.y) / 2 }, 150, `B${bm.width}x${bm.depth}`, upright(ax.a, ax.b))
+    const mk = markOf(bm, plan)
+    if (L > 1500) label('S-BEAM-TEXT', { x: (ax.a.x + ax.b.x) / 2, y: (ax.a.y + ax.b.y) / 2 }, 150, `${mk ? `${mk} ` : 'B'}${bm.width}x${bm.depth}`, upright(ax.a, ax.b))
   }
 
   // columns, after the beams so their fill covers the beam lines
   for (const c of items.filter(i => i.type === 'column')) {
     if (c.shape === 'round') circle('S-COLS', c, c.w / 2)
     else pline('S-COLS', columnCorners(c), true)
+    const mk = markOf(c, plan)
+    if (mk) label('S-COLS', { x: c.x + Math.max(c.w, c.d) / 2 + 200, y: c.y - Math.max(c.w, c.d) / 2 - 120 }, 150, mk)
   }
 
   // walls: two faces broken at doors / windows, jambs, and end caps where not joined.
@@ -170,6 +192,14 @@ export function drawLevel(sink, plan, lv, scanPts = []) {
   }
 
   for (const l of items.filter(i => i.type === 'label')) label('A-TEXT', l, l.size, l.text)
+
+  // equipment and debris on the slab
+  for (const ld of items.filter(i => i.type === 'load')) {
+    const x0 = ld.x - ld.w / 2, x1 = ld.x + ld.w / 2, y0 = ld.y - ld.d / 2, y1 = ld.y + ld.d / 2
+    pline('S-LOAD', [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }], true)
+    line('S-LOAD', { x: x0, y: y0 }, { x: x1, y: y1 })
+    label('S-LOAD', { x: ld.x, y: ld.y }, 180, `${ld.name} ${(loadKN(ld) / 9.81).toFixed(1)}t`)
+  }
 
   // section cut lines
   for (const sc of plan.sections || []) {

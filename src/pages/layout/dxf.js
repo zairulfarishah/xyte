@@ -2,6 +2,7 @@
 // Drawn 1:1 in millimetres. Plan y runs down the screen; CAD y runs up, so y is flipped.
 // What is drawn comes from drawing.js (shared with the PDF print); this file only writes DXF.
 import { LAYERS, drawLevel, drawnBounds } from './drawing'
+import { drawDetails } from './details'
 
 function writer() {
   const out = []
@@ -10,7 +11,8 @@ function writer() {
 }
 
 // scanBy: { levelId: [scan point rows] } for levels linked to Scan Marker.
-export function planToDxf(plan, levelIds, scanBy = {}) {
+// opts.details: add the reinforcement details (length views and sections) beside the plans.
+export function planToDxf(plan, levelIds, scanBy = {}, opts = {}) {
   const { g, text } = writer()
   let dx = 0                                     // offset of the level being written
   const X = p => p.x + dx, Y = p => -p.y
@@ -20,6 +22,12 @@ export function planToDxf(plan, levelIds, scanBy = {}) {
     pline: (layer, pts, closed = true) => {
       g(0, 'POLYLINE'); g(8, layer); g(66, 1); g(10, 0); g(20, 0); g(30, 0); g(70, closed ? 1 : 0)
       for (const p of pts) { g(0, 'VERTEX'); g(8, layer); g(10, X(p)); g(20, Y(p)); g(30, 0) }
+      g(0, 'SEQEND'); g(8, layer)
+    },
+    // filled circle (a bar in section): a closed polyline of two half-circle arcs, as wide as the radius
+    disc: (layer, c, r) => {
+      g(0, 'POLYLINE'); g(8, layer); g(66, 1); g(10, 0); g(20, 0); g(30, 0); g(70, 1); g(40, r); g(41, r)
+      for (const sx of [-1, 1]) { g(0, 'VERTEX'); g(8, layer); g(10, X({ x: c.x + sx * r / 2 })); g(20, Y(c)); g(30, 0); g(42, 1) }
       g(0, 'SEQEND'); g(8, layer)
     },
     circle: (layer, c, r, color) => { g(0, 'CIRCLE'); g(8, layer); if (color?.aci) g(62, color.aci); g(10, X(c)); g(20, Y(c)); g(30, 0); g(40, r) },
@@ -66,11 +74,12 @@ export function planToDxf(plan, levelIds, scanBy = {}) {
 
   g(0, 'SECTION'); g(2, 'ENTITIES')
   const levels = plan.levels.filter(l => levelIds.includes(l.id)).sort((a, b) => a.elevation - b.elevation)
-  let nextX = null
+  let nextX = null, topY = 0
   for (const lv of levels) {
     const pts = scanBy[lv.id] || []
     const b = drawnBounds(plan, lv, pts)
     // levels side by side, left to right from the lowest
+    if (nextX == null) topY = b.y0
     dx = nextX == null ? 0 : nextX - b.x0
     nextX = b.x1 + dx + 10000
     drawLevel(sink, plan, lv, pts)
@@ -79,13 +88,18 @@ export function planToDxf(plan, levelIds, scanBy = {}) {
     sink.label('TITLE', { x: (b.x0 + b.x1) / 2, y: titleY }, 600, `${lv.name.toUpperCase()}  (FFL ${lv.elevation >= 0 ? '+' : ''}${lv.elevation})`)
     sink.label('TITLE', { x: (b.x0 + b.x1) / 2, y: titleY + 800 }, 300, `${plan.name} - dimensions in mm`)
   }
+  // reinforcement details to the right of the plans
+  if (opts.details) {
+    dx = nextX ?? 0
+    drawDetails(sink, plan, { x: 0, y: topY })
+  }
   g(0, 'ENDSEC')
   g(0, 'EOF')
   return text()
 }
 
-export function downloadDxf(plan, levelIds, fileName, scanBy) {
-  const blob = new Blob([planToDxf(plan, levelIds, scanBy)], { type: 'application/dxf' })
+export function downloadDxf(plan, levelIds, fileName, scanBy, opts) {
+  const blob = new Blob([planToDxf(plan, levelIds, scanBy, opts)], { type: 'application/dxf' })
   const a = document.createElement('a')
   a.href = URL.createObjectURL(blob)
   a.download = `${fileName.replace(/[\\/:*?"<>|]+/g, '-')}.dxf`

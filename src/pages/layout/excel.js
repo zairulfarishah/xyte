@@ -1,6 +1,8 @@
 // Excel schedule of the structure, level by level, from the same data as the drawing.
 import { dist, polyArea, nodeName, bayName, slabNetArea, schedule, levelAbove } from './geometry'
 import { SCAN_STATUS } from './scan'
+import { DISCLAIMER } from './loads'
+import { DESIGN_KINDS, designsOf, designUse, rebarOf, markOf, barText, barCells } from './rebar'
 
 const sizeOf = c => (c.shape === 'round' ? `Ø${c.w}` : `${c.w} x ${c.d}`)
 
@@ -20,7 +22,7 @@ export function columnMatrix(plan) {
   return { levels, rows: [...rows.values()].sort((a, b) => a.order.localeCompare(b.order)) }
 }
 
-export async function downloadExcel(plan, fileName, scanBy = {}) {
+export async function downloadExcel(plan, fileName, scanBy = {}, td = null) {
   const { default: ExcelJS } = await import('exceljs')
   const wb = new ExcelJS.Workbook()
   wb.creator = 'Xyte'
@@ -67,28 +69,56 @@ export async function downloadExcel(plan, fileName, scanBy = {}) {
 
   // Columns
   const cs = wb.addWorksheet('Columns')
-  head(cs, [['Level', 'level', 16], ['Grid', 'ref', 10], ['Shape', 'shape', 12], ['Size (mm)', 'size', 12], ['Height (mm)', 'h', 12], ['Off grid X', 'ex', 11], ['Off grid Y', 'ey', 11], ['Angle (°)', 'rot', 10], ['Measured on site', 'ver', 16]])
+  head(cs, [['Level', 'level', 16], ['Grid', 'ref', 10], ['Mark', 'mk', 8], ['Shape', 'shape', 12], ['Size (mm)', 'size', 12], ['Height (mm)', 'h', 12], ['Main bars', 'main', 11], ['Links', 'links', 12],
+    ['Off grid X', 'ex', 11], ['Off grid Y', 'ey', 11], ['Angle (°)', 'rot', 10], ['Measured on site', 'ver', 16]])
   for (const lv of levels) for (const c of lv.items.filter(i => i.type === 'column')) {
-    cs.addRow({ level: lv.name, ref: c.grid ? nodeName(c.grid, plan.grids) : 'Free', shape: c.shape === 'round' ? 'Round' : 'Rectangular', size: sizeOf(c), h: c.height, ex: c.ex || 0, ey: c.ey || 0, rot: c.rot || 0, ver: yes(c.verified) })
+    cs.addRow({ level: lv.name, ref: c.grid ? nodeName(c.grid, plan.grids) : 'Free', mk: markOf(c, plan), shape: c.shape === 'round' ? 'Round' : 'Rectangular', size: sizeOf(c), h: c.height,
+      ...barCells('column', rebarOf(c, plan)), ex: c.ex || 0, ey: c.ey || 0, rot: c.rot || 0, ver: yes(c.verified) })
   }
 
   // Beams
   const bs = wb.addWorksheet('Beams')
-  head(bs, [['Level', 'level', 16], ['From', 'from', 10], ['To', 'to', 10], ['Width (mm)', 'w', 11], ['Depth overall (mm)', 'd', 17], ['Below slab (mm)', 'bs', 15], ['Length c/c (m)', 'len', 14], ['Shifted (mm)', 'off', 12], ['Measured on site', 'ver', 16]])
+  head(bs, [['Level', 'level', 16], ['From', 'from', 10], ['To', 'to', 10], ['Mark', 'mk', 8], ['Width (mm)', 'w', 11], ['Depth overall (mm)', 'd', 17], ['Below slab (mm)', 'bs', 15], ['Length c/c (m)', 'len', 14],
+    ['Top bars', 'top', 10], ['Bottom bars', 'bottom', 12], ['Links', 'links', 14], ['Shifted (mm)', 'off', 12], ['Measured on site', 'ver', 16]])
   for (const lv of levels) {
     const above = levelAbove(plan, lv)
     for (const b of lv.items.filter(i => i.type === 'beam')) {
-      bs.addRow({ level: lv.name, from: b.ga ? nodeName(b.ga, plan.grids) : 'Free', to: b.gb ? nodeName(b.gb, plan.grids) : 'Free', w: b.width, d: b.depth,
+      bs.addRow({ level: lv.name, from: b.ga ? nodeName(b.ga, plan.grids) : 'Free', to: b.gb ? nodeName(b.gb, plan.grids) : 'Free', mk: markOf(b, plan), w: b.width, d: b.depth, ...barCells('beam', rebarOf(b, plan)),
         bs: above ? Math.max(0, b.depth - above.slab) : '', len: +(dist(b.a, b.b) / 1000).toFixed(3), off: b.off || 0, ver: yes(b.verified) })
     }
   }
 
   // Slabs and openings
   const ss = wb.addWorksheet('Slabs')
-  head(ss, [['Level', 'level', 16], ['Bay', 'bay', 16], ['Thickness (mm)', 't', 14], ['Drop below FFL (mm)', 'drop', 18], ['Area, net (m²)', 'a', 14], ['Concrete (m³)', 'v', 13], ['Measured on site', 'ver', 16]])
+  head(ss, [['Level', 'level', 16], ['Bay', 'bay', 16], ['Mark', 'mk', 8], ['Thickness (mm)', 't', 14], ['Drop below FFL (mm)', 'drop', 18], ['Area, net (m²)', 'a', 14], ['Concrete (m³)', 'v', 13],
+    ['Bottom, short span', 'bottom1', 17], ['Bottom, long span', 'bottom2', 17], ['Top', 'top', 11], ['Measured on site', 'ver', 16]])
   for (const lv of levels) for (const s of lv.items.filter(i => i.type === 'slab')) {
     const A = slabNetArea(s, lv.items)
-    ss.addRow({ level: lv.name, bay: s.bay ? bayName(s.bay, plan.grids) : 'Drawn by hand', t: s.thickness, drop: s.drop || 0, a: +(A / 1e6).toFixed(3), v: +(A * s.thickness / 1e9).toFixed(3), ver: yes(s.verified) })
+    ss.addRow({ level: lv.name, bay: s.bay ? bayName(s.bay, plan.grids) : 'Drawn by hand', mk: markOf(s, plan), t: s.thickness, drop: s.drop || 0, a: +(A / 1e6).toFixed(3), v: +(A * s.thickness / 1e9).toFixed(3),
+      ...barCells('slab', rebarOf(s, plan)), ver: yes(s.verified) })
+  }
+
+  // Footings and pile caps
+  const foots = levels.flatMap(lv => lv.items.filter(i => i.type === 'footing').map(f => ({ lv, f })))
+  if (foots.length) {
+    const fs = wb.addWorksheet('Footings')
+    head(fs, [['Level', 'level', 16], ['Grid', 'ref', 10], ['Mark', 'mk', 8], ['Type', 'kind', 10], ['Width X (mm)', 'w', 12], ['Length Y (mm)', 'd', 13], ['Thickness (mm)', 'h', 14], ['Top below floor (mm)', 'top', 19],
+      ['Piles', 'piles', 7], ['Pile size (mm)', 'pd', 13], ['Concrete (m³)', 'v', 13], ['Bottom X', 'x', 11], ['Bottom Y', 'y', 11], ['Measured on site', 'ver', 16]])
+    for (const { lv, f } of foots) {
+      const pile = f.kind === 'pile'
+      fs.addRow({ level: lv.name, ref: f.grid ? nodeName(f.grid, plan.grids) : 'Free', mk: markOf(f, plan), kind: pile ? 'Pile cap' : 'Pad', w: f.w, d: f.d, h: f.h, top: f.top ?? 0,
+        piles: pile ? f.piles || 4 : '', pd: pile ? f.pileDia || 300 : '', v: +((f.w / 1000) * (f.d / 1000) * (f.h / 1000)).toFixed(3), ...barCells('footing', rebarOf(f, plan)), ver: yes(f.verified) })
+    }
+  }
+
+  // Bar schedule: the design types and how many elements use each
+  const types = Object.keys(DESIGN_KINDS).flatMap(t => designsOf(plan, t))
+  if (types.length) {
+    const bt = wb.addWorksheet('Bar schedule')
+    head(bt, [['Mark', 'mk', 8], ['Element', 'el', 10], ['Bars', 'bars', 60], ['Cover (mm)', 'cv', 11], ['Number used', 'n', 12]])
+    for (const d of types) bt.addRow({ mk: d.mark, el: DESIGN_KINDS[d.type].label, bars: barText(d.type, d.rebar), cv: d.rebar.cover ?? '', n: designUse(plan, d.id) })
+    bt.addRow({})
+    bt.addRow({ mk: 'T = high yield bar, R = mild steel bar; e.g. 3T20 = three 20 mm bars, T10@200 = 10 mm bars at 200 mm centres.' })
   }
   const os = wb.addWorksheet('Openings')
   head(os, [['Level', 'level', 16], ['Name', 'name', 20], ['Width (mm)', 'w', 12], ['Length (mm)', 'l', 12], ['Area (m²)', 'a', 11]])
@@ -124,6 +154,47 @@ export async function downloadExcel(plan, fileName, scanBy = {}) {
       const yn = (v, dep) => (v === 'yes' ? `Found${dep ? ` @${dep}` : ''}` : v === 'none' ? 'None' : '')
       sp.addRow({ level: lv.name, p: p.label, st: (SCAN_STATUS[p.status] || SCAN_STATUS.marked).label, tc: d.topCover, ts: d.topSp, bc: d.botCover, bsp: d.botSp, thk: d.thk, cd: yn(d.conduit, d.conduitDepth), pt: yn(d.pt, d.ptDepth), note: p.note })
     }
+  }
+
+  // Load takedown (planning figures)
+  if (td) {
+    const name = id => plan.levels.find(l => l.id === id)?.name
+    const lc = wb.addWorksheet('Loads - columns')
+    head(lc, [['Level', 'level', 16], ['Grid', 'ref', 10], ['Size', 'size', 12], ['Dead (kN)', 'g', 11], ['Live (kN)', 'q', 11], ['Service (kN)', 's', 13], ['Design N (kN)', 'n', 14], ['Capacity NRd (kN)', 'nrd', 17], ['Used (%)', 'u', 10]])
+    for (const c of Object.values(td.cols).sort((a, b) => b.N - a.N)) {
+      lc.addRow({ level: name(c.level), ref: c.ref, size: c.size, g: +c.G.toFixed(1), q: +c.Q.toFixed(1), s: +c.NSLS.toFixed(1), n: +c.N.toFixed(1), nrd: c.NRd ? +c.NRd.toFixed(0) : '', u: c.util != null ? Math.round(c.util * 100) : '' })
+    }
+    const lb = wb.addWorksheet('Loads - beams')
+    head(lb, [['Level', 'level', 16], ['Beam', 'ref', 14], ['Size', 'size', 12], ['Span (m)', 'span', 10], ['Design load (kN/m)', 'w', 18], ['M (kN·m)', 'm', 11], ['V (kN)', 'v', 10], ['MRd', 'mrd', 9], ['VRd', 'vrd', 9], ['Used (%)', 'u', 10]])
+    for (const b of Object.values(td.beams).sort((a, c) => c.M - a.M)) {
+      lb.addRow({ level: name(b.level), ref: b.ref, size: b.size, span: +b.span.toFixed(2), w: +b.wULS.toFixed(2), m: +b.M.toFixed(1), v: +b.V.toFixed(1), mrd: b.MRd ? +b.MRd.toFixed(0) : '', vrd: b.VRd ? +b.VRd.toFixed(0) : '', u: b.util != null ? Math.round(b.util * 100) : '' })
+    }
+    const fl = Object.values(td.foots || {})
+    if (fl.length) {
+      const lf = wb.addWorksheet('Loads - footings')
+      head(lf, [['Level', 'level', 16], ['Footing', 'ref', 12], ['Column load, service (kN)', 'n', 22], ['Footing + soil (kN)', 'w', 18], ['Total, service (kN)', 's', 18],
+        ['Soil pressure (kPa)', 'p', 17], ['Per pile (kN)', 'pp', 13], ['Soil / pile used (%)', 'us', 18], ['Bars used (%)', 'ub', 13]])
+      for (const f of fl) {
+        lf.addRow({ level: name(f.level), ref: f.ref, n: +f.NcolSLS.toFixed(1), w: +(f.self + f.soil).toFixed(1), s: +f.SLS.toFixed(1), p: f.pressure != null ? +f.pressure.toFixed(0) : '',
+          pp: f.perPile != null ? +f.perPile.toFixed(0) : '', us: f.utilSoil != null ? Math.round(f.utilSoil * 100) : '', ub: f.utilBend != null ? Math.round(f.utilBend * 100) : '' })
+      }
+    }
+    const eq = Object.entries(td.loads)
+    if (eq.length) {
+      const le = wb.addWorksheet('Loads - equipment')
+      head(le, [['Level', 'level', 16], ['Item', 'name', 22], ['Weight (t)', 't', 11], ['Pressure (kPa)', 'p', 14], ['Panel span (m)', 'span', 14], ['vs floor design (%)', 'vd', 18], ['vs capacity (%)', 'vc', 15]])
+      for (const [id, r] of eq) {
+        const lv = plan.levels.find(l => l.items.some(i => i.id === id))
+        const it = lv?.items.find(i => i.id === id)
+        le.addRow({ level: lv?.name, name: it?.name, t: +r.tonnes.toFixed(2), p: +r.pressure.toFixed(1), span: r.span ? +r.span.toFixed(2) : '', vd: r.vsDesign != null ? Math.round(r.vsDesign * 100) : r.note, vc: r.util != null ? Math.round(r.util * 100) : '' })
+      }
+    }
+    const ln = wb.addWorksheet('Loads - notes')
+    ln.getColumn(1).width = 110
+    ln.addRow([`Code: ${td.set.c.name}. Load factors ${td.set.c.gG} dead, ${td.set.c.gQ} live. Concrete ${td.set.grade}, steel ${td.set.fy} MPa, concrete density ${td.set.density} kN/m³.`])
+    ln.addRow([`Soil: allowable bearing ${td.set.bearing} kPa, soil over footings ${td.set.soil} kN/m³.`])
+    ln.addRow([DISCLAIMER])
+    for (const l of plan.levels) for (const w of td.levels[l.id].warnings) ln.addRow([`${l.name}: ${w}`])
   }
 
   const buf = await wb.xlsx.writeBuffer()

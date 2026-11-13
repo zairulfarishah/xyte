@@ -61,6 +61,14 @@ export function computeSection(plan, sec) {
       }
     }
 
+    // footings below the floor, with the column carried down to them
+    for (const f of items.filter(i => i.type === 'footing')) {
+      const top = E - (f.top ?? 0)
+      for (const [s0, s1] of ranges(columnCorners(f))) parts.push({ kind: 'footing', s0, s1, z0: top - f.h, z1: top, label: `${f.w}x${f.d}x${f.h}` })
+      const c = f.top > 0 && items.find(o => o.type === 'column' && pointInPoly(o, columnCorners(f)))
+      if (c) for (const [s0, s1] of ranges(c.shape === 'round' ? circlePts(c) : columnCorners(c))) parts.push({ kind: 'column', s0, s1, z0: top, z1: E, label: '' })
+    }
+
     // walls
     for (const w of items.filter(i => i.type === 'wall')) {
       for (const [s0, s1] of ranges(wallCorners(w))) {

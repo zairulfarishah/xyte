@@ -3,11 +3,14 @@ import {
   activeLevel, updateItems, updateLevel, removeItem, uid, dist, same, round, snapPoints, projectOnSeg,
   wallCorners, wallAxes, onWall, clampOpening, centroid, polyArea, moveItem, cloneItems, bounds, fmtMm, fmtArea,
   syncGrid, findNode, gridNode, gridLabels, setGrid, removeGrid, moveLine, gridAxis, columnCorners, beamCorners, beamAxis, nextLabel,
+  pointInPoly, itemPoints, pileLayout,
 } from './geometry'
+import { markOf } from './rebar'
 import { SCAN_STATUS, scanToPlan } from './scan'
 import { cadSnapPoints } from './cad'
+import { loadKN, level3, footingSide } from './loads'
 
-const STRUCT = new Set(['column', 'beam', 'slab', 'wall'])
+const STRUCT = new Set(['column', 'beam', 'slab', 'wall', 'footing'])
 const DRAW_TOOLS = new Set(['wall', 'room', 'slab', 'void', 'dim', 'beam', 'section', 'calibrate'])
 const POLY_TOOLS = new Set(['room', 'slab', 'void'])
 const OPENING = {
@@ -21,7 +24,7 @@ const C = {
 
 const isTyping = e => /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName) || e.target?.isContentEditable
 
-export default function Canvas2D({ plan, tool, setTool, sel, setSel, update, undo, redo, fitSignal, ask, onGridAt, scanPts = [] }) {
+export default function Canvas2D({ plan, tool, setTool, sel, setSel, picked = [], setPicked, update, undo, redo, fitSignal, ask, onGridAt, onLoadAt, td, scanPts = [] }) {
   const svgRef = useRef(null)
   const [size, setSize] = useState({ w: 800, h: 600 })
   const [view, setView] = useState({ ox: -1000, oy: -1000, z: 0.05 })   // screen = (world - o) * z
@@ -29,6 +32,7 @@ export default function Canvas2D({ plan, tool, setTool, sel, setSel, update, und
   const [cursor, setCursor] = useState(null)     // snapped world point under the pointer
   const [typed, setTyped] = useState('')         // length typed while drawing
   const drag = useRef(null)
+  const [box, setBox] = useState(null)           // { a, b } while Ctrl+dragging a selection box
   const spaceDown = useRef(false)
   const shiftDown = useRef(false)
 
@@ -40,6 +44,21 @@ export default function Canvas2D({ plan, tool, setTool, sel, setSel, update, und
     return lower[0] || null
   }, [plan.levels, level.elevation])
   const thickness = plan.wallThickness || 200
+
+  // ── selection: one item (sel) or several (picked) ────────
+  const pickedSet = useMemo(() => new Set(picked.length ? picked : sel && items.some(i => i.id === sel) ? [sel] : []), [picked, sel, items])
+  const isOn = id => id === sel || pickedSet.has(id)
+  const choose = useCallback(ids => {
+    const arr = [...new Set(ids)].filter(id => items.some(i => i.id === id))
+    if (!arr.length) setSel(null)
+    else if (arr.length === 1) setSel(arr[0])
+    else setPicked(arr)
+  }, [items, setSel, setPicked])
+  const togglePick = useCallback(id => {
+    const cur = new Set(pickedSet)
+    if (cur.has(id)) cur.delete(id); else cur.add(id)
+    choose([...cur])
+  }, [pickedSet, choose])
 
   // ── size and view ────────────────────────────────────────
   useEffect(() => {
@@ -212,12 +231,15 @@ export default function Canvas2D({ plan, tool, setTool, sel, setSel, update, und
       const mod = e.ctrlKey || e.metaKey
       if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return }
       if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return }
-      if (mod && e.key.toLowerCase() === 'd' && sel) {
+      if (mod && e.key.toLowerCase() === 'a' && tool === 'select') {
         e.preventDefault()
-        const it = items.find(i => i.id === sel)
-        if (!it) return
-        const copies = cloneItems(it, items, 500, 500)
-        if (copies.length) { add(...copies); setSel(copies[0].id) }
+        choose(items.filter(i => i.type !== 'opening').map(i => i.id))
+        return
+      }
+      if (mod && e.key.toLowerCase() === 'd' && pickedSet.size) {
+        e.preventDefault()
+        const copies = items.filter(i => pickedSet.has(i.id)).flatMap(it => cloneItems(it, items, 500, 500))
+        if (copies.length) { add(...copies); choose(copies.filter(c => c.type !== 'opening').map(c => c.id)) }
         return
       }
       if (draft && (DRAW_TOOLS.has(tool))) {
@@ -233,8 +255,15 @@ export default function Canvas2D({ plan, tool, setTool, sel, setSel, update, und
       }
       if (e.key === 'Escape') {
         if (draft) finishDraft()
-        else if (sel) setSel(null)
+        else if (sel || picked.length) setSel(null)
         else setTool('select')
+        return
+      }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && picked.length > 1) {
+        e.preventDefault()
+        const ids = new Set(picked)
+        update(p => updateItems(p, list => syncGrid(list.filter(i => !ids.has(i.id) && !ids.has(i.wallId)), p.grids)))
+        setSel(null)
         return
       }
       if ((e.key === 'Delete' || e.key === 'Backspace') && sel) {
@@ -250,7 +279,7 @@ export default function Canvas2D({ plan, tool, setTool, sel, setSel, update, und
         return
       }
       if (mod || e.altKey) return
-      const keys = { v: 'select', h: 'pan', w: 'wall', r: 'room', s: 'slab', o: 'void', x: 'section', c: 'column', d: 'door', n: 'window', m: 'dim', t: 'label', b: 'beam', g: 'grid', p: 'note' }
+      const keys = { v: 'select', h: 'pan', w: 'wall', r: 'room', s: 'slab', o: 'void', x: 'section', c: 'column', f: 'footing', d: 'door', n: 'window', m: 'dim', t: 'label', b: 'beam', g: 'grid', p: 'note', l: 'load' }
       const k = keys[e.key.toLowerCase()]
       if (k) { setTool(k); finishDraft() }
     }
@@ -261,7 +290,7 @@ export default function Canvas2D({ plan, tool, setTool, sel, setSel, update, und
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up) }
-  }, [draft, tool, typed, sel, items, grids, plan.sections, add, undo, redo, update, setSel, setTool, finishDraft, placePoint, applyTyped])
+  }, [draft, tool, typed, sel, picked, pickedSet, choose, items, grids, plan.sections, add, undo, redo, update, setSel, setTool, finishDraft, placePoint, applyTyped])
 
   // Changing tool or level drops a half-drawn shape.
   const draftKey = `${tool}|${level.id}`
@@ -285,6 +314,12 @@ export default function Canvas2D({ plan, tool, setTool, sel, setSel, update, und
     svg.setPointerCapture(e.pointerId)
     shiftDown.current = e.shiftKey
     const raw = toWorld(e)
+    const mod = e.ctrlKey || e.metaKey
+    // Ctrl + right-click adds / removes an item from the selection
+    if (e.button === 2 && mod && !draft) {
+      const hit = e.target.closest('[data-id]')
+      if (hit && items.some(i => i.id === hit.dataset.id)) { togglePick(hit.dataset.id); return }
+    }
     if (e.button === 1 || e.button === 2 || spaceDown.current || tool === 'pan') {
       if (e.button === 2 && draft) { finishDraft(); return }
       drag.current = { kind: 'pan', sx: e.clientX, sy: e.clientY, view }
@@ -293,6 +328,12 @@ export default function Canvas2D({ plan, tool, setTool, sel, setSel, update, und
     if (e.button !== 0) return
 
     if (tool === 'select') {
+      // Ctrl / Shift + click adds or removes; on empty space it drags a selection box
+      if (mod || e.shiftKey) {
+        const hit = e.target.closest('[data-id]')
+        if (hit && items.some(i => i.id === hit.dataset.id)) { togglePick(hit.dataset.id); return }
+        if (!hit && !e.target.closest('[data-gline]')) { drag.current = { kind: 'box', a: raw, base: [...pickedSet] }; setBox({ a: raw, b: raw }); return }
+      }
       // dragging a gridline (or its bubble) moves just that line
       const gl = e.target.closest('[data-gline]')
       if (gl) {
@@ -315,6 +356,11 @@ export default function Canvas2D({ plan, tool, setTool, sel, setSel, update, und
       const hit = e.target.closest('[data-id]')
       if (hit) {
         const id = hit.dataset.id
+        // dragging one of several selected moves them all
+        if (pickedSet.size > 1 && pickedSet.has(id)) {
+          drag.current = { kind: 'move', id, ids: new Set(pickedSet), start: raw, orig: items, pushed: false }
+          return
+        }
         setSel(id)
         if (!items.some(i => i.id === id)) return      // scan points and sections are not dragged
         const it = items.find(i => i.id === id)
@@ -343,9 +389,27 @@ export default function Canvas2D({ plan, tool, setTool, sel, setSel, update, und
     if (DRAW_TOOLS.has(tool)) { placePoint(tool === 'calibrate' ? raw : p); return }
 
     if (tool === 'grid') { onGridAt(p); return }
+    if (tool === 'load') { onLoadAt(p); return }
     if (tool === 'column') {
       const id = uid()
       add({ id, type: 'column', shape: 'rect', x: p.x, y: p.y, w: 400, d: 400, height: level.wallHeight })
+      return
+    }
+    if (tool === 'footing') {
+      // on a column: centred under it (and on its grid point); sized for its load when loads are on
+      const col = items.find(c => c.type === 'column' && (c.shape === 'round' ? dist(c, raw) <= c.w / 2 : pointInPoly(raw, columnCorners(c))))
+      const at = col || p
+      const base = { h: 500, top: 1000 }
+      const N = col && td?.cols[col.id]?.NSLS
+      const side = (N && footingSide(N, base, td.set)) || 1500
+      const id = uid()
+      const grid = col ? col.grid : findNode(grids, p)
+      add({
+        id, type: 'footing', kind: 'pad', x: at.x, y: at.y, w: Math.max(side, 600), d: Math.max(side, 600), ...base,
+        ...(col?.rot ? { rot: col.rot } : null),
+        ...(grid ? { grid, ex: col?.ex, ey: col?.ey } : null),
+      })
+      setSel(id)
       return
     }
     if (tool === 'door' || tool === 'window') {
@@ -396,6 +460,7 @@ export default function Canvas2D({ plan, tool, setTool, sel, setSel, update, und
       setView({ ...d.view, ox: d.view.ox - (e.clientX - d.sx) / d.view.z, oy: d.view.oy - (e.clientY - d.sy) / d.view.z })
       return
     }
+    if (d.kind === 'box') { setBox({ a: d.a, b: raw }); return }
     const push = !d.pushed
     if (d.kind === 'gline') {
       // distance moved along the grid's own direction (grids can be turned);
@@ -416,9 +481,9 @@ export default function Canvas2D({ plan, tool, setTool, sel, setSel, update, und
       if (plan.snap) { dx = round(dx, plan.grid); dy = round(dy, plan.grid) }
       if (!dx && !dy && !d.pushed) return
       const it = d.orig.find(i => i.id === d.id)
-      const ends = it.type === 'wall' ? [it.a, it.b] : []
+      const ends = it.type === 'wall' && !d.ids ? [it.a, it.b] : []
       update(p => updateItems(p, () => syncGrid(d.orig.map(i => {
-        if (i.id === d.id) return moveItem(i, dx, dy)
+        if (d.ids ? d.ids.has(i.id) : i.id === d.id) return moveItem(i, dx, dy)
         if (i.type === 'wall' && ends.length) {
           const mv = q => (ends.some(e2 => same(e2, q)) ? { x: q.x + dx, y: q.y + dy } : q)
           const a = mv(i.a), b = mv(i.b)
@@ -467,7 +532,21 @@ export default function Canvas2D({ plan, tool, setTool, sel, setSel, update, und
     }
   }
 
-  function onPointerUp() { drag.current = null }
+  function onPointerUp() {
+    const d = drag.current
+    drag.current = null
+    if (d?.kind === 'box' && box) {
+      // everything wholly inside the box joins the selection
+      const x0 = Math.min(box.a.x, box.b.x), x1 = Math.max(box.a.x, box.b.x), y0 = Math.min(box.a.y, box.b.y), y1 = Math.max(box.a.y, box.b.y)
+      const inside = items.filter(i => {
+        if (i.type === 'opening') return false
+        const ps = itemPoints(i, items)
+        return ps.length && ps.every(q => q.x >= x0 && q.x <= x1 && q.y >= y0 && q.y <= y1)
+      }).map(i => i.id)
+      setBox(null)
+      if (x1 - x0 > 1 || y1 - y0 > 1) choose([...d.base, ...inside])
+    }
+  }
 
   // ── drawing ──────────────────────────────────────────────
   const { z, ox, oy } = view
@@ -540,14 +619,14 @@ export default function Canvas2D({ plan, tool, setTool, sel, setSel, update, und
         {/* slabs: structural floor panels, under everything else */}
         {items.filter(i => i.type === 'slab').map(s => {
           const c = centroid(s.pts)
-          const on = s.id === sel
+          const on = isOn(s.id)
           return (
             <g key={s.id} data-id={s.id}>
               <polygon points={poly(s.pts)} fill={on ? 'rgba(37,99,235,.14)' : 'url(#slabHatch)'} stroke={on ? C.sel : '#94a3b8'}
                 strokeWidth={on ? 2 : 1} vectorEffect="non-scaling-stroke" />
               {polyArea(s.pts) * z * z > 3000 && (
                 <text x={c.x} y={c.y} fontSize={px(11)} textAnchor="middle" dominantBaseline="central" fill="#475569" fontWeight="600"
-                  style={{ pointerEvents: 'none', paintOrder: 'stroke', stroke: '#f8fafc', strokeWidth: px(3) }}>S {s.thickness}{s.drop ? ` (−${s.drop})` : ''}</text>
+                  style={{ pointerEvents: 'none', paintOrder: 'stroke', stroke: '#f8fafc', strokeWidth: px(3) }}>{markOf(s, plan) ? `${markOf(s, plan)} · ` : 'S '}{s.thickness}{s.drop ? ` (−${s.drop})` : ''}</text>
               )}
             </g>
           )
@@ -555,7 +634,7 @@ export default function Canvas2D({ plan, tool, setTool, sel, setSel, update, und
 
         {/* voids: openings through the slab, shown with a cross */}
         {items.filter(i => i.type === 'void').map(o => {
-          const on = o.id === sel
+          const on = isOn(o.id)
           const xs = o.pts.map(q => q.x), ys = o.pts.map(q => q.y)
           const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys)
           const c = centroid(o.pts)
@@ -567,6 +646,30 @@ export default function Canvas2D({ plan, tool, setTool, sel, setSel, update, und
               {polyArea(o.pts) * z * z > 2500 && (
                 <text x={c.x} y={c.y} fontSize={px(10.5)} textAnchor="middle" dominantBaseline="central" fill="#0f172a" fontWeight="600"
                   style={{ pointerEvents: 'none', paintOrder: 'stroke', stroke: '#fff', strokeWidth: px(3) }}>{o.name}</text>
+              )}
+            </g>
+          )
+        })}
+
+        {/* footings and pile caps: below the floor, dashed */}
+        {items.filter(i => i.type === 'footing').map(f => {
+          const on = isOn(f.id)
+          const col = on ? C.sel : '#92400e'
+          const mk = markOf(f, plan)
+          const r = td?.foots[f.id]
+          const tone = { ok: '#3F6B3A', near: '#8A6528', over: '#9A3B2A' }[level3(r?.util)]
+          return (
+            <g key={f.id} data-id={f.id}>
+              <polygon points={poly(columnCorners(f))} fill={on ? 'rgba(37,99,235,.10)' : 'rgba(146,64,14,.05)'} stroke={col}
+                strokeWidth={on ? 2 : 1.3} strokeDasharray="8 4" vectorEffect="non-scaling-stroke" />
+              {f.kind === 'pile' && pileLayout(f).map((q, k) => (
+                <circle key={k} cx={q.x} cy={q.y} r={(f.pileDia || 300) / 2} fill="none" stroke={col} strokeWidth={1} strokeDasharray="4 3" vectorEffect="non-scaling-stroke" />
+              ))}
+              {Math.min(f.w, f.d) * z > 40 && (
+                <text x={f.x} y={f.y + f.d / 2 - px(9)} fontSize={px(10)} textAnchor="middle" fill={tone || col} fontWeight="700"
+                  style={{ pointerEvents: 'none', paintOrder: 'stroke', stroke: '#f8fafc', strokeWidth: px(3) }}>
+                  {mk ? `${mk} · ` : ''}{f.w}×{f.d}{r?.util != null ? ` · ${Math.round(r.util * 100)}%` : ''}
+                </text>
               )}
             </g>
           )
@@ -591,8 +694,8 @@ export default function Canvas2D({ plan, tool, setTool, sel, setSel, update, und
           const c = centroid(r.pts)
           return (
             <g key={r.id} data-id={r.id}>
-              <polygon points={poly(r.pts)} fill={C.room} stroke={r.id === sel ? C.sel : C.roomEdge}
-                strokeWidth={r.id === sel ? 2 : 1} vectorEffect="non-scaling-stroke" />
+              <polygon points={poly(r.pts)} fill={C.room} stroke={isOn(r.id) ? C.sel : C.roomEdge}
+                strokeWidth={isOn(r.id) ? 2 : 1} vectorEffect="non-scaling-stroke" />
               <text x={c.x} y={c.y} fontSize={px(13)} textAnchor="middle" fill={C.text} fontWeight="600" style={{ pointerEvents: 'none' }}>{r.name}</text>
               <text x={c.x} y={c.y + px(15)} fontSize={px(11)} textAnchor="middle" fill={C.muted} style={{ pointerEvents: 'none' }}>{fmtArea(polyArea(r.pts))}</text>
             </g>
@@ -603,27 +706,35 @@ export default function Canvas2D({ plan, tool, setTool, sel, setSel, update, und
           <polygon key={`o${w.id}`} points={poly(p)} fill={C.wall} stroke={C.wallEdge} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
         ))}
         {wallPolys.map(({ w, pts: p }) => (
-          <polygon key={w.id} data-id={w.id} points={poly(p)} fill={w.id === sel ? '#3b82f6' : w.kind === 'rc' ? C.rc : C.wall} />
+          <polygon key={w.id} data-id={w.id} points={poly(p)} fill={isOn(w.id) ? '#3b82f6' : w.kind === 'rc' ? C.rc : C.wall} />
         ))}
 
         {items.filter(i => i.type === 'opening').map(o => {
           const w = items.find(i => i.id === o.wallId)
-          return w ? <Opening key={o.id} o={o} w={w} selected={o.id === sel} /> : null
+          return w ? <Opening key={o.id} o={o} w={w} selected={isOn(o.id)} /> : null
         })}
 
-        {items.filter(i => i.type === 'beam').map(b => <Beam key={b.id} b={b} px={px} selected={b.id === sel} />)}
+        {items.filter(i => i.type === 'beam').map(b => <Beam key={b.id} b={b} px={px} selected={isOn(b.id)} mark={markOf(b, plan)} />)}
 
         {items.filter(i => i.type === 'column').map(c => (
           c.shape === 'round'
-            ? <circle key={c.id} data-id={c.id} cx={c.x} cy={c.y} r={c.w / 2} fill={c.id === sel ? '#3b82f6' : '#334155'}
+            ? <circle key={c.id} data-id={c.id} cx={c.x} cy={c.y} r={c.w / 2} fill={isOn(c.id) ? '#3b82f6' : '#334155'}
                 stroke={C.wallEdge} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
-            : <polygon key={c.id} data-id={c.id} points={poly(columnCorners(c))} fill={c.id === sel ? '#3b82f6' : '#334155'}
+            : <polygon key={c.id} data-id={c.id} points={poly(columnCorners(c))} fill={isOn(c.id) ? '#3b82f6' : '#334155'}
                 stroke={C.wallEdge} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
         ))}
+        {/* design type marks (C1, C2…) beside the columns */}
+        {!td && items.filter(i => i.type === 'column' && i.design).map(c => {
+          const mk = markOf(c, plan)
+          return mk ? (
+            <text key={`m${c.id}`} x={c.x + Math.max(c.w, c.d) / 2 + px(4)} y={c.y - Math.max(c.w, c.d) / 2 - px(3)} fontSize={px(10)} fill="#1e3a8a" fontWeight="800"
+              style={{ pointerEvents: 'none', paintOrder: 'stroke', stroke: '#f8fafc', strokeWidth: px(3) }}>{mk}</text>
+          ) : null
+        })}
 
         {/* structure not yet measured on site, outlined in amber */}
         {plan.showUnverified && items.filter(i => STRUCT.has(i.type) && !i.verified).map(i => {
-          const shape = i.type === 'column' ? (i.shape === 'round' ? null : columnCorners(i))
+          const shape = i.type === 'column' || i.type === 'footing' ? (i.shape === 'round' ? null : columnCorners(i))
             : i.type === 'beam' ? beamCorners(i)
             : i.type === 'wall' ? wallCorners(i) : i.pts
           return shape
@@ -631,11 +742,59 @@ export default function Canvas2D({ plan, tool, setTool, sel, setSel, update, und
             : <circle key={`u${i.id}`} cx={i.x} cy={i.y} r={i.w / 2} fill="none" stroke="#f59e0b" strokeWidth={3} strokeDasharray="6 3" vectorEffect="non-scaling-stroke" style={{ pointerEvents: 'none' }} />
         })}
 
-        {items.filter(i => i.type === 'dim').map(d => <Dim key={d.id} d={d} px={px} selected={d.id === sel} />)}
+        {items.filter(i => i.type === 'dim').map(d => <Dim key={d.id} d={d} px={px} selected={isOn(d.id)} />)}
+
+        {/* equipment and debris on the slab */}
+        {items.filter(i => i.type === 'load').map(ld => {
+          const on = isOn(ld.id)
+          const r = td?.loads[ld.id]
+          const tone = { ok: '#3F6B3A', near: '#8A6528', over: '#9A3B2A' }[level3(r?.util ?? r?.vsDesign)] || '#8A6528'
+          return (
+            <g key={ld.id} data-id={ld.id} style={{ cursor: 'pointer' }}>
+              <rect x={ld.x - ld.w / 2} y={ld.y - ld.d / 2} width={ld.w} height={ld.d} fill={on ? 'rgba(37,99,235,.18)' : 'rgba(217,119,6,.16)'}
+                stroke={on ? C.sel : tone} strokeWidth={on ? 2 : 1.5} strokeDasharray={ld.kind === 'debris' ? '4 3' : undefined} vectorEffect="non-scaling-stroke" />
+              <text x={ld.x} y={ld.y} fontSize={px(10.5)} textAnchor="middle" dominantBaseline="central" fill={on ? C.sel : tone} fontWeight="700"
+                style={{ pointerEvents: 'none', paintOrder: 'stroke', stroke: '#fff', strokeWidth: px(3) }}>
+                {ld.name} · {(loadKN(ld) / 9.81).toFixed(1)} t
+              </text>
+            </g>
+          )
+        })}
+
+        {/* load takedown: design loads on beams and columns of this level */}
+        {td && items.filter(i => i.type === 'beam').map(b => {
+          const r = td.beams[b.id]
+          const ax = beamAxis(b), L = dist(ax.a, ax.b)
+          if (!r || L * z < 70) return null
+          let ang = Math.atan2(ax.b.y - ax.a.y, ax.b.x - ax.a.x) * 180 / Math.PI
+          if (ang > 90 || ang < -90) ang += 180
+          const m = { x: (ax.a.x + ax.b.x) / 2, y: (ax.a.y + ax.b.y) / 2 }
+          const col = { ok: '#3F6B3A', near: '#8A6528', over: '#9A3B2A' }[level3(r.util)] || '#1e3a8a'
+          return (
+            <text key={`lb${b.id}`} x={m.x} y={m.y} dy={px(-11)} fontSize={px(10)} textAnchor="middle" fill={col} fontWeight="700" transform={`rotate(${ang} ${m.x} ${m.y})`}
+              style={{ pointerEvents: 'none', paintOrder: 'stroke', stroke: '#fff', strokeWidth: px(3) }}>
+              {r.wULS.toFixed(1)} kN/m · M {r.M.toFixed(0)}{r.util != null ? ` · ${Math.round(r.util * 100)}%` : ''}
+            </text>
+          )
+        })}
+        {td && items.filter(i => i.type === 'column').map(c => {
+          const r = td.cols[c.id]
+          if (!r) return null
+          const col = { ok: '#3F6B3A', near: '#8A6528', over: '#9A3B2A' }[level3(r.util)] || '#1e3a8a'
+          const tx = c.x + Math.max(c.w, c.d) / 2 + px(5), ty = c.y - Math.max(c.w, c.d) / 2 - px(5)
+          return (
+            <g key={`lc${c.id}`} style={{ pointerEvents: 'none' }}>
+              {r.util != null && <circle cx={c.x} cy={c.y} r={Math.max(c.w, c.d) * 0.75} fill="none" stroke={col} strokeWidth={2.5} vectorEffect="non-scaling-stroke" />}
+              <text x={tx} y={ty} fontSize={px(10.5)} fill={col} fontWeight="800" style={{ paintOrder: 'stroke', stroke: '#fff', strokeWidth: px(3) }}>
+                N {Math.round(r.N)} kN{r.util != null ? ` · ${Math.round(r.util * 100)}%` : ''}
+              </text>
+            </g>
+          )
+        })}
 
         {/* site notes: numbered pins */}
         {items.filter(i => i.type === 'note').map((nt, k) => {
-          const on = nt.id === sel
+          const on = isOn(nt.id)
           return (
             <g key={nt.id} data-id={nt.id} style={{ cursor: 'pointer' }}>
               <path d={`M${nt.x} ${nt.y}l${-px(7)} ${-px(12)}a${px(8)} ${px(8)} 0 1 1 ${px(14)} 0z`} fill={on ? C.sel : '#f59e0b'} stroke="#78350f" strokeWidth={1} vectorEffect="non-scaling-stroke" />
@@ -663,12 +822,17 @@ export default function Canvas2D({ plan, tool, setTool, sel, setSel, update, und
 
         {items.filter(i => i.type === 'label').map(l => (
           <text key={l.id} data-id={l.id} x={l.x} y={l.y} fontSize={l.size} textAnchor="middle" dominantBaseline="middle"
-            fill={l.id === sel ? C.sel : C.text} fontWeight="600">{l.text}</text>
+            fill={isOn(l.id) ? C.sel : C.text} fontWeight="600">{l.text}</text>
         ))}
 
         {/* section cut lines, shown on every level */}
         {(plan.sections || []).map(sc => <SectionMark key={sc.id} sc={sc} px={px} selected={sc.id === sel} />)}
         {draft && cursor && tool === 'section' && <SectionMark sc={{ a: last, b: cursor, name: '?' }} px={px} />}
+
+        {box && (
+          <rect x={Math.min(box.a.x, box.b.x)} y={Math.min(box.a.y, box.b.y)} width={Math.abs(box.b.x - box.a.x)} height={Math.abs(box.b.y - box.a.y)}
+            fill="rgba(37,99,235,.08)" stroke={C.sel} strokeDasharray="5 3" strokeWidth={1} vectorEffect="non-scaling-stroke" style={{ pointerEvents: 'none' }} />
+        )}
 
         {/* handles for the selected item */}
         {selItem && tool === 'select' && handlePoints(selItem).map(([key, p]) => (
@@ -857,7 +1021,7 @@ function Grid({ g: grid, px, selected }) {
 }
 
 // Beams sit above the floor, so they are drawn dashed (hidden line), with their size.
-function Beam({ b, px, selected }) {
+function Beam({ b, px, selected, mark }) {
   const len = dist(b.a, b.b)
   if (len < 1) return null
   const pts = beamCorners(b)
@@ -874,7 +1038,7 @@ function Beam({ b, px, selected }) {
       {len > px(90) && (
         <text x={m.x} y={m.y} fontSize={px(10.5)} textAnchor="middle" dominantBaseline="central" fill={col} fontWeight="700"
           transform={`rotate(${ang} ${m.x} ${m.y})`} style={{ pointerEvents: 'none', paintOrder: 'stroke', stroke: '#f8fafc', strokeWidth: px(3) }}>
-          {b.width}×{b.depth}
+          {mark ? `${mark} · ` : ''}{b.width}×{b.depth}
         </text>
       )}
     </g>
