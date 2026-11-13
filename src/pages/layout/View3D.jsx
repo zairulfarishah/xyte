@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { Box, Eye, Layers, Maximize, MoveHorizontal, Square } from 'lucide-react'
-import { activeLevel, wallAxes, same, gridNode, dist } from './geometry'
+import { activeLevel, wallAxes, same, gridPoint, dist, beamAxis, pointInPoly, centroid } from './geometry'
 
 // 3D view of the plan, built from the 2D data every time it changes.
 // Plan x → 3D x, plan y → 3D z, heights → 3D y. Units are metres in 3D.
@@ -12,6 +12,7 @@ function makeMaterials() {
   const std = (color, extra) => new THREE.MeshStandardMaterial({ color, roughness: 0.85, metalness: 0, ...extra })
   return {
     wall: std('#e5e7eb'),
+    rcwall: std('#a8a29e'),
     slab: std('#cbd5e1'),
     column: std('#94a3b8'),
     beam: std('#fdba74'),
@@ -83,10 +84,12 @@ export default function View3D({ plan }) {
   useEffect(() => {
     const c = ctx.current
     if (!c) return
-    c.mats.wall.transparent = xray
-    c.mats.wall.opacity = xray ? 0.25 : 1
-    c.mats.wall.depthWrite = !xray
-    c.mats.wall.needsUpdate = true
+    for (const m of [c.mats.wall, c.mats.rcwall]) {
+      m.transparent = xray
+      m.opacity = xray ? 0.25 : 1
+      m.depthWrite = !xray
+      m.needsUpdate = true
+    }
     build(c, plan, only)
     if (!fittedRef.current) { fittedRef.current = true; view(c, 'iso') } else c.render()
   }, [plan, only, xray])
@@ -158,14 +161,19 @@ function build(c, plan, only) {
     const walls = items.filter(i => i.type === 'wall')
 
     // floor slabs: top of slab at the level's floor
-    for (const r of items.filter(i => i.type === 'room' && i.pts.length >= 3)) {
+    const voids = items.filter(i => i.type === 'void' && i.pts.length >= 3)
+    for (const r of items.filter(i => (i.type === 'room' || i.type === 'slab') && i.pts.length >= 3)) {
       const shape = new THREE.Shape(r.pts.map(p => new THREE.Vector2(p.x * M, -p.y * M)))
-      const t = (r.slab ?? lv.slab) * M
+      // slab openings (lift, stair) that sit in this slab are cut out
+      for (const o of voids) {
+        if (pointInPoly(centroid(o.pts), r.pts)) shape.holes.push(new THREE.Path(o.pts.map(p => new THREE.Vector2(p.x * M, -p.y * M))))
+      }
+      const t = (r.type === 'slab' ? r.thickness : r.slab ?? lv.slab) * M
       if (t <= 0) continue
       const geo = new THREE.ExtrudeGeometry(shape, { depth: t, bevelEnabled: false })
       geo.rotateX(-Math.PI / 2)
       const mesh = new THREE.Mesh(geo, mats.slab)
-      mesh.position.y = base * M - t
+      mesh.position.y = (base - (r.drop || 0)) * M - t
       group.add(mesh)
       const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo), mats.edge)
       e.position.copy(mesh.position)
@@ -180,7 +188,7 @@ function build(c, plan, only) {
       const extA = joined(w.a) ? w.thickness / 2 : 0, extB = joined(w.b) ? w.thickness / 2 : 0
       const H = w.height
       const rot = -Math.atan2(u.y, u.x)
-      const piece = (s0, s1, z0, z1, mat = mats.wall, thick = w.thickness, edges = true) => {
+      const piece = (s0, s1, z0, z1, mat = w.kind === 'rc' ? mats.rcwall : mats.wall, thick = w.thickness, edges = true) => {
         if (s1 - s0 < 1 || z1 - z0 < 1) return
         const mid = (s0 + s1) / 2
         addBox(mat, (w.a.x + u.x * mid) * M, (base + (z0 + z1) / 2) * M, (w.a.y + u.y * mid) * M,
@@ -209,36 +217,36 @@ function build(c, plan, only) {
         mesh.position.set(col.x * M, base * M + h / 2, col.y * M)
         group.add(mesh)
       } else {
-        addBox(mats.column, col.x * M, base * M + h / 2, col.y * M, col.w * M, h, col.d * M)
+        addBox(mats.column, col.x * M, base * M + h / 2, col.y * M, col.w * M, h, col.d * M, -(col.rot || 0) * Math.PI / 180)
       }
     }
 
     // beams hang under the slab above (top of beam at floor + wall height)
-    for (const b of items.filter(i => i.type === 'beam')) {
+    for (const b0 of items.filter(i => i.type === 'beam')) {
+      const b = beamAxis(b0)
       const len = dist(b.a, b.b)
       if (len < 1) continue
       const top = base + lv.wallHeight
-      addBox(mats.beam, (b.a.x + b.b.x) / 2 * M, (top - b.depth / 2) * M, (b.a.y + b.b.y) / 2 * M,
-        len * M, b.depth * M, b.width * M, -Math.atan2(b.b.y - b.a.y, b.b.x - b.a.x))
+      addBox(mats.beam, (b.a.x + b.b.x) / 2 * M, (top - b0.depth / 2) * M, (b.a.y + b.b.y) / 2 * M,
+        len * M, b0.depth * M, b0.width * M, -Math.atan2(b.b.y - b.a.y, b.b.x - b.a.x))
     }
 
-    // gridlines on the floor
-    for (const g of items.filter(i => i.type === 'grid')) {
-      const p0 = gridNode(g, 0, 0), p1 = gridNode(g, g.xs.length, g.ys.length)
-      const over = 1500, y = base * M + 0.01
-      const pts = []
-      for (let i = 0; i <= g.xs.length; i++) {
-        const x = gridNode(g, i, 0).x
-        pts.push(new THREE.Vector3(x * M, y, (p0.y - over) * M), new THREE.Vector3(x * M, y, (p1.y + over) * M))
-      }
-      for (let j = 0; j <= g.ys.length; j++) {
-        const z = gridNode(g, 0, j).y
-        pts.push(new THREE.Vector3((p0.x - over) * M, y, z * M), new THREE.Vector3((p1.x + over) * M, y, z * M))
-      }
-      const line = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), mats.grid)
-      line.computeLineDistances()
-      helpers.add(line)
-    }
+  }
+
+  // gridlines (shared by every level) on the lowest floor shown
+  const floor = Math.min(...levels.map(l => l.elevation))
+  for (const g of plan.grids || []) {
+    const W = g.xs.reduce((s, v) => s + v, 0), H = g.ys.reduce((s, v) => s + v, 0)
+    const over = 1500, y = floor * M + 0.01
+    const v = (lx, ly) => { const p = gridPoint(g, lx, ly); return new THREE.Vector3(p.x * M, y, p.y * M) }
+    const pts = []
+    let at = 0
+    for (let i = 0; i <= g.xs.length; i++) { pts.push(v(at, -over), v(at, H + over)); at += g.xs[i] || 0 }
+    at = 0
+    for (let j = 0; j <= g.ys.length; j++) { pts.push(v(-over, at), v(W + over, at)); at += g.ys[j] || 0 }
+    const line = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), mats.grid)
+    line.computeLineDistances()
+    helpers.add(line)
   }
 
   // ground grid under the lowest level, 1 m squares

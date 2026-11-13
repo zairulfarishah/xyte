@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../supabase'
-import { ChevronLeft, ChevronRight, Pencil, MapPin, Upload, X, Users, FileText, LayoutGrid } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Pencil, MapPin, Upload, X, Users, FileText, LayoutGrid, Grid3x3 } from 'lucide-react'
+import SiteLayouts from './layout/SiteLayouts'
 import { getSiteHeaderImage } from '../utils/siteHeader'
 import { parseCompletionMeta } from '../utils/completionMeta'
 import { useViewport } from '../utils/useViewport'
@@ -269,6 +270,7 @@ export default function SiteDetail() {
                 { key: 'overview', label: 'Overview', icon: LayoutGrid },
                 { key: 'team',     label: 'Team',     icon: Users      },
                 { key: 'notes',    label: 'Notes',    icon: FileText   },
+                { key: 'layouts',  label: 'Layouts',  icon: Grid3x3    },
               ].map(({ key, label, icon: Icon }) => (
                 <button key={key} onClick={() => setTab(key)} style={{
                   display: 'flex', alignItems: 'center', gap: '6px',
@@ -364,6 +366,8 @@ export default function SiteDetail() {
                   ))}
                 </div>
               )}
+
+              {tab === 'layouts' && <SiteLayouts siteId={id} />}
 
               {tab === 'notes' && (
                 <div>

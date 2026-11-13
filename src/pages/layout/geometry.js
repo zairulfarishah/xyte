@@ -1,17 +1,21 @@
 // Layout plan model and geometry. All lengths are millimetres, plan coordinates
 // have x to the right and y downwards (same as the screen).
 //
-// plan = { v, name, grid, snap, levelId, levels: [level] }
-// level = { id, name, elevation, wallHeight, slab, items: [item], bg }
+// plan = { v, name, grid, snap, levelId, levels: [level], grids: [grid] }
+// level = { id, name, elevation, wallHeight (floor to floor), slab, items: [item], bg }
+// grids are building-wide: the same gridlines on every level (see syncGrid).
+//   grid    { x, y, xs, ys, xl?, yl? }  structural gridlines; xl / yl are the line names
 // item types:
-//   wall    { a, b, thickness, height }
+//   wall    { a, b, thickness, height, kind? }  kind 'rc' = concrete (structural / core) wall
 //   room    { pts: [p], name, slab }
-//   column  { shape: 'rect'|'round', x, y, w, d, height, grid? }
-//   beam    { a, b, width, depth, ga?, gb? }  (depth hangs below the slab above)
-//   grid    { x, y, xs, ys }  structural gridlines, see syncGrid
+//   slab    { pts: [p], thickness, drop?, bay? }  structural slab; drop = mm below floor level; bay { g, i, j } keeps it on a grid bay
+//   void    { pts: [p], name }  opening through the slab (lift, stair, shaft)
+//   column  { shape: 'rect'|'round', x, y, w, d, height, rot?, grid?, ex?, ey? }  ex / ey = offset from the grid point
+//   beam    { a, b, width, depth, off?, ga?, gb? }  off = sideways shift from its line (edge beams)  (depth is overall, measured down from the top of the slab above)
 //   opening { kind: 'door'|'window', wallId, offset (centre, from wall start), width, height, sill, flip, side }
 //   dim     { a, b }
 //   label   { x, y, text, size }
+//   note    { x, y, text, photos: [{ path, name }] }  site note pinned on the plan, photos in the layouts bucket
 // bg = { src (data URL), w, h (px), x, y (mm, top-left), mmPerPx, opacity, show }
 
 export const uid = () => Math.random().toString(36).slice(2, 10)
@@ -26,7 +30,28 @@ export function newLevel(name = 'Level 1', elevation = 0) {
 
 export function newPlan() {
   const level = newLevel()
-  return { v: 1, name: 'Untitled layout', grid: 100, snap: true, levelId: level.id, levels: [level] }
+  return { v: 2, name: 'Untitled layout', grid: 100, snap: true, levelId: level.id, levels: [level], grids: [] }
+}
+
+// Older saves kept a copy of the grid on each level. Move them to plan.grids,
+// merging copies that are the same grid, and point columns / beams at the merged one.
+export function migratePlan(p) {
+  if (!p || Array.isArray(p.grids)) return p
+  const grids = [], alias = new Map(), byKey = new Map()
+  for (const l of p.levels) for (const g of l.items) {
+    if (g.type !== 'grid') continue
+    const k = JSON.stringify([g.x, g.y, g.xs, g.ys])
+    if (byKey.has(k)) alias.set(g.id, byKey.get(k))
+    else { byKey.set(k, g.id); grids.push(g) }
+  }
+  const re = r => r && { ...r, g: alias.get(r.g) || r.g }
+  const levels = p.levels.map(l => ({
+    ...l,
+    items: l.items.filter(i => i.type !== 'grid').map(i => (i.grid || i.ga || i.gb
+      ? { ...i, ...(i.grid ? { grid: re(i.grid) } : null), ...(i.ga ? { ga: re(i.ga) } : null), ...(i.gb ? { gb: re(i.gb) } : null) }
+      : i)),
+  }))
+  return { ...p, v: 2, grids, levels }
 }
 
 export const activeLevel = plan => plan.levels.find(l => l.id === plan.levelId) || plan.levels[0]
@@ -125,26 +150,29 @@ export const clampOpening = (o, wall) => {
 }
 
 // Every point worth snapping to on a level.
-export function snapPoints(items) {
+export function snapPoints(items, grids = []) {
   const out = []
   for (const it of items) {
     if (it.type === 'wall' || it.type === 'dim') out.push(it.a, it.b)
-    else if (it.type === 'room') out.push(...it.pts)
+    else if (it.pts) out.push(...it.pts)   // room, slab, void
     else if (it.type === 'column') out.push({ x: it.x, y: it.y })
     else if (it.type === 'beam') out.push(it.a, it.b)
-    else if (it.type === 'grid') for (let i = 0; i <= it.xs.length; i++) for (let j = 0; j <= it.ys.length; j++) out.push(gridNode(it, i, j))
   }
+  for (const g of grids) for (let i = 0; i <= g.xs.length; i++) for (let j = 0; j <= g.ys.length; j++) out.push(gridNode(g, i, j))
   return out
 }
 
 export function itemPoints(it, items) {
   switch (it.type) {
     case 'wall': return wallCorners(it)
-    case 'room': return it.pts
+    case 'room': case 'slab': case 'void': return it.pts
     case 'dim': case 'beam': return [it.a, it.b]
-    case 'grid': return [{ x: it.x - 2000, y: it.y - 2000 }, gridNode(it, it.xs.length, it.ys.length)]
+    case 'grid': {
+      const W = it.xs.reduce((s, v) => s + v, 0), H = it.ys.reduce((s, v) => s + v, 0)
+      return [gridPoint(it, -2500, -2500), gridPoint(it, W + 1000, -2500), gridPoint(it, -2500, H + 1000), gridPoint(it, W + 1000, H + 1000)]
+    }
     case 'column': return [{ x: it.x - it.w / 2, y: it.y - it.d / 2 }, { x: it.x + it.w / 2, y: it.y + it.d / 2 }]
-    case 'label': return [{ x: it.x, y: it.y }]
+    case 'label': case 'note': return [{ x: it.x, y: it.y }]
     case 'opening': {
       const w = items.find(i => i.id === it.wallId)
       return w ? [onWall(w, it.offset)] : []
@@ -153,8 +181,25 @@ export function itemPoints(it, items) {
   }
 }
 
-export function bounds(level) {
-  const pts = level.items.flatMap(it => itemPoints(it, level.items))
+// Corners of a column, turned by its rot (degrees clockwise).
+export function columnCorners(c) {
+  const r = (c.rot || 0) * Math.PI / 180, cs = Math.cos(r), sn = Math.sin(r)
+  return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => {
+    const lx = a * c.w / 2, ly = b * c.d / 2
+    return { x: c.x + lx * cs - ly * sn, y: c.y + lx * sn + ly * cs }
+  })
+}
+
+export function bounds(level, grids = []) {
+  const pts = [...level.items, ...grids].flatMap(it => itemPoints(it, level.items))
+  if (level.cad?.show) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+    for (const l of level.cad.layers) for (let i = 0; i < l.segs.length; i += 2) {
+      const x = l.segs[i], y = l.segs[i + 1]
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y
+    }
+    if (Number.isFinite(x0)) pts.push({ x: x0 + level.cad.x, y: y0 + level.cad.y }, { x: x1 + level.cad.x, y: y1 + level.cad.y })
+  }
   if (level.bg?.show) {
     const b = level.bg
     pts.push({ x: b.x, y: b.y }, { x: b.x + b.w * b.mmPerPx, y: b.y + b.h * b.mmPerPx })
@@ -171,44 +216,94 @@ export function moveItem(it, dx, dy) {
     case 'wall': case 'dim': return { ...it, a: mv(it.a), b: mv(it.b) }
     case 'beam': return { ...it, a: mv(it.a), b: mv(it.b), ga: undefined, gb: undefined }
     case 'grid': return { ...it, x: it.x + dx, y: it.y + dy }
-    case 'column': return { ...it, x: it.x + dx, y: it.y + dy, grid: undefined }
+    // a column on the grid stays on it, offset from its gridline intersection
+    case 'column': return it.grid
+      ? { ...it, x: it.x + dx, y: it.y + dy, ex: (it.ex || 0) + dx, ey: (it.ey || 0) + dy }
+      : { ...it, x: it.x + dx, y: it.y + dy }
     case 'room': return { ...it, pts: it.pts.map(mv) }
-    case 'label': return { ...it, x: it.x + dx, y: it.y + dy }
+    case 'slab': return { ...it, pts: it.pts.map(mv), bay: undefined }
+    case 'void': return { ...it, pts: it.pts.map(mv) }
+    case 'label': case 'note': return { ...it, x: it.x + dx, y: it.y + dy }
     default: return it
   }
 }
 
 // Copies an item (and, for a wall, its doors and windows) with new ids.
 export function cloneItems(it, items, dx, dy) {
+  if (it.type === 'grid' || it.type === 'opening') return []
   const copy = { ...moveItem(it, dx, dy), id: uid() }
-  if (it.type === 'grid') {
-    const members = items.filter(m => m.grid?.g === it.id || (m.ga?.g === it.id && m.gb?.g === it.id))
-    const link = r => r && { ...r, g: copy.id }
-    return [copy, ...syncGrid([copy, ...members.map(m => ({ ...m, id: uid(), grid: link(m.grid), ga: link(m.ga), gb: link(m.gb) }))]).slice(1)]
-  }
-  if (it.type !== 'wall') return it.type === 'opening' ? [] : [copy]
+  if (it.type === 'column') { copy.grid = undefined; copy.ex = undefined; copy.ey = undefined }
+  if (it.type !== 'wall') return [copy]
   return [copy, ...items.filter(o => o.wallId === it.id).map(o => ({ ...o, id: uid(), wallId: copy.id }))]
 }
 
 // ── Structural grid ─────────────────────────────────────────
-// grid { x, y (where gridline 1 meets A), xs: [bay widths →], ys: [bay depths ↓] }
-// Columns linked to a grid carry grid: { g, i, j }; beams carry ga / gb for each end.
-// syncGrid puts linked items back on their gridline intersections after any grid change.
+// grid { x, y (where the first lines meet), xs: [bay widths →], ys: [bay depths ↓], xl / yl: line names }
+// Columns linked to a grid carry grid: { g, i, j } (+ ex / ey offset); beams carry ga / gb for each end;
+// slabs carry bay: { g, i, j } for the bay between lines i..i+1 and j..j+1.
+// Grids live on the plan and are shared by every level. syncGrid puts linked items
+// back on the grid after any grid change.
+// A grid can be turned (g.rot, degrees clockwise on the plan) about its first intersection.
 const sum = (arr, n) => arr.slice(0, n).reduce((s, v) => s + v, 0)
-export const gridNode = (g, i, j) => ({ x: g.x + sum(g.xs, i), y: g.y + sum(g.ys, j) })
+export function gridPoint(g, lx, ly) {
+  if (!g.rot) return { x: g.x + lx, y: g.y + ly }
+  const r = g.rot * Math.PI / 180, c = Math.cos(r), s = Math.sin(r)
+  const r3 = v => Math.round(v * 1000) / 1000     // no 4.9e-13 leftovers at 90°
+  return { x: r3(g.x + lx * c - ly * s), y: r3(g.y + lx * s + ly * c) }
+}
+// unit vector along which line positions run: 'x' = the across direction, 'y' = down
+export function gridAxis(g, axis) {
+  const r = (g.rot || 0) * Math.PI / 180
+  return axis === 'x' ? { x: Math.cos(r), y: Math.sin(r) } : { x: -Math.sin(r), y: Math.cos(r) }
+}
+export const gridNode = (g, i, j) => gridPoint(g, sum(g.xs, i), sum(g.ys, j))
+export const bayPts = (g, i, j) => [gridNode(g, i, j), gridNode(g, i + 1, j), gridNode(g, i + 1, j + 1), gridNode(g, i, j + 1)]
 export const colName = i => String(i + 1)
 export const rowName = j => {
   let s = '', n = j
   do { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1 } while (n >= 0)
   return s
 }
-export const nodeName = r => `${rowName(r.j)}/${colName(r.i)}`
 
-export function syncGrid(items) {
-  const grids = new Map(items.filter(i => i.type === 'grid').map(g => [g.id, g]))
+// The name after s: 7 → 8, C → D, Z → AA, anything else gets a prime.
+export function nextLabel(s) {
+  if (/^\d+$/.test(s)) return String(+s + 1)
+  if (/^[A-Z]+$/.test(s)) {
+    const a = s.split('')
+    let k = a.length - 1
+    while (k >= 0 && a[k] === 'Z') { a[k] = 'A'; k-- }
+    if (k < 0) a.unshift('A'); else a[k] = String.fromCharCode(a[k].charCodeAt(0) + 1)
+    return a.join('')
+  }
+  return `${s}'`
+}
+
+// Names of every line on one axis ('x' = the lines across, 'y' = the lines down).
+export function gridLabels(g, axis) {
+  const n = (axis === 'x' ? g.xs : g.ys).length + 1
+  const given = (axis === 'x' ? g.xl : g.yl) || []
+  const out = []
+  for (let k = 0; k < n; k++) out.push(given[k] || (k ? nextLabel(out[k - 1]) : axis === 'x' ? '1' : 'A'))
+  return out
+}
+
+export function nodeName(r, grids) {
+  const g = grids?.find(x => x.id === r.g)
+  return g ? `${gridLabels(g, 'y')[r.j]}/${gridLabels(g, 'x')[r.i]}` : '?'
+}
+
+export function bayName(r, grids) {
+  const g = grids?.find(x => x.id === r.g)
+  if (!g) return '?'
+  const xl = gridLabels(g, 'x'), yl = gridLabels(g, 'y')
+  return `${yl[r.j]}–${yl[r.j + 1]} / ${xl[r.i]}–${xl[r.i + 1]}`
+}
+
+export function syncGrid(items, grids = []) {
+  const map = new Map(grids.map(g => [g.id, g]))
   // null = grid gone (unlink), false = intersection no longer exists (remove), else the point
   const node = r => {
-    const g = grids.get(r.g)
+    const g = map.get(r.g)
     if (!g) return null
     if (r.i > g.xs.length || r.j > g.ys.length) return false
     return gridNode(g, r.i, r.j)
@@ -218,7 +313,9 @@ export function syncGrid(items) {
     if (it.type === 'column' && it.grid) {
       const p = node(it.grid)
       if (p === false) continue
-      out.push(p ? (p.x === it.x && p.y === it.y ? it : { ...it, x: p.x, y: p.y }) : { ...it, grid: undefined })
+      if (!p) { out.push({ ...it, grid: undefined, ex: undefined, ey: undefined }); continue }
+      const x = p.x + (it.ex || 0), y = p.y + (it.ey || 0), rot = map.get(it.grid.g).rot || 0
+      out.push(x === it.x && y === it.y && (it.rot || 0) === rot ? it : { ...it, x, y, rot })
     } else if (it.type === 'beam' && (it.ga || it.gb)) {
       let b = it, drop = false
       for (const [ref, key] of [['ga', 'a'], ['gb', 'b']]) {
@@ -229,15 +326,100 @@ export function syncGrid(items) {
         else if (!same(p, b[key], 0)) b = { ...b, [key]: p }
       }
       if (!drop) out.push(b)
+    } else if (it.type === 'slab' && it.bay) {
+      const g = map.get(it.bay.g)
+      if (!g) { out.push({ ...it, bay: undefined }); continue }
+      if (it.bay.i >= g.xs.length || it.bay.j >= g.ys.length) continue
+      const pts = bayPts(g, it.bay.i, it.bay.j)
+      out.push(pts.every((q, k) => it.pts[k] && same(q, it.pts[k], 0)) ? it : { ...it, pts })
     } else out.push(it)
   }
   return out
 }
 
+// Re-fit every level's linked items to the plan's grids.
+export const syncPlan = plan => ({ ...plan, levels: plan.levels.map(l => ({ ...l, items: syncGrid(l.items, plan.grids) })) })
+
+// Change one grid; columns, beams and slabs on every level follow.
+export const setGrid = (plan, gid, fn) => syncPlan({ ...plan, grids: plan.grids.map(g => (g.id === gid ? fn(g) : g)) })
+
+// Deleting a grid keeps its columns, beams and slabs where they are.
+export const removeGrid = (plan, gid) => syncPlan({ ...plan, grids: plan.grids.filter(g => g.id !== gid) })
+
+// Moves line k on one axis by d mm, keeping every other line where it is.
+export function moveLine(g, axis, k, d) {
+  const key = axis === 'x' ? 'xs' : 'ys', s = [...g[key]], n = s.length, MIN = 100
+  if (k === 0) {
+    d = Math.min(d, s[0] - MIN); s[0] -= d
+    const u = gridAxis(g, axis)
+    return { ...g, x: g.x + u.x * d, y: g.y + u.y * d, [key]: s }
+  }
+  if (k === n) { d = Math.max(d, MIN - s[n - 1]); s[n - 1] += d; return { ...g, [key]: s } }
+  d = Math.max(MIN - s[k - 1], Math.min(d, s[k] - MIN))
+  s[k - 1] += d; s[k] -= d
+  return { ...g, [key]: s }
+}
+
+// Renumbers grid references on every level after lines are added or removed.
+// line(i) → new index or null (remove the item); bay(i) → new index, null (remove) or [indices] (split).
+function remapGrid(plan, gid, axis, ng, line, bay) {
+  const ik = axis === 'x' ? 'i' : 'j'
+  const ref = r => (r && r.g === gid ? (line(r[ik]) == null ? null : { ...r, [ik]: line(r[ik]) }) : r)
+  const levels = plan.levels.map(l => ({
+    ...l,
+    items: l.items.flatMap(it => {
+      if (it.type === 'slab' && it.bay?.g === gid) {
+        const b = bay(it.bay[ik])
+        if (b == null) return []
+        return (Array.isArray(b) ? b : [b]).map((n, k) => ({ ...it, id: k ? uid() : it.id, bay: { ...it.bay, [ik]: n } }))
+      }
+      if (it.type === 'column' && it.grid?.g === gid) {
+        const r = ref(it.grid)
+        return r ? [{ ...it, grid: r }] : []
+      }
+      if (it.type === 'beam' && (it.ga?.g === gid || it.gb?.g === gid)) {
+        const ga = ref(it.ga), gb = ref(it.gb)
+        return ga === null || gb === null ? [] : [{ ...it, ga, gb }]
+      }
+      return [it]
+    }),
+  }))
+  return syncPlan({ ...plan, grids: plan.grids.map(g => (g.id === gid ? ng : g)), levels })
+}
+
+// Adds a line inside bay k (between lines k and k+1), `at` mm from line k (default: the middle).
+// It is named after line k with an "a" (2 → 2a). A slab in that bay is split in two.
+export function insertLine(plan, gid, axis, k, at) {
+  const g = plan.grids.find(x => x.id === gid)
+  const key = axis === 'x' ? 'xs' : 'ys', lk = axis === 'x' ? 'xl' : 'yl'
+  const s = g[key]
+  if (s[k] < 200) return plan
+  const a = Math.max(100, Math.min(s[k] - 100, at ?? Math.round(s[k] / 2)))
+  const labels = gridLabels(g, axis)
+  const ng = { ...g, [key]: [...s.slice(0, k), a, s[k] - a, ...s.slice(k + 1)], [lk]: [...labels.slice(0, k + 1), `${labels[k]}a`, ...labels.slice(k + 1)] }
+  return remapGrid(plan, gid, axis, ng, i => (i > k ? i + 1 : i), b => (b > k ? b + 1 : b === k ? [k, k + 1] : b))
+}
+
+// Removes line k. Columns and beams on it are removed; the slabs either side become one bay.
+export function deleteLine(plan, gid, axis, k) {
+  const g = plan.grids.find(x => x.id === gid)
+  const key = axis === 'x' ? 'xs' : 'ys', lk = axis === 'x' ? 'xl' : 'yl'
+  const s = g[key], n = s.length
+  if (n < 2) return plan
+  let ns, shift = 0
+  if (k === 0) { shift = s[0]; ns = s.slice(1) }
+  else if (k === n) ns = s.slice(0, -1)
+  else ns = [...s.slice(0, k - 1), s[k - 1] + s[k], ...s.slice(k + 1)]
+  const labels = gridLabels(g, axis).filter((_, m) => m !== k)
+  const u = gridAxis(g, axis)
+  const ng = { ...g, x: g.x + u.x * shift, y: g.y + u.y * shift, [key]: ns, [lk]: labels }
+  const gone = k === n ? n - 1 : k     // the bay that disappears
+  return remapGrid(plan, gid, axis, ng, i => (i === k ? null : i > k ? i - 1 : i), b => (b === gone ? null : b > gone ? b - 1 : b))
+}
+
 // The gridline intersection at p, if there is one.
-export function findNode(items, p) {
-  for (const g of items) {
-    if (g.type !== 'grid') continue
+export function findNode(grids, p) {
+  for (const g of grids || []) {
     for (let i = 0; i <= g.xs.length; i++) for (let j = 0; j <= g.ys.length; j++) {
       if (same(gridNode(g, i, j), p)) return { g: g.id, i, j }
     }
@@ -256,12 +438,17 @@ export function parseSpacings(text) {
   return out.length && out.length <= 60 ? out : null
 }
 
-// Columns at every intersection and beams along every gridline bay, skipping ones already there.
-export function gridMembers(g, items, { columns, beams, col, beam, height }) {
+// Columns at every intersection, beams along every gridline bay and slabs in every bay,
+// skipping ones already there.
+export function gridMembers(g, items, { columns, beams, slabs, col, beam, slab, height }) {
   const out = []
   const hasCol = (i, j) => items.some(c => c.type === 'column' && c.grid?.g === g.id && c.grid.i === i && c.grid.j === j)
-  const key = (r1, r2) => [`${r1.i},${r1.j}`, `${r2.i},${r2.j}`].sort().join('|')
-  const beamKeys = new Set(items.filter(b => b.type === 'beam' && b.ga?.g === g.id && b.gb?.g === g.id).map(b => key(b.ga, b.gb)))
+  // a beam already runs over this bay, possibly as one longer beam
+  const covered = (r1, r2) => items.some(b => {
+    if (b.type !== 'beam' || b.ga?.g !== g.id || b.gb?.g !== g.id) return false
+    if (r1.j === r2.j) return b.ga.j === r1.j && b.gb.j === r1.j && Math.min(b.ga.i, b.gb.i) <= r1.i && Math.max(b.ga.i, b.gb.i) >= r2.i
+    return b.ga.i === r1.i && b.gb.i === r1.i && Math.min(b.ga.j, b.gb.j) <= r1.j && Math.max(b.ga.j, b.gb.j) >= r2.j
+  })
   if (columns) {
     for (let i = 0; i <= g.xs.length; i++) for (let j = 0; j <= g.ys.length; j++) {
       if (hasCol(i, j)) continue
@@ -271,12 +458,18 @@ export function gridMembers(g, items, { columns, beams, col, beam, height }) {
   }
   if (beams) {
     const add = (r1, r2) => {
-      if (beamKeys.has(key(r1, r2))) return
+      if (covered(r1, r2)) return
       out.push({ id: uid(), type: 'beam', a: gridNode(g, r1.i, r1.j), b: gridNode(g, r2.i, r2.j), width: beam.w, depth: beam.d,
         ga: { g: g.id, ...r1 }, gb: { g: g.id, ...r2 } })
     }
     for (let j = 0; j <= g.ys.length; j++) for (let i = 0; i < g.xs.length; i++) add({ i, j }, { i: i + 1, j })
     for (let i = 0; i <= g.xs.length; i++) for (let j = 0; j < g.ys.length; j++) add({ i, j }, { i, j: j + 1 })
+  }
+  if (slabs) {
+    const has = (i, j) => items.some(s => s.type === 'slab' && s.bay?.g === g.id && s.bay.i === i && s.bay.j === j)
+    for (let i = 0; i < g.xs.length; i++) for (let j = 0; j < g.ys.length; j++) {
+      if (!has(i, j)) out.push({ id: uid(), type: 'slab', pts: bayPts(g, i, j), thickness: slab, bay: { g: g.id, i, j } })
+    }
   }
   return out
 }
@@ -285,10 +478,102 @@ export const fmtMm = mm => `${Math.round(mm).toLocaleString('en-MY')}`
 export const fmtArea = mm2 => `${(mm2 / 1e6).toFixed(2)} m²`
 
 export function planStats(plan) {
-  let walls = 0, area = 0
+  let walls = 0, rooms = 0, slabs = 0
   for (const l of plan.levels) for (const it of l.items) {
     if (it.type === 'wall') walls++
-    if (it.type === 'room') area += polyArea(it.pts)
+    if (it.type === 'room') rooms += polyArea(it.pts)
+    if (it.type === 'slab') slabs += slabNetArea(it, l.items)
   }
-  return { levels: plan.levels.length, walls, area: area / 1e6 }
+  return { levels: plan.levels.length, walls, area: (rooms || slabs) / 1e6, slabArea: slabs / 1e6 }
 }
+
+// The next level above this one, if any.
+export const levelAbove = (plan, level) => plan.levels
+  .filter(l => l.elevation > level.elevation)
+  .reduce((a, b) => (!a || b.elevation < a.elevation ? b : a), null)
+
+// Structure on one level grouped by size, with rough concrete volumes (m³).
+// Beam volume counts only the part below the slab above (slabAbove mm thick).
+export function schedule(level, slabAbove = 0) {
+  const group = (list, keyFn, add) => {
+    const m = new Map()
+    for (const x of list) {
+      const k = keyFn(x)
+      const v = m.get(k) || { key: k, n: 0, len: 0, area: 0, vol: 0 }
+      add(v, x)
+      m.set(k, v)
+    }
+    return [...m.values()].sort((a, b) => b.n - a.n)
+  }
+  const items = level.items
+  const cols = group(items.filter(i => i.type === 'column'), c => (c.shape === 'round' ? `Ø${c.w}` : `${c.w}×${c.d}`), (v, c) => {
+    v.n++
+    v.vol += (c.shape === 'round' ? Math.PI * (c.w / 2) ** 2 : c.w * c.d) * c.height / 1e9
+  })
+  const beams = group(items.filter(i => i.type === 'beam'), b => `${b.width}×${b.depth}`, (v, b) => {
+    const L = dist(b.a, b.b)
+    v.n++
+    v.len += L / 1000
+    v.vol += b.width * Math.max(0, b.depth - slabAbove) * L / 1e9
+  })
+  const slabs = group(items.filter(i => i.type === 'slab'), s => `${s.thickness} thk`, (v, s) => {
+    const A = slabNetArea(s, items)
+    v.n++
+    v.area += A / 1e6
+    v.vol += A * s.thickness / 1e9
+  })
+  const walls = group(items.filter(i => i.type === 'wall' && i.kind === 'rc'), w => `${w.thickness} thk`, (v, w) => {
+    const L = dist(w.a, w.b)
+    v.n++
+    v.len += L / 1000
+    v.vol += L * w.thickness * w.height / 1e9
+  })
+  const voids = items.filter(i => i.type === 'void').reduce((s, o) => s + polyArea(o.pts), 0) / 1e6
+  return { cols, beams, slabs, walls, voids, vol: [...cols, ...beams, ...slabs, ...walls].reduce((s, v) => s + v.vol, 0) }
+}
+
+// Slab area less the voids (openings) whose middle falls inside it.
+export function slabNetArea(s, items) {
+  let A = polyArea(s.pts)
+  for (const o of items) if (o.type === 'void' && pointInPoly(centroid(o.pts), s.pts)) A -= polyArea(o.pts)
+  return Math.max(0, A)
+}
+
+// A beam's line after any sideways shift (off, mm to the left of a → b), e.g. an edge
+// beam flush with the slab edge instead of centred on the gridline.
+export function beamAxis(b) {
+  if (!b.off) return { a: b.a, b: b.b }
+  const L = dist(b.a, b.b) || 1
+  const n = { x: -(b.b.y - b.a.y) / L, y: (b.b.x - b.a.x) / L }
+  return { a: { x: b.a.x + n.x * b.off, y: b.a.y + n.y * b.off }, b: { x: b.b.x + n.x * b.off, y: b.b.y + n.y * b.off } }
+}
+
+export const beamCorners = b => { const ax = beamAxis(b); return wallCorners({ a: ax.a, b: ax.b, thickness: b.width }) }
+
+// Parts of segment a-b inside a polygon, as [t0, t1] ranges along it (0..1).
+export function segInPoly(a, b, pts) {
+  const ts = [0, 1]
+  const dx = b.x - a.x, dy = b.y - a.y
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i], q = pts[(i + 1) % pts.length]
+    const ex = q.x - p.x, ey = q.y - p.y
+    const den = dx * ey - dy * ex
+    if (Math.abs(den) < 1e-12) continue
+    const t = ((p.x - a.x) * ey - (p.y - a.y) * ex) / den
+    const u = ((p.x - a.x) * dy - (p.y - a.y) * dx) / den
+    if (t > 0 && t < 1 && u >= 0 && u <= 1) ts.push(t)
+  }
+  ts.sort((x, y) => x - y)
+  const out = []
+  for (let i = 0; i < ts.length - 1; i++) {
+    const t0 = ts[i], t1 = ts[i + 1]
+    if (t1 - t0 < 1e-9) continue
+    const m = (t0 + t1) / 2
+    if (pointInPoly({ x: a.x + dx * m, y: a.y + dy * m }, pts)) {
+      if (out.length && Math.abs(out[out.length - 1][1] - t0) < 1e-9) out[out.length - 1][1] = t1
+      else out.push([t0, t1])
+    }
+  }
+  return out
+}
+

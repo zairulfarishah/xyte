@@ -22,6 +22,14 @@ create table if not exists layout_plans (
 );
 create index if not exists layout_plans_updated_idx on layout_plans (updated_at desc);
 
+-- The site / project the layout belongs to (shown on the site's page)
+alter table layout_plans add column if not exists site_id uuid references sites(id) on delete set null;
+create index if not exists layout_plans_site_idx on layout_plans (site_id);
+
+-- The bucket also holds, per layout:
+--   photos/<layout id>/<uuid>.jpg      photos on site notes
+--   revisions/<layout id>/<rev>.json   a copy of the layout at each issued revision
+
 -- ── 2. Team members only ────────────────────────────────────
 -- Same rule as setup-security.sql
 alter table public.layout_plans enable row level security;
