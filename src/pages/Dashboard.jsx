@@ -1,75 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../supabase'
-import { Camera } from 'lucide-react'
 import { calculateWorkload } from '../utils/workload'
-import { memberSchedule, notify, notifyAssignments, notifyMany, notifyScheduleChanges, siteRoleIds } from '../utils/notify'
+import { memberSchedule, notify, notifyMany, notifyScheduleChanges, siteRoleIds } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
-import PlaceSearchBox from '../components/PlaceSearchBox'
+import SiteForm from '../components/siteForm/SiteForm'
+import { EMPTY_SITE_FORM } from '../components/siteForm/siteFormModel'
 import { mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../utils/completionMeta'
 import { useViewport } from '../utils/useViewport'
 import { fetchTeamLeaves, getLeaveSessionLabel, getLeaveSummary, getMemberLeaveOnDate } from '../utils/teamLeaves'
 import {
   assignmentMemberId, crewForDate, getSiteDates, isMissingPic, memberRoleOnSite, picForDate, representativeDate,
 } from '../utils/siteDays'
-import DashboardBento from './DashboardBento'
+import DashboardBoard from './DashboardBoard'
 import { activeMembers } from '../utils/members'
-import { shrinkPhoto } from '../utils/photo'
 import { cachedPage, rememberPage } from '../utils/pageCache'
-import LocationPicker from '../components/LazyLocationPicker'
-
-const SITE_TYPES = [
-  { value: 'site_scanning', label: 'Site Scanning' },
-  { value: 'site_visit', label: 'Site Visit' },
-  { value: 'meeting', label: 'Meeting' },
-]
-
-const TYPE_COLORS = {
-  site_scanning: { bg: '#eff6ff', text: '#1d4ed8', border: '#93c5fd' },
-  site_visit: { bg: '#f0fdf4', text: '#166534', border: '#4ade80' },
-  meeting: { bg: '#faf5ff', text: '#6d28d9', border: '#c4b5fd' },
-}
-
-const SALESPERSONS = ['GH Tan', 'Chong Jie Yan', 'Jasmin', 'Darren', 'Wendy', 'Zairul', 'Reekha', 'Ryan']
-
-const EMPTY_FORM = {
-  site_type: 'site_scanning',
-  site_name: '',
-  location: '',
-  latitude: '',
-  longitude: '',
-  client_company_name: '',
-  client_name: '',
-  client_number: '',
-  scope_of_work: '',
-  salesperson: '',
-  scheduled_date: '',
-  end_date: '',
-  site_session: '',
-  site_status: 'upcoming',
-  report_status: 'pending',
-  site_duration_days: '1',
-  report_duration_days: '0.5',
-  notes: '',
-  pic_id: '',
-  crew_ids: [],
-  site_photo: null,
-  site_photo_preview: null,
-  site_photo_url: '',
-}
-
-async function uploadSitePhoto(original) {
-  const file = await shrinkPhoto(original)
-  const ext = file.name.split('.').pop()
-  const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-  const { error } = await supabase.storage.from('site-photos').upload(path, file)
-  if (error) {
-    console.error('Photo upload error:', error.message)
-    return { url: null, error: error.message }
-  }
-  const { data: { publicUrl } } = supabase.storage.from('site-photos').getPublicUrl(path)
-  return { url: publicUrl, error: null }
-}
-
 
 function buildMemberRecord(member, sites) {
   const assignments = sites.flatMap(site =>
@@ -100,14 +44,6 @@ function formatShortDate(date) {
   return new Date(date).toLocaleDateString('en-MY', { day: 'numeric', month: 'short' })
 }
 
-function getTrendText(value, kind = 'default') {
-  if (kind === 'alert') return value === 0 ? 'No backlog' : `${value} needs action`
-  if (kind === 'sites') return value > 0 ? `+${value} this week` : 'No change this week'
-  if (kind === 'upcoming') return value > 1 ? `${value - 1} near deadline` : 'Next site scheduled'
-  if (kind === 'team') return value > 0 ? 'Active team' : 'No members'
-  return value > 0 ? 'Healthy activity' : 'All clear'
-}
-
 export default function Dashboard() {
   const { fullName, firstName, isZairul, memberId } = useAuth()
   const { isMobile } = useViewport()
@@ -116,10 +52,7 @@ export default function Dashboard() {
   const [upcoming, setUpcoming] = useState(() => cachedPage('dashboard')?.upcoming || [])
   const [loading, setLoading] = useState(() => !cachedPage('dashboard'))
   const [showAdd, setShowAdd] = useState(false)
-  const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
-  const [uploadError, setUploadError] = useState(null)
-  const photoInputRef = useRef(null)
   const [updateSite, setUpdateSite] = useState(null)
   const [quickAssign, setQuickAssign] = useState(null)
   const [quickAssignSaving, setQuickAssignSaving] = useState(false)
@@ -133,7 +66,6 @@ export default function Dashboard() {
 
   useEffect(() => {
     function handleOpenAdd() {
-      setForm(EMPTY_FORM)
       setShowAdd(true)
     }
 
@@ -200,85 +132,6 @@ export default function Dashboard() {
     return `These team members are on leave for ${date}: ${summary}`
   }
 
-  async function handleAddSave() {
-    if (!form.site_name || !form.location || !form.scheduled_date) return
-    const selectedIds = [form.pic_id, ...form.crew_ids].filter(Boolean)
-    const leaveError = validateLeaveSelections(selectedIds, form.scheduled_date)
-    if (leaveError) {
-      alert(leaveError)
-      return
-    }
-    setSaving(true)
-
-    setUploadError(null)
-    let photoUrl = form.site_photo_url
-    if (form.site_photo) {
-      const result = await uploadSitePhoto(form.site_photo)
-      if (result.error) {
-        setUploadError(result.error)
-        setSaving(false)
-        return
-      }
-      photoUrl = result.url
-    }
-
-    const isSiteVisit = form.site_type === 'site_visit'
-    const isMeeting = form.site_type === 'meeting'
-    const payload = {
-      site_type: form.site_type,
-      site_name: form.site_name,
-      location: form.location,
-      latitude: form.latitude !== '' ? parseFloat(form.latitude) : null,
-      longitude: form.longitude !== '' ? parseFloat(form.longitude) : null,
-      client_company_name: form.client_company_name || null,
-      client_name: form.client_name || null,
-      client_number: form.client_number || null,
-      scope_of_work: form.scope_of_work || null,
-      salesperson: form.salesperson || null,
-      site_photo_url: photoUrl || null,
-      scheduled_date: form.scheduled_date,
-      end_date: form.end_date || form.scheduled_date || null,
-      site_session: (form.scheduled_date && form.end_date && form.scheduled_date === form.end_date) ? (form.site_session || null) : null,
-      site_status: form.site_status,
-      site_duration_days: isSiteVisit ? 0.5 : (() => {
-        if (form.site_type === 'site_scanning') {
-          const isSameDay = form.scheduled_date && form.end_date && form.scheduled_date === form.end_date
-          if (isSameDay) return form.site_session === 'Full Day' ? 1 : 0.5
-          if (form.scheduled_date && form.end_date) return Math.round((new Date(form.end_date) - new Date(form.scheduled_date)) / 86400000) + 1
-        }
-        return parseFloat(form.site_duration_days) || 1
-      })(),
-      report_duration_days: isSiteVisit || isMeeting ? 0 : (parseFloat(form.report_duration_days) || 0.5),
-      report_status: isSiteVisit || isMeeting ? 'not_applicable' : form.report_status,
-      notes: form.notes,
-    }
-
-    const { data } = await supabase.from('sites').insert(payload).select().single()
-
-    if (data?.id) {
-      const assignments = []
-      if (form.pic_id) assignments.push({ site_id: data.id, member_id: form.pic_id, assignment_role: 'PIC' })
-      form.crew_ids.forEach(id => {
-        if (id !== form.pic_id) assignments.push({ site_id: data.id, member_id: id, assignment_role: 'crew' })
-      })
-      if (assignments.length > 0) await supabase.from('site_assignments').insert(assignments)
-
-      notifyAssignments({
-        siteName: form.site_name,
-        scheduledDate: form.scheduled_date,
-        picId: form.pic_id,
-        crewIds: form.crew_ids,
-        actor: fullName,
-      })
-    }
-
-    notify(`Added new site: ${form.site_name}`, fullName, null, 'general')
-    setSaving(false)
-    setShowAdd(false)
-    setForm(EMPTY_FORM)
-    fetchAll()
-  }
-
   async function handleStatusSave() {
     if (!updateSite) return
     if (updateSite.report_status === 'approved' && !isZairul) return
@@ -343,7 +196,6 @@ export default function Dashboard() {
       || sites.find(item => !['completed', 'cancelled'].includes(item.site_status))
 
     if (!targetSite) {
-      setForm(EMPTY_FORM)
       setShowAdd(true)
       return
     }
@@ -412,24 +264,12 @@ export default function Dashboard() {
     fetchAll()
   }
 
-  const totalSites = sites.length
-  const activeSites = sites.filter(site => site.site_status === 'ongoing').length
-  const completedSites = sites.filter(site => site.site_status === 'completed').length
-  const upcomingSitesCount = sites.filter(site => site.site_status === 'upcoming').length
-  const pendingReports = sites.filter(site => ['pending', 'in_progress'].includes(site.report_status) && site.site_type === 'site_scanning')
   // Any day of a multi-day site without a PIC counts as unassigned
   const noPicSites = sites.filter(site => isMissingPic(site) && !['completed', 'cancelled'].includes(site.site_status))
   const soonSites = sites.filter(site => {
     const diff = (new Date(site.scheduled_date) - new Date()) / (1000 * 60 * 60 * 24)
     return diff >= 0 && diff <= 2 && site.site_status === 'upcoming'
   })
-  const addFormUnavailable = members
-    .reduce((acc, member) => {
-      const leave = getMemberLeaveOnDate(leaves, member.id, form.scheduled_date)
-      if (leave) acc[member.id] = leave
-      return acc
-    }, {})
-
   const quickAssignSite = sites.find(site => site.id === quickAssign?.siteId)
   const quickAssignUnavailable = members
     .reduce((acc, member) => {
@@ -451,14 +291,6 @@ export default function Dashboard() {
     )
   }
 
-  const kpis = [
-    { label: 'Total Sites',     value: totalSites,            trend: getTrendText(upcoming.length, 'sites'),        icon: '▦', color: '#2563eb', gradient: 'linear-gradient(135deg,#60a5fa,#2563eb)' },
-    { label: 'Upcoming',        value: upcomingSitesCount,    trend: getTrendText(upcomingSitesCount, 'upcoming'),  icon: '▣', color: '#d97706', gradient: 'linear-gradient(135deg,#fbbf24,#f97316)' },
-    { label: 'Ongoing',         value: activeSites,           trend: activeSites === 0 ? 'All clear' : `${activeSites} active now`, icon: '◉', color: '#ea580c', gradient: 'linear-gradient(135deg,#fb923c,#dc2626)' },
-    { label: 'Completed',       value: completedSites,        trend: completedSites > 0 ? `${Math.round((completedSites / Math.max(totalSites, 1)) * 100)}% done` : 'None yet', icon: '✓', color: '#16a34a', gradient: 'linear-gradient(135deg,#4ade80,#16a34a)' },
-    { label: 'Team Members',    value: members.length,        trend: getTrendText(members.length, 'team'),          icon: '◈', color: '#7c3aed', gradient: 'linear-gradient(135deg,#a78bfa,#6d28d9)' },
-    { label: 'Pending Reports', value: pendingReports.length, trend: getTrendText(pendingReports.length, 'alert'),  icon: '▤', color: '#dc2626', gradient: 'linear-gradient(135deg,#f87171,#dc2626)' },
-  ]
 
   function openStatusUpdate(site) {
     const completionMeta = parseCompletionMeta(site.notes || '')
@@ -474,13 +306,12 @@ export default function Dashboard() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#eef3f8', color: '#0b1220' }}>
+    <div style={{ minHeight: '100vh', background: '#121c33', color: '#0b1220' }}>
       <div>
-        <DashboardBento
+        <DashboardBoard
           sites={sites}
           members={members}
           leaves={leaves}
-          kpis={kpis}
           firstName={firstName}
           memberId={memberId}
           isZairul={isZairul}
@@ -490,7 +321,6 @@ export default function Dashboard() {
 
         <button
           onClick={() => {
-            setForm(EMPTY_FORM)
             setShowAdd(true)
           }}
           style={{
@@ -513,375 +343,17 @@ export default function Dashboard() {
       </div>
 
       {showAdd && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.4)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-            padding: '16px',
-          }}
-          onClick={event => event.target === event.currentTarget && setShowAdd(false)}
-        >
-          <div style={{ background: 'white', borderRadius: '20px', width: '100%', maxWidth: '680px', maxHeight: '92vh', overflowY: 'auto', padding: isMobile ? '18px' : '30px' }}>
-            <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginBottom: '24px' }}>Add New Site</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-
-              {/* Photo upload */}
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '6px' }}>Cover Photo</label>
-                <input ref={photoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={event => {
-                  const file = event.target.files[0]
-                  if (!file) return
-                  setUploadError(null)
-                  setForm(f => ({ ...f, site_photo: file, site_photo_preview: URL.createObjectURL(file) }))
-                  event.target.value = ''
-                }} />
-                {form.site_photo_preview ? (
-                  <div style={{ position: 'relative', borderRadius: '10px', overflow: 'hidden' }}>
-                    <img src={form.site_photo_preview} alt="preview" style={{ width: '100%', height: '140px', objectFit: 'cover', display: 'block' }} />
-                    <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', opacity: 0, transition: 'opacity 0.15s' }}
-                      onMouseEnter={e => e.currentTarget.style.opacity = 1}
-                      onMouseLeave={e => e.currentTarget.style.opacity = 0}
-                    >
-                      <button type="button" onClick={() => photoInputRef.current?.click()} style={{ background: 'white', color: '#0f172a', border: 'none', padding: '6px 12px', borderRadius: '7px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>Change</button>
-                      <button type="button" onClick={() => setForm(f => ({ ...f, site_photo: null, site_photo_preview: null, site_photo_url: '' }))} style={{ background: '#ef4444', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '7px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>Remove</button>
-                    </div>
-                  </div>
-                ) : (
-                  <button type="button" onClick={() => photoInputRef.current?.click()} style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', border: '2px dashed #e2e8f0', borderRadius: '10px', padding: '28px', cursor: 'pointer', background: '#f8fafc', transition: 'border-color 0.15s' }}
-                    onMouseEnter={e => e.currentTarget.style.borderColor = '#2563eb'}
-                    onMouseLeave={e => e.currentTarget.style.borderColor = '#e2e8f0'}
-                  >
-                    <Camera size={22} color="#94a3b8" />
-                    <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '500' }}>Click to upload a cover photo</span>
-                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>JPG, PNG, WEBP</span>
-                  </button>
-                )}
-                {uploadError && (
-                  <p style={{ marginTop: '6px', fontSize: '11px', color: '#ef4444', fontWeight: '500' }}>Upload failed: {uploadError}</p>
-                )}
-              </div>
-
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '6px' }}>Site Type *</label>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  {SITE_TYPES.map(({ value, label }) => {
-                    const active = form.site_type === value
-                    const tc = TYPE_COLORS[value]
-                    return (
-                      <button
-                        key={value}
-                        type="button"
-                        onClick={() => setForm(f => ({ ...f, site_type: value, site_duration_days: value === 'site_visit' ? '0.5' : f.site_duration_days }))}
-                        style={{
-                          flex: 1,
-                          padding: '8px 6px',
-                          borderRadius: '8px',
-                          border: `1px solid ${active ? tc.border : '#e2e8f0'}`,
-                          background: active ? tc.bg : 'white',
-                          color: active ? tc.text : '#64748b',
-                          fontSize: '12px',
-                          fontWeight: active ? '600' : '400',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {label}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Site Name *</label>
-                <input
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: 'white', color: '#0f172a', boxSizing: 'border-box' }}
-                  value={form.site_name}
-                  placeholder="e.g. Jalan Ampang Survey"
-                  onChange={event => setForm(f => ({ ...f, site_name: event.target.value }))}
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Location *</label>
-                <PlaceSearchBox
-                  value={form.location}
-                  onChange={value => setForm(f => ({ ...f, location: value, latitude: '', longitude: '' }))}
-                  onSelect={result => setForm(f => ({
-                    ...f,
-                    location: result.label,
-                    latitude: result.latitude,
-                    longitude: result.longitude,
-                  }))}
-                  placeholder="Search and choose a location..."
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '8px' }}>Accurate Location Pin</label>
-                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px' }}>
-                  <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '10px', lineHeight: 1.5 }}>
-                    Click the map to drop the exact site pin. This saves the real coordinates for the dashboard map and site records.
-                  </p>
-
-                  {form.latitude !== '' && form.longitude !== '' && (
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '10px',
-                        marginBottom: '10px',
-                        padding: '9px 10px',
-                        borderRadius: '10px',
-                        background: '#eff6ff',
-                        border: '1px solid #bfdbfe',
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontSize: '11px', fontWeight: '700', color: '#1d4ed8' }}>Pinned Coordinates</div>
-                        <div style={{ fontSize: '12px', color: '#1e40af', marginTop: '2px' }}>
-                          {Number(form.latitude).toFixed(5)}, {Number(form.longitude).toFixed(5)}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setForm(f => ({ ...f, latitude: '', longitude: '' }))}
-                        style={{
-                          border: 'none',
-                          background: '#dbeafe',
-                          color: '#1d4ed8',
-                          borderRadius: '8px',
-                          padding: '7px 10px',
-                          fontSize: '11px',
-                          fontWeight: '700',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Clear Pin
-                      </button>
-                    </div>
-                  )}
-
-                  <LocationPicker
-                    lat={form.latitude}
-                    lng={form.longitude}
-                    onPick={(lat, lng) => setForm(f => ({ ...f, latitude: lat, longitude: lng }))}
-                    mapKey={`${form.latitude}-${form.longitude}`}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Client Company Name</label>
-                  <input
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: 'white', color: '#0f172a', boxSizing: 'border-box' }}
-                    value={form.client_company_name}
-                    placeholder="e.g. XRadar Asia Sdn Bhd"
-                    onChange={event => setForm(f => ({ ...f, client_company_name: event.target.value }))}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Client Name</label>
-                  <input
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: 'white', color: '#0f172a', boxSizing: 'border-box' }}
-                    value={form.client_name}
-                    placeholder="e.g. TNB Bhd"
-                    onChange={event => setForm(f => ({ ...f, client_name: event.target.value }))}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Client Phone Number</label>
-                  <input
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: 'white', color: '#0f172a', boxSizing: 'border-box' }}
-                    value={form.client_number}
-                    placeholder="e.g. +60123456789"
-                    onChange={event => setForm(f => ({ ...f, client_number: event.target.value }))}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Scope of Work</label>
-                <textarea
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: 'white', color: '#0f172a', boxSizing: 'border-box', resize: 'none' }}
-                  rows={2}
-                  value={form.scope_of_work}
-                  placeholder="Describe the scope of work..."
-                  onChange={event => setForm(f => ({ ...f, scope_of_work: event.target.value }))}
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Salesperson</label>
-                <select
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: 'white', color: '#0f172a' }}
-                  value={form.salesperson}
-                  onChange={event => setForm(f => ({ ...f, salesperson: event.target.value }))}
-                >
-                  <option value="">— Select Salesperson —</option>
-                  {SALESPERSONS.map(sp => <option key={sp} value={sp}>{sp}</option>)}
-                </select>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Start Date *</label>
-                  <input
-                    type="date"
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: 'white', color: '#0f172a', boxSizing: 'border-box' }}
-                    value={form.scheduled_date}
-                    onChange={event => setForm(f => ({ ...f, scheduled_date: event.target.value, end_date: f.end_date || event.target.value }))}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>End Date *</label>
-                  <input
-                    type="date"
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: 'white', color: '#0f172a', boxSizing: 'border-box' }}
-                    value={form.end_date}
-                    min={form.scheduled_date}
-                    onChange={event => setForm(f => ({ ...f, end_date: event.target.value }))}
-                  />
-                </div>
-              </div>
-
-              {form.scheduled_date && form.end_date && form.scheduled_date === form.end_date && (
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Session (Same Day)</label>
-                  <select
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: 'white', color: '#0f172a' }}
-                    value={form.site_session}
-                    onChange={event => setForm(f => ({ ...f, site_session: event.target.value }))}
-                  >
-                    <option value="">— Select Session —</option>
-                    <option value="AM">AM (Morning)</option>
-                    <option value="PM">PM (Afternoon)</option>
-                    <option value="Full Day">Full Day</option>
-                  </select>
-                </div>
-              )}
-
-              {form.site_type === 'site_scanning' && (() => {
-                const isSameDay = form.scheduled_date && form.end_date && form.scheduled_date === form.end_date
-                const diffDays = form.scheduled_date && form.end_date
-                  ? Math.round((new Date(form.end_date) - new Date(form.scheduled_date)) / 86400000) + 1
-                  : null
-                const sameDayDuration = form.site_session === 'Full Day' ? 1 : 0.5
-                const calcDuration = isSameDay ? sameDayDuration : diffDays
-                return (
-                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
-                    <div>
-                      <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Site Duration (Days)</label>
-                      <div style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', background: '#f8fafc', color: '#64748b', boxSizing: 'border-box' }}>
-                        {calcDuration != null ? `${calcDuration} day${calcDuration !== 1 ? 's' : ''}${isSameDay ? ` (${form.site_session || 'half day'})` : ''}` : '—'}
-                      </div>
-                    </div>
-                    <div>
-                      <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Report Duration (Days)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.5"
-                        style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: 'white', color: '#0f172a', boxSizing: 'border-box' }}
-                        value={form.report_duration_days}
-                        onChange={event => setForm(f => ({ ...f, report_duration_days: event.target.value }))}
-                      />
-                    </div>
-                  </div>
-                )
-              })()}
-
-              {form.site_type === 'site_visit' && (
-                <div style={{ background: '#f0fdf4', border: '1px solid #4ade80', borderRadius: '8px', padding: '10px 14px' }}>
-                  <p style={{ fontSize: '12px', color: '#166534', fontWeight: '500' }}>Duration: Half Day (0.5) - fixed for site visits</p>
-                </div>
-              )}
-
-              {form.site_type === 'meeting' && (
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>Meeting Duration</label>
-                  <select
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: 'white', color: '#0f172a' }}
-                    value={form.site_duration_days}
-                    onChange={event => setForm(f => ({ ...f, site_duration_days: event.target.value }))}
-                  >
-                    <option value="0.25">2 Hours</option>
-                    <option value="0.5">Half Day</option>
-                    <option value="1">Full Day</option>
-                  </select>
-                </div>
-              )}
-
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '5px' }}>{form.site_type === 'meeting' ? 'Organizer' : 'PIC'}</label>
-                <select
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: 'white', color: '#0f172a' }}
-                  value={form.pic_id}
-                  onChange={event => setForm(f => ({ ...f, pic_id: event.target.value }))}
-                >
-                  <option value="">{form.site_type === 'meeting' ? '- Select Organizer -' : '- Select PIC -'}</option>
-                  {members.map(member => {
-                    const leave = addFormUnavailable[member.id]
-                    return (
-                      <option key={member.id} value={member.id} disabled={Boolean(leave)}>
-                        {member.full_name}{leave ? ` - ${getLeaveSummary(leave)}` : ''}
-                      </option>
-                    )
-                  })}
-                </select>
-              </div>
-
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '8px' }}>{form.site_type === 'meeting' ? 'Attendees' : 'Crew'}</label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {members.map(member => {
-                    const leave = addFormUnavailable[member.id]
-                    return (
-                    <label key={member.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: leave ? 'not-allowed' : 'pointer', opacity: leave ? 0.55 : 1 }}>
-                      <input
-                        type="checkbox"
-                        checked={form.crew_ids.includes(member.id)}
-                        disabled={Boolean(leave)}
-                        onChange={() => setForm(f => ({
-                          ...f,
-                          crew_ids: f.crew_ids.includes(member.id)
-                            ? f.crew_ids.filter(id => id !== member.id)
-                            : [...f.crew_ids, member.id],
-                        }))}
-                        style={{ accentColor: '#2563eb', width: '15px', height: '15px' }}
-                      />
-                      <span style={{ fontSize: '13px', color: '#0f172a' }}>
-                        {member.full_name}{leave ? ` - ${getLeaveSummary(leave)}` : ''}
-                      </span>
-                    </label>
-                  )})}
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '10px', paddingTop: '4px' }}>
-                <button
-                  onClick={handleAddSave}
-                  disabled={saving}
-                  style={{ flex: 1, background: '#2563eb', color: 'white', border: 'none', padding: '10px', borderRadius: '8px', fontSize: '13px', fontWeight: '500', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}
-                >
-                  {saving ? 'Saving...' : 'Add Site'}
-                </button>
-                <button
-                  onClick={() => setShowAdd(false)}
-                  style={{ flex: 1, background: '#f1f5f9', color: '#0f172a', border: 'none', padding: '10px', borderRadius: '8px', fontSize: '13px', fontWeight: '500', cursor: 'pointer' }}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <SiteForm
+          title="Add New Site"
+          initial={EMPTY_SITE_FORM}
+          members={members}
+          leaves={leaves}
+          sites={sites}
+          fullName={fullName}
+          memberId={memberId}
+          onClose={() => setShowAdd(false)}
+          onSaved={() => { setShowAdd(false); fetchAll() }}
+        />
       )}
 
       {updateSite && (
@@ -893,7 +365,7 @@ export default function Dashboard() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 1000,
+            zIndex: 3200,
             padding: '16px',
           }}
           onClick={event => event.target === event.currentTarget && setUpdateSite(null)}
@@ -1035,7 +507,7 @@ export default function Dashboard() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 1000,
+            zIndex: 3200,
             padding: '16px',
           }}
           onClick={event => event.target === event.currentTarget && setQuickAssign(null)}

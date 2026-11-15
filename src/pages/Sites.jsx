@@ -2,23 +2,21 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../supabase'
 import {
-  Pencil, Trash2, Search, ArrowUpRight, MapPin, MessageCircle, X, Camera,
+  Pencil, Trash2, Search, ArrowUpRight, MapPin, MessageCircle, X,
   Calendar, Check, CheckCircle, SlidersHorizontal, MoreHorizontal, Copy,
   AlertTriangle, FileWarning, Filter, Plus, CheckSquare, Square, Layers, EyeOff, Eye,
 } from 'lucide-react'
-import { memberSchedule, notify, notifyMany, notifyScheduleChanges, siteRoleIds } from '../utils/notify'
+import { notifyMany, siteRoleIds } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
-import PlaceSearchBox from '../components/PlaceSearchBox'
-import LocationPicker from '../components/LazyLocationPicker'
+import SiteForm from '../components/siteForm/SiteForm'
+import { EMPTY_SITE_FORM, duplicateForm, formFromSite } from '../components/siteForm/siteFormModel'
 import SitesViewSwitch from '../components/SitesViewSwitch'
 import { getSiteHeaderImage } from '../utils/siteHeader'
 import { mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../utils/completionMeta'
-import { fetchTeamLeaves, getLeaveSessionLabel, getLeaveSummary, getMemberLeaveOnDate } from '../utils/teamLeaves'
+import { fetchTeamLeaves } from '../utils/teamLeaves'
 import { useViewport } from '../utils/useViewport'
 import { buildAssignmentMessage, buildSitesBrief, openWhatsApp, openWhatsAppShare, shortNameOf } from '../utils/whatsapp'
 import { getSiteTitle } from '../utils/siteTitle'
-import { isActiveMember } from '../utils/members'
-import { shrinkPhoto } from '../utils/photo'
 import {
   assignmentMemberId, assignmentsForDate, crewForDate, getSiteDates, hasDailyCrew,
   isPic, picForDate, siteCrew, sitePic, uniqueAssignments,
@@ -78,16 +76,6 @@ const SITE_TYPES   = [
 ]
 const SALESPERSONS = ['GH Tan','Chong Jie Yan','Jasmin','Darren','Wendy','Zairul','Reekha','Ryan']
 const TABS         = ['All','Upcoming','Ongoing','Completed','Cancelled','Postponed']
-const EMPTY = {
-  site_type:'site_scanning', site_name:'', location:'', latitude:'', longitude:'',
-  client_company_name:'', client_name:'', client_number:'', scope_of_work:'',
-  salesperson:'', scheduled_date:'', end_date:'', site_session:'', site_status:'upcoming', report_status:'pending',
-  site_duration_days:'1', report_duration_days:'0.5', notes:'', pic_id:'', crew_ids:[],
-  assign_mode:'same', daily_assignments:{},
-  delivery_order_number:'', completion_reason:'',
-  site_photo:null, site_photo_preview:null, site_photo_url:'',
-}
-
 const SORTS = [
   { value:'newest',  label:'Newest first'  },
   { value:'soonest', label:'Soonest first' },
@@ -247,17 +235,6 @@ function getPageNumbers(current, total, siblingCount = 1) {
   return [1, '…', ...Array.from({ length: right - left + 1 }, (_, i) => left + i), '…', total]
 }
 
-async function uploadSitePhoto(original) {
-  const file = await shrinkPhoto(original)
-  const ext = file.name.split('.').pop()
-  const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-  const { error } = await supabase.storage.from('site-photos').upload(path, file)
-  if (error) return { url:null, error:error.message }
-  const { data:{ publicUrl } } = supabase.storage.from('site-photos').getPublicUrl(path)
-  return { url:publicUrl, error:null }
-}
-
-
 // Last loaded data, kept for the session so coming back to Sites shows the list
 // straight away while a fresh copy loads in the background.
 let sitesCache = null
@@ -273,10 +250,7 @@ export default function Sites() {
   const [showForm, setShowForm]       = useState(false)
   const [editSite, setEditSite]       = useState(null)
   const [formTitle, setFormTitle]     = useState('')
-  const [form, setForm]               = useState(EMPTY)
-  const formInitial = useRef('')
-  const [saving, setSaving]           = useState(false)
-  const [uploadError, setUploadError] = useState(null)
+  const [formInit, setFormInit]       = useState(EMPTY_SITE_FORM)
   const [expandedCard, setExpandedCard] = useState(null)
   const [quickSaving, setQuickSaving]   = useState(null)
   const [draftStatus, setDraftStatus]   = useState(null)
@@ -291,7 +265,6 @@ export default function Sites() {
   const [bulkSaving, setBulkSaving]     = useState(false)
   const [brief, setBrief]               = useState(null)   // { text, people } for the multi-site WhatsApp brief
   const pendingDeletes = useRef(new Map())
-  const photoInputRef = useRef(null)
   const searchRef = useRef(null)
   // Always three rows: columns follow the Sites.css grid breakpoints; one column on phones shows 8
   const columns = width >= 1600 ? 5 : width >= 1280 ? 4 : width >= 1024 ? 3 : width >= 640 ? 2 : 1
@@ -533,253 +506,15 @@ export default function Sites() {
     })
   }
 
-  function startForm(nextForm, site, title) {
-    formInitial.current = JSON.stringify(nextForm)
-    setForm(nextForm); setEditSite(site); setFormTitle(title); setUploadError(null); setShowForm(true)
+  function startForm(initial, site, title) {
+    setFormInit(initial); setEditSite(site); setFormTitle(title); setShowForm(true)
   }
-  // Ask before throwing away edits (backdrop click, X, Cancel)
-  function closeForm() {
-    if (!saving && JSON.stringify(form) !== formInitial.current && !confirm('Discard your unsaved changes?')) return
-    setShowForm(false)
-  }
-
-  function openAdd() { startForm(EMPTY, null, 'Add New Site') }
-  // Same client, place, scope and team as an earlier site — just pick the new dates
-  function openDuplicate(site) {
-    const base = formFromSite(site)
-    const { pic_id, crew_ids } = base.assign_mode === 'per_day'
-      ? (() => {
-          const p = sitePic(site), c = siteCrew(site)
-          return { pic_id: p?.team_members?.id || '', crew_ids: c.map(x => x.team_members?.id).filter(id => id && id !== p?.team_members?.id) }
-        })()
-      : base
-    startForm({
-      ...base,
-      scheduled_date:'', end_date:'', site_session:'',
-      site_status:'upcoming', report_status:'pending',
-      delivery_order_number:'', completion_reason:'',
-      assign_mode:'same', daily_assignments:{}, pic_id, crew_ids: [...new Set(crew_ids)],
-    }, null, `Duplicate · ${site.site_name}`)
-  }
+  function openAdd() { startForm(EMPTY_SITE_FORM, null, 'Add New Site') }
+  function openDuplicate(site) { startForm(duplicateForm(site), null, `Duplicate · ${site.site_name}`) }
   function openEdit(site) { startForm(formFromSite(site), site, 'Edit Site') }
-  function formFromSite(site) {
-    const assignments = site.site_assignments || []
-    const isPerDay = assignments.some(a => a.work_date)
-    const pic  = assignments.find(a => a.assignment_role === 'PIC' && !a.work_date)
-    const crew = assignments.filter(a => a.assignment_role === 'crew' && !a.work_date)
-    const dailyAssignments = {}
-    if (isPerDay) {
-      assignments.filter(a => a.work_date).forEach(a => {
-        const d = dailyAssignments[a.work_date] || { pic_id:'', crew_ids:[] }
-        if (a.assignment_role === 'PIC') d.pic_id = a.team_members?.id || ''
-        else if (a.team_members?.id) d.crew_ids = [...d.crew_ids, a.team_members.id]
-        dailyAssignments[a.work_date] = d
-      })
-    }
-    const completionMeta = parseCompletionMeta(site.notes || '')
-    return {
-      site_type: site.site_type || 'site_scanning',
-      site_name:site.site_name, location:site.location,
-      latitude:site.latitude||'', longitude:site.longitude||'',
-      client_company_name:site.client_company_name||'', client_name:site.client_name||'',
-      client_number:site.client_number||'', scope_of_work:site.scope_of_work||'',
-      salesperson:site.salesperson||'', scheduled_date:site.scheduled_date,
-      end_date:site.end_date||site.scheduled_date||'', site_session:site.site_session||'',
-      site_status:site.site_status,
-      site_duration_days:site.site_duration_days?.toString()||'1',
-      report_duration_days:site.report_duration_days?.toString()||'0.5',
-      report_status:site.report_status, notes:completionMeta.baseNotes,
-      pic_id:isPerDay ? '' : (pic?.team_members?.id||''),
-      crew_ids:isPerDay ? [] : (crew?.map(c => c.team_members?.id)||[]),
-      assign_mode: isPerDay ? 'per_day' : 'same',
-      daily_assignments: dailyAssignments,
-      delivery_order_number: completionMeta.deliveryOrderNumber,
-      completion_reason: completionMeta.completionReason,
-      site_photo:null, site_photo_preview:site.site_photo_url||null, site_photo_url:site.site_photo_url||'',
-    }
-  }
-  function toggleCrew(id) {
-    setForm(f => ({ ...f, crew_ids: f.crew_ids.includes(id) ? f.crew_ids.filter(x => x!==id) : [...f.crew_ids, id] }))
-  }
-  function datesInRange(start, end) {
-    if (!start) return []
-    const arr = []
-    const cur = new Date(`${start}T00:00:00`)
-    const last = new Date(`${end || start}T00:00:00`)
-    while (cur <= last) {
-      arr.push(`${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`)
-      cur.setDate(cur.getDate() + 1)
-    }
-    return arr
-  }
-  function setDayPic(dateStr, picId) {
-    setForm(f => ({
-      ...f,
-      daily_assignments: {
-        ...f.daily_assignments,
-        [dateStr]: { pic_id: picId, crew_ids: (f.daily_assignments[dateStr]?.crew_ids || []).filter(id => id !== picId) },
-      },
-    }))
-  }
-  function toggleDayCrew(dateStr, memberId) {
-    setForm(f => {
-      const cur = f.daily_assignments[dateStr] || { pic_id:'', crew_ids:[] }
-      const has = cur.crew_ids.includes(memberId)
-      return {
-        ...f,
-        daily_assignments: {
-          ...f.daily_assignments,
-          [dateStr]: { ...cur, crew_ids: has ? cur.crew_ids.filter(id => id!==memberId) : [...cur.crew_ids, memberId] },
-        },
-      }
-    })
-  }
-
-  function getLeaveConflict(memberIds, date) {
-    const conflicts = memberIds
-      .map(memberId => {
-        const member = members.find(item => item.id === memberId)
-        const leave = getMemberLeaveOnDate(leaves, memberId, date)
-        return leave && member ? { member, leave } : null
-      })
-      .filter(Boolean)
-
-    if (conflicts.length === 0) return null
-    return `These team members are on leave for ${date}: ${conflicts.map(({ member, leave }) => `${member.full_name} (${leave.leave_type}, ${getLeaveSessionLabel(leave.leave_session)})`).join(', ')}`
-  }
-
-  async function handleSave() {
-    if (!form.site_name || !form.location || !form.scheduled_date) return
-    // Days left over from an older date range are dropped, not checked or saved
-    const siteDays = new Set(datesInRange(form.scheduled_date, form.end_date))
-    const dailyInRange = Object.entries(form.daily_assignments).filter(([dateStr]) => siteDays.has(dateStr))
-    if (form.assign_mode === 'per_day') {
-      for (const [dateStr, day] of dailyInRange) {
-        const leaveError = getLeaveConflict([day.pic_id, ...day.crew_ids].filter(Boolean), dateStr)
-        if (leaveError) {
-          setUploadError(leaveError)
-          return
-        }
-      }
-    } else {
-      const leaveError = getLeaveConflict([form.pic_id, ...form.crew_ids].filter(Boolean), form.scheduled_date)
-      if (leaveError) {
-        setUploadError(leaveError)
-        return
-      }
-    }
-    setSaving(true); setUploadError(null)
-    try {
-      let photoUrl = form.site_photo_url
-      if (form.site_photo) {
-        const r = await uploadSitePhoto(form.site_photo)
-        if (r.error) throw new Error(r.error)
-        photoUrl = r.url
-      }
-      const completionError = validateCompletionRequirement(
-        form.site_status,
-        form.delivery_order_number,
-        form.completion_reason
-      )
-      if (completionError) throw new Error(completionError)
-      const isSiteVisit = form.site_type === 'site_visit'
-      const isMeeting   = form.site_type === 'meeting'
-      const payload = {
-        site_type:form.site_type, site_name:form.site_name, location:form.location,
-        latitude:form.latitude!=='' ? parseFloat(form.latitude) : null,
-        longitude:form.longitude!=='' ? parseFloat(form.longitude) : null,
-        client_company_name:form.client_company_name||null, client_name:form.client_name||null,
-        client_number:form.client_number||null, scope_of_work:form.scope_of_work||null,
-        salesperson:form.salesperson||null, site_photo_url:photoUrl||null,
-        scheduled_date:form.scheduled_date,
-        end_date:form.end_date || form.scheduled_date || null,
-        site_session:(form.scheduled_date && form.end_date && form.scheduled_date === form.end_date) ? (form.site_session || null) : null,
-        site_status:form.site_status,
-        site_duration_days:isSiteVisit ? 0.5 : (() => {
-          if (form.site_type === 'site_scanning') {
-            const isSameDay = form.scheduled_date && form.end_date && form.scheduled_date === form.end_date
-            if (isSameDay) return form.site_session === 'Full Day' ? 1 : 0.5
-            if (form.scheduled_date && form.end_date) return Math.round((new Date(form.end_date) - new Date(form.scheduled_date)) / 86400000) + 1
-          }
-          return parseFloat(form.site_duration_days) || 1
-        })(),
-        report_duration_days:isSiteVisit||isMeeting ? 0 : (parseFloat(form.report_duration_days)||0),
-        report_status:isSiteVisit||isMeeting ? 'not_applicable' : form.report_status,
-        notes: mergeCompletionMeta(form.notes, {
-          deliveryOrderNumber: form.delivery_order_number,
-          completionReason: form.completion_reason,
-        }),
-      }
-      let siteId = editSite?.id
-      const assignments = []
-      if (form.assign_mode === 'per_day') {
-        dailyInRange.forEach(([dateStr, day]) => {
-          if (day.pic_id) assignments.push({ member_id:day.pic_id, assignment_role:'PIC', work_date:dateStr })
-          day.crew_ids.forEach(id => { if (id!==day.pic_id) assignments.push({ member_id:id, assignment_role:'crew', work_date:dateStr }) })
-        })
-      } else {
-        if (form.pic_id) assignments.push({ member_id:form.pic_id, assignment_role:'PIC', work_date:null })
-        form.crew_ids.forEach(id => { if (id!==form.pic_id) assignments.push({ member_id:id, assignment_role:'crew', work_date:null }) })
-      }
-      // Only rewrite assignments when the rows themselves differ
-      const assignmentKeys = rows => rows.map(a => `${a.member_id || a.team_members?.id}|${a.assignment_role}|${a.work_date || ''}`).sort().join(',')
-      const changed = !editSite || assignmentKeys(editSite.site_assignments || []) !== assignmentKeys(assignments)
-      if (editSite) {
-        const { error } = await supabase.from('sites').update(payload).eq('id', siteId)
-        if (error) throw new Error(error.message)
-        if (changed) {
-          const [{ error: delError }] = await Promise.all([
-            supabase.from('site_assignments').delete().eq('site_id', siteId),
-            supabase.from('workload_log').delete().eq('site_id', siteId),
-          ])
-          if (delError) throw new Error(delError.message)
-        }
-      } else {
-        const { data, error } = await supabase.from('sites').insert(payload).select().single()
-        if (error) throw new Error(error.message)
-        siteId = data.id
-      }
-      if (changed && assignments.length > 0) {
-        const rows = assignments.map(a => ({ ...a, site_id:siteId }))
-        const { error: assignError } = await supabase.from('site_assignments').insert(rows)
-        if (assignError) throw new Error(assignError.message)
-      }
-      // The site is saved — close the form now and let notifications go out in the background.
-      sendSaveNotifications(form, editSite, assignments, payload)
-        .catch(err => console.warn('Notification failed:', err.message))
-      window.dispatchEvent(new CustomEvent('xyte:site-saved'))
-      toast(editSite ? `"${form.site_name}" saved` : `"${form.site_name}" added`)
-      setShowForm(false); setEditSite(null); fetchAll()
-    } catch (err) {
-      setUploadError(err.message||'Unable to save.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  // Only people whose own schedule changed hear about it: new days, removed days, a new
-  // role, or (for everyone still on the site) a change of session on the same day.
-  async function sendSaveNotifications(form, editSite, assignments, savedSite) {
-    const before = editSite ? memberSchedule(editSite.site_assignments || [], getSiteDates(editSite)) : new Map()
-    const after  = memberSchedule(assignments, getSiteDates(savedSite))
-    const sessionChanged = !!editSite && (editSite.site_session || null) !== (savedSite.site_session || null)
-    const told = await notifyScheduleChanges({
-      siteName: form.site_name,
-      before,
-      after,
-      sessionNote: sessionChanged && savedSite.site_session ? `now ${savedSite.site_session}` : sessionChanged ? 'session updated' : null,
-      actor: fullName,
-      skipId: memberId,
-    })
-
-    const jobs = [notify(`${editSite?'Updated':'Added'} site: ${form.site_name}`, fullName, null, 'general')]
-    if (editSite) {
-      // PICs who weren't already told about their own schedule still hear the site was edited.
-      const statusNote = editSite.site_status !== form.site_status ? ` — status: ${form.site_status}` : ''
-      const stillPic = [...after].filter(([id, s]) => s.role === 'PIC' && id !== memberId && !told.has(id)).map(([id]) => id)
-      jobs.push(notifyMany(`${fullName} updated site "${form.site_name}" (you are PIC)${statusNote}`, fullName, stillPic, 'pic_update'))
-    }
-    await Promise.all(jobs)
+  function handleFormSaved({ name }) {
+    toast(editSite ? `"${name}" saved` : `"${name}" added`)
+    setShowForm(false); setEditSite(null); fetchAll()
   }
 
   // The card disappears straight away; the row is only deleted once the undo window closes
@@ -894,11 +629,6 @@ export default function Sites() {
     background:'white', color:'#0f172a', fontFamily:'inherit', boxSizing:'border-box',
   }
   const lLabel = { display:'block', fontSize:'12px', fontWeight:'500', color:'#64748b', marginBottom:'6px' }
-  const unavailableMembers = members.reduce((acc, member) => {
-    const leave = getMemberLeaveOnDate(leaves, member.id, form.scheduled_date)
-    if (leave) acc[member.id] = leave
-    return acc
-  }, {})
 
   // Skeleton cards in the real grid, so nothing jumps when the data lands
   if (loading) return (
@@ -1408,7 +1138,7 @@ export default function Sites() {
 
       {/* ── WHATSAPP BRIEF ── */}
       {brief && (
-        <div style={{ position:'fixed', inset:0, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50, padding:'16px', background:'rgba(0,0,0,0.4)' }}
+        <div style={{ position:'fixed', inset:0, display:'flex', alignItems:'center', justifyContent:'center', zIndex:3200, padding:'16px', background:'rgba(0,0,0,0.4)' }}
           onClick={e => e.target===e.currentTarget && setBrief(null)}>
           <div style={{ width:'100%', maxWidth:'560px', maxHeight:'92vh', borderRadius:'20px', background:'white', boxShadow:'0 24px 64px rgba(15,23,42,.18)', display:'flex', flexDirection:'column', overflow:'hidden' }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:isMobile ? '16px 18px' : '20px 28px', borderBottom:'1px solid #f1f5f9', flexShrink:0 }}>
@@ -1449,306 +1179,20 @@ export default function Sites() {
         </div>
       )}
 
-      {/* ── MODAL ── */}
       {showForm && (
-        <div style={{ position:'fixed', inset:0, display:'flex', alignItems:'center', justifyContent:'center', zIndex:50, padding:'16px', background:'rgba(0,0,0,0.4)' }}
-          onClick={e => e.target===e.currentTarget && closeForm()}>
-          <div style={{ width:'100%', maxWidth:'672px', maxHeight:'92vh', borderRadius:'20px', background:'white', boxShadow:'0 24px 64px rgba(15,23,42,.18)', display:'flex', flexDirection:'column', overflow:'hidden' }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:isMobile ? '16px 18px' : '20px 28px', borderBottom:'1px solid #f1f5f9', flexShrink:0 }}>
-              <h3 style={{ margin:0, fontSize:'17px', fontWeight:'800', color:'#0f172a', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{formTitle || (editSite ? 'Edit Site' : 'Add New Site')}</h3>
-              <button onClick={closeForm} style={{ background:'none', border:'none', cursor:'pointer', color:'#94a3b8' }}><X size={18} /></button>
-            </div>
-            <div style={{ overflowY:'auto', padding:isMobile ? '16px 18px' : '20px 28px', display:'flex', flexDirection:'column', gap:'20px' }}>
-
-              <div>
-                <label style={lLabel}>Cover Photo</label>
-                <input ref={photoInputRef} type="file" accept="image/*" style={{ display:'none' }} onChange={e => {
-                  const file = e.target.files[0]; if (!file) return
-                  setUploadError(null)
-                  setForm(f => ({...f, site_photo:file, site_photo_preview:URL.createObjectURL(file)}))
-                  e.target.value = ''
-                }} />
-                {form.site_photo_preview ? (
-                  <div style={{ position:'relative', borderRadius:'12px', overflow:'hidden' }}>
-                    <img src={form.site_photo_preview} alt="preview" style={{ width:'100%', height:'144px', objectFit:'cover', display:'block' }} />
-                    <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,.5)', display:'flex', alignItems:'center', justifyContent:'center', gap:'12px', opacity:0 }}
-                      onMouseEnter={e => e.currentTarget.style.opacity=1}
-                      onMouseLeave={e => e.currentTarget.style.opacity=0}>
-                      <button type="button" onClick={() => photoInputRef.current?.click()} style={{ padding:'6px 14px', background:'white', color:'#0f172a', borderRadius:'8px', fontSize:'12px', fontWeight:'700', border:'none', cursor:'pointer' }}>Change</button>
-                      <button type="button" onClick={() => setForm(f => ({...f, site_photo:null, site_photo_preview:null, site_photo_url:''}))} style={{ padding:'6px 14px', background:'#ef4444', color:'white', borderRadius:'8px', fontSize:'12px', fontWeight:'700', border:'none', cursor:'pointer' }}>Remove</button>
-                    </div>
-                  </div>
-                ) : (
-                  <button type="button" onClick={() => photoInputRef.current?.click()}
-                    style={{ width:'100%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'8px', padding:'28px', borderRadius:'12px', cursor:'pointer', border:'2px dashed #e2e8f0', background:'#f8fafc', transition:'all .15s', boxSizing:'border-box' }}
-                    onMouseEnter={e => e.currentTarget.style.borderColor='#2563eb'}
-                    onMouseLeave={e => e.currentTarget.style.borderColor='#e2e8f0'}>
-                    <Camera size={20} style={{ color:'#94a3b8' }} />
-                    <span style={{ fontSize:'12px', color:'#94a3b8', fontWeight:'600' }}>Click to upload a cover photo</span>
-                    <span style={{ fontSize:'11px', color:'#cbd5e1' }}>JPG, PNG, WEBP</span>
-                  </button>
-                )}
-                {uploadError && <p style={{ marginTop:'8px', fontSize:'12px', color:'#ef4444', fontWeight:'600' }}>{uploadError}</p>}
-              </div>
-
-              <div>
-                <label style={lLabel}>Site Type</label>
-                <div style={{ display:'flex', gap:'8px' }}>
-                  {SITE_TYPES.map(({value,label}) => {
-                    const active = form.site_type === value
-                    const meta = TYPE_META[value]
-                    return (
-                      <button key={value} type="button"
-                        onClick={() => setForm(f => ({...f, site_type:value, site_duration_days:value==='site_visit'?'0.5':f.site_duration_days}))}
-                        style={{ flex:1, padding:'8px', borderRadius:'10px', fontSize:'12px', fontWeight:'700', fontFamily:'inherit', cursor:'pointer', transition:'all .15s', background:active?meta.chipBg:'white', border:`1px solid ${active?meta.chipBorder:'#e2e8f0'}`, color:active?meta.color:'#64748b' }}>
-                        {label}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              <div>
-                <label style={lLabel}>Site Name *</label>
-                <input style={lightInput} value={form.site_name} placeholder="e.g. Jalan Ampang Survey" onChange={e => setForm(f => ({...f, site_name:e.target.value}))} />
-              </div>
-
-              <div>
-                <label style={lLabel}>Location *</label>
-                <PlaceSearchBox value={form.location} onChange={v => setForm(f => ({...f, location:v, latitude:'', longitude:''}))} onSelect={r => setForm(f => ({...f, location:r.label, latitude:r.latitude, longitude:r.longitude}))} placeholder="Search and choose a location..." />
-              </div>
-
-              <div>
-                <label style={{ ...lLabel, marginBottom:'8px' }}>Pin on Map <span style={{ fontSize:'11px', color:'#94a3b8', fontWeight:'400' }}>(click map to place)</span></label>
-                {form.latitude !== '' && (
-                  <div style={{ display:'flex', alignItems:'center', gap:'8px', background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:'8px', padding:'8px 12px', marginBottom:'8px' }}>
-                    <MapPin size={12} style={{ color:'#2563eb', flexShrink:0 }} />
-                    <span style={{ fontSize:'12px', color:'#1d4ed8', fontWeight:'600', flex:1 }}>{Number(form.latitude).toFixed(5)}, {Number(form.longitude).toFixed(5)}</span>
-                    <button onClick={() => setForm(f => ({...f, latitude:'', longitude:''}))} style={{ background:'none', border:'none', cursor:'pointer', fontSize:'11px', color:'#2563eb', fontWeight:'600', fontFamily:'inherit', padding:0 }}>Clear Pin</button>
-                  </div>
-                )}
-                <div style={{ background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:'12px', padding:'12px' }}>
-                  <LocationPicker lat={form.latitude} lng={form.longitude} onPick={(lat,lng) => setForm(f => ({...f, latitude:lat, longitude:lng}))} mapKey={editSite?.id||'new'} />
-                </div>
-              </div>
-
-              <div style={{ display:'grid', gridTemplateColumns:isMobile ? '1fr' : '1fr 1fr', gap:'12px' }}>
-                <div><label style={lLabel}>Client Company</label><input style={lightInput} value={form.client_company_name} placeholder="Company name" onChange={e => setForm(f => ({...f, client_company_name:e.target.value}))} /></div>
-                <div><label style={lLabel}>Client Name</label><input style={lightInput} value={form.client_name} placeholder="Contact name" onChange={e => setForm(f => ({...f, client_name:e.target.value}))} /></div>
-                <div><label style={lLabel}>Client Phone Number</label><input style={lightInput} value={form.client_number} placeholder="e.g. +60123456789" onChange={e => setForm(f => ({...f, client_number:e.target.value}))} /></div>
-                <div>
-                  <label style={lLabel}>Salesperson</label>
-                  <select style={lightInput} value={form.salesperson} onChange={e => setForm(f => ({...f, salesperson:e.target.value}))}>
-                    <option value="">— Select —</option>
-                    {SALESPERSONS.map(sp => <option key={sp} value={sp}>{sp}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div><label style={lLabel}>Scope of Work</label><textarea style={{...lightInput, resize:'none'}} rows={2} value={form.scope_of_work} placeholder="Describe scope…" onChange={e => setForm(f => ({...f, scope_of_work:e.target.value}))} /></div>
-              <div style={{ display:'grid', gridTemplateColumns:isMobile ? '1fr' : '1fr 1fr', gap:'12px' }}>
-                <div>
-                  <label style={lLabel}>Start Date *</label>
-                  <input type="date" style={lightInput} value={form.scheduled_date} onChange={e => setForm(f => ({...f, scheduled_date:e.target.value, end_date:f.end_date||e.target.value}))} />
-                </div>
-                <div>
-                  <label style={lLabel}>End Date *</label>
-                  <input type="date" style={lightInput} value={form.end_date} min={form.scheduled_date} onChange={e => setForm(f => ({...f, end_date:e.target.value}))} />
-                </div>
-              </div>
-
-              {form.scheduled_date && form.end_date && form.scheduled_date === form.end_date && (
-                <div>
-                  <label style={lLabel}>Session (Same Day)</label>
-                  <select style={lightInput} value={form.site_session} onChange={e => setForm(f => ({...f, site_session:e.target.value}))}>
-                    <option value="">— Select Session —</option>
-                    <option value="AM">AM (Morning)</option>
-                    <option value="PM">PM (Afternoon)</option>
-                    <option value="Night Work">Night Work</option>
-                    <option value="Full Day">Full Day</option>
-                  </select>
-                </div>
-              )}
-
-              {form.site_type === 'site_scanning' && (() => {
-                const isSameDay = form.scheduled_date && form.end_date && form.scheduled_date === form.end_date
-                const diffDays = form.scheduled_date && form.end_date
-                  ? Math.round((new Date(form.end_date) - new Date(form.scheduled_date)) / 86400000) + 1
-                  : null
-                const sameDayDuration = form.site_session === 'Full Day' ? 1 : 0.5
-                const calcDuration = isSameDay ? sameDayDuration : diffDays
-                return (
-                  <div style={{ display:'grid', gridTemplateColumns:isMobile ? '1fr' : '1fr 1fr', gap:'12px' }}>
-                    <div>
-                      <label style={lLabel}>Site Duration (Days)</label>
-                      <div style={{ ...lightInput, background:'#f8fafc', color:'#64748b' }}>
-                        {calcDuration != null ? `${calcDuration} day${calcDuration !== 1 ? 's' : ''}${isSameDay ? ` (${form.site_session || 'half day'})` : ''}` : '—'}
-                      </div>
-                    </div>
-                    <div><label style={lLabel}>Report Duration (Days)</label><input type="number" min="0" step="0.5" style={lightInput} value={form.report_duration_days} onChange={e => setForm(f => ({...f, report_duration_days:e.target.value}))} /></div>
-                  </div>
-                )
-              })()}
-              {form.site_type === 'site_visit' && <div style={{ padding:'12px 16px', borderRadius:'10px', fontSize:'12px', fontWeight:'600', color:'#0d9488', background:'#f0fdf4', border:'1px solid #6ee7b7' }}>Duration: Half Day (0.5) — fixed for site visits</div>}
-              {form.site_type === 'meeting' && (
-                <div><label style={lLabel}>Meeting Duration</label>
-                  <select style={lightInput} value={form.site_duration_days} onChange={e => setForm(f => ({...f, site_duration_days:e.target.value}))}>
-                    <option value="0.25">2 Hours</option><option value="0.5">Half Day</option><option value="1">Full Day</option>
-                  </select>
-                </div>
-              )}
-
-              <div style={{ display:'grid', gridTemplateColumns:form.site_type==='site_scanning' && !isMobile ? '1fr 1fr' : '1fr', gap:'12px' }}>
-                <div><label style={lLabel}>Site Status</label>
-                  <select style={lightInput} value={form.site_status} onChange={e => setForm(f => ({...f, site_status:e.target.value}))}>
-                    {['upcoming','ongoing','completed','cancelled','postponed'].map(o => <option key={o} value={o}>{o}</option>)}
-                  </select>
-                </div>
-                {form.site_type === 'site_scanning' && (
-                  <div><label style={lLabel}>Report Status</label>
-                    <select style={lightInput} value={form.report_status} onChange={e => setForm(f => ({...f, report_status:e.target.value}))}>
-                      {['pending','in_progress','submitted','approved','not_applicable'].map(o => <option key={o} value={o}>{o.replace('_',' ')}</option>)}
-                    </select>
-                  </div>
-                )}
-              </div>
-
-              {datesInRange(form.scheduled_date, form.end_date).length > 1 && (
-                <div>
-                  <label style={lLabel}>Crew Assignment</label>
-                  <div style={{ display:'flex', gap:'8px' }}>
-                    {[['same','Same crew every day'],['per_day','Different crew per day']].map(([val, label]) => (
-                      <button
-                        key={val} type="button"
-                        onClick={() => setForm(f => ({ ...f, assign_mode: val }))}
-                        style={{
-                          flex:1, padding:'8px 10px', borderRadius:'8px', fontSize:'12px', fontWeight:'600', cursor:'pointer',
-                          border: form.assign_mode===val ? '1.5px solid #2563eb' : '1px solid #e2e8f0',
-                          background: form.assign_mode===val ? '#eff6ff' : 'white',
-                          color: form.assign_mode===val ? '#1d4ed8' : '#64748b',
-                        }}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {form.assign_mode === 'per_day' && datesInRange(form.scheduled_date, form.end_date).length > 1 ? (
-                <div style={{ display:'grid', gap:'12px' }}>
-                  {datesInRange(form.scheduled_date, form.end_date).map((dateStr, i) => {
-                    const day = form.daily_assignments[dateStr] || { pic_id:'', crew_ids:[] }
-                    return (
-                      <div key={dateStr} style={{ border:'1px solid #e2e8f0', borderRadius:'10px', padding:'12px' }}>
-                        <p style={{ fontSize:'12px', fontWeight:'800', color:'#2563eb', textTransform:'uppercase', letterSpacing:'.04em', marginBottom:'10px' }}>
-                          Day {i+1} · {new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-MY', { weekday:'short', day:'numeric', month:'short' })}
-                        </p>
-
-                        <div style={{ marginBottom:'10px' }}>
-                          <label style={lLabel}>{form.site_type==='meeting'?'Organizer':'PIC'}</label>
-                          <select style={lightInput} value={day.pic_id} onChange={e => setDayPic(dateStr, e.target.value)}>
-                            <option value="">— Select —</option>
-                            {members.filter(m => isActiveMember(m) || m.id === day.pic_id).map(m => {
-                              const leave = getMemberLeaveOnDate(leaves, m.id, dateStr)
-                              return (
-                                <option key={m.id} value={m.id} disabled={Boolean(leave)}>
-                                  {m.full_name}{leave ? ` - On leave (${leave.leave_type})` : ''}
-                                </option>
-                              )
-                            })}
-                          </select>
-                        </div>
-
-                        <div>
-                          <label style={{ ...lLabel, marginBottom:'8px' }}>{form.site_type==='meeting'?'Attendees':'Crew'}</label>
-                          <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
-                            {members.filter(m => m.id !== day.pic_id && (isActiveMember(m) || day.crew_ids.includes(m.id))).map(m => {
-                              const leave = getMemberLeaveOnDate(leaves, m.id, dateStr)
-                              // Someone already ticked who later went on leave can still be unticked
-                              const blocked = Boolean(leave) && !day.crew_ids.includes(m.id)
-                              return (
-                                <label key={m.id} style={{ display:'flex', alignItems:'center', gap:'10px', cursor: blocked ? 'not-allowed' : 'pointer', opacity: leave ? 0.55 : 1 }}>
-                                  <input type="checkbox" checked={day.crew_ids.includes(m.id)} disabled={blocked} onChange={() => toggleDayCrew(dateStr, m.id)} style={{ width:'15px', height:'15px', accentColor:'#2563eb' }} />
-                                  <span style={{ fontSize:'12px', color:'#0f172a' }}>
-                                    {m.full_name}{leave ? ` - ${getLeaveSummary(leave)}` : ''}
-                                  </span>
-                                </label>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              ) : (
-                <>
-                  <div><label style={lLabel}>{form.site_type==='meeting'?'Organizer':'PIC'}</label>
-                    <select style={lightInput} value={form.pic_id} onChange={e => {
-                      const picId = e.target.value
-                      setForm(f => ({ ...f, pic_id: picId, crew_ids: f.crew_ids.filter(id => id !== picId) }))
-                    }}>
-                      <option value="">— Select —</option>
-                      {members.filter(m => isActiveMember(m) || m.id === form.pic_id).map(m => (
-                        <option key={m.id} value={m.id} disabled={Boolean(unavailableMembers[m.id])}>
-                          {m.full_name}{unavailableMembers[m.id] ? ` - On leave (${unavailableMembers[m.id].leave_type}, ${getLeaveSessionLabel(unavailableMembers[m.id].leave_session)})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div><label style={{ ...lLabel, marginBottom:'12px' }}>{form.site_type==='meeting'?'Attendees':'Crew'}</label>
-                    <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
-                      {members.filter(m => m.id !== form.pic_id && (isActiveMember(m) || form.crew_ids.includes(m.id))).map(m => (
-                        <label key={m.id} style={{ display:'flex', alignItems:'center', gap:'12px', cursor: unavailableMembers[m.id] ? 'not-allowed' : 'pointer', opacity: unavailableMembers[m.id] ? 0.55 : 1 }}>
-                          <input type="checkbox" checked={form.crew_ids.includes(m.id)} disabled={Boolean(unavailableMembers[m.id])} onChange={() => toggleCrew(m.id)} style={{ width:'16px', height:'16px', accentColor:'#2563eb' }} />
-                          <span style={{ fontSize:'13px', color:'#0f172a' }}>
-                            {m.full_name}{unavailableMembers[m.id] ? ` - ${getLeaveSummary(unavailableMembers[m.id])}` : ''}
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
-
-              <div><label style={lLabel}>Notes</label><textarea style={{...lightInput, resize:'none'}} rows={3} value={form.notes} placeholder="Optional notes…" onChange={e => setForm(f => ({...f, notes:e.target.value}))} /></div>
-
-              <div style={{ display:'grid', gridTemplateColumns:isMobile ? '1fr' : '1fr 1fr', gap:'12px' }}>
-                <div>
-                  <label style={lLabel}>Delivery Order Number</label>
-                  <input
-                    style={lightInput}
-                    value={form.delivery_order_number}
-                    placeholder="DO-12345"
-                    onChange={e => setForm(f => ({ ...f, delivery_order_number: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <label style={lLabel}>Reason If No DO</label>
-                  <input
-                    style={lightInput}
-                    value={form.completion_reason}
-                    placeholder="Why there is no DO"
-                    onChange={e => setForm(f => ({ ...f, completion_reason: e.target.value }))}
-                  />
-                </div>
-              </div>
-
-              {uploadError && <p style={{ margin:0, padding:'10px 12px', borderRadius:'8px', fontSize:'12px', color:'#b91c1c', fontWeight:'600', background:'#fef2f2', border:'1px solid #fecaca' }}>{uploadError}</p>}
-              <div style={{ display:'flex', flexDirection:isMobile ? 'column' : 'row', gap:'12px', paddingTop:'4px', borderTop:'1px solid #f1f5f9' }}>
-                <button onClick={handleSave} disabled={saving} style={{ flex:1, padding:'11px', borderRadius:'10px', fontSize:'14px', fontWeight:'800', color:'white', border:'none', cursor:'pointer', fontFamily:'inherit', background:'#2563eb', opacity:saving?0.6:1, boxShadow:'0 2px 8px rgba(37,99,235,.28)' }}>
-                  {saving ? 'Saving…' : editSite ? 'Save Changes' : 'Add Site'}
-                </button>
-                <button onClick={closeForm} style={{ flex:1, padding:'11px', borderRadius:'10px', fontSize:'14px', fontWeight:'600', color:'#0f172a', cursor:'pointer', fontFamily:'inherit', background:'#f1f5f9', border:'1px solid #e2e8f0' }}>
-                  Cancel
-                </button>
-              </div>
-
-            </div>
-          </div>
-        </div>
+        <SiteForm
+          key={formTitle + (editSite?.id || '')}
+          title={formTitle || (editSite ? 'Edit Site' : 'Add New Site')}
+          initial={formInit}
+          editSite={editSite}
+          members={members}
+          leaves={leaves}
+          sites={sites}
+          fullName={fullName}
+          memberId={memberId}
+          onClose={() => setShowForm(false)}
+          onSaved={handleFormSaved}
+        />
       )}
 
     </div>
