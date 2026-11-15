@@ -2,7 +2,7 @@ import { lazy, Suspense, useState, useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import {
   Search, Bell, X, MapPin, Users, Plus, LogOut, Home, Clock, MessageSquare,
-  FileText, Receipt, CheckSquare, FolderOpen, BarChart3, Settings, LayoutGrid, Coffee, Sparkles, Cable, Crosshair, LayoutTemplate,
+  FileText, Receipt, CheckSquare, FolderOpen, BarChart3, Settings, LayoutGrid, Coffee, Sparkles, Cable, Crosshair, LayoutTemplate, LayoutDashboard,
 } from 'lucide-react'
 import { supabase } from './supabase'
 import { AuthProvider, useAuth } from './context/AuthContext'
@@ -15,6 +15,7 @@ import './components/ui.css'
 const LoginPage = lazy(() => import('./pages/LoginPage'))
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Office = lazy(() => import('./office/OfficePage'))
 const Sites = lazy(() => import('./pages/Sites'))
 const SiteDetail = lazy(() => import('./pages/SiteDetail'))
 const MapView = lazy(() => import('./pages/MapView'))
@@ -62,7 +63,8 @@ function usePrefetchPages(user) {
 // Calendar and Map are views of Sites (switch at the top of each), so "Sites" covers all three.
 const SITE_VIEWS = ['/sites', '/calendar', '/map']
 const NAV = [
-  { to: '/', label: 'Dashboard', Icon: Home, end: true },
+  { to: '/', label: 'Home', Icon: Home, end: true },
+  { to: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard },
   { to: '/sites', label: 'Sites', Icon: MapPin, match: SITE_VIEWS },
   { to: '/timecard', label: 'Timecard', Icon: Clock },
   { to: '/team', label: 'Team', Icon: Users },
@@ -450,7 +452,7 @@ function AppShell() {
   }
 
   function handleOpenAddSite() {
-    if (location.pathname === '/' || location.pathname === '/sites') {
+    if (location.pathname === '/dashboard' || location.pathname === '/sites') {
       window.dispatchEvent(new CustomEvent('xyte:open-add-site'))
       return
     }
@@ -663,7 +665,9 @@ function AppShell() {
       <main className="xt-main" style={{ flex: 1, minWidth: 0 }}>
         <Suspense fallback={<PageLoader />}>
           <Routes>
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/" element={<Office />} />
+            <Route path="/office" element={<Office />} />
+            <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/feed" element={<Feed />} />
             <Route path="/break-room" element={<BreakRoom />} />
             <Route path="/makan" element={<Navigate to={`/break-room${location.search}`} replace />} />
@@ -718,7 +722,7 @@ function AppShell() {
         <nav className="xt-bnav" aria-label="Main">
           {nav.filter(i => BAR.slice(0, 2).includes(i.to)).map(item => (
             <NavLink key={item.to} to={item.to} end={item.end} className={isOn(item, location.pathname) && !mobileMenuOpen ? 'on' : ''}>
-              <item.Icon size={20} /> {item.label === 'Dashboard' ? 'Home' : item.label}
+              <item.Icon size={20} /> {item.to === '/' ? 'Home' : item.label}
             </NavLink>
           ))}
           <button className="add" onClick={() => { setMobileMenuOpen(false); handleOpenAddSite() }} aria-label="Add site">
