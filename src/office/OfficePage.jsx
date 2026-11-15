@@ -31,7 +31,7 @@ const nowText = () => {
   return { t: d.toLocaleTimeString('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }), d: d.toLocaleDateString('en-GB', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long' }) }
 }
 
-export default function OfficePage({ onSignOut }) {
+export default function OfficePage({ onSignOut, onMenu, menuOpen }) {
   const { isZairul, firstName } = useAuth()
   const { data, error, reload } = useOfficeData()
   const wrapRef = useRef(null), canvasRef = useRef(null), labelsRef = useRef(null), tipRef = useRef(null)
@@ -113,12 +113,12 @@ export default function OfficePage({ onSignOut }) {
       <div ref={labelsRef} className={`of-labels${panel ? ' with-panel' : ''}`} aria-hidden="true" />
 
       <div className="of-top">
-        <div className="of-brand">
+        <button className="of-brand" onClick={onMenu} aria-expanded={!!menuOpen} aria-label="Open the Xyte menu" title="Menu">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true">
             <path d="M5 13a6 6 0 0 1 6 6" stroke="#4fd36f" /><path d="M5 8a11 11 0 0 1 11 11" stroke="#38cc8a" /><path d="M5 3a16 16 0 0 1 16 16" stroke="#27c4a8" />
           </svg>
-          <b>Xradar office</b>
-        </div>
+          <b>Xradar Office</b>
+        </button>
         <div className="of-clock"><b>{clock.t}</b><span>{clock.d}</span></div>
       </div>
 

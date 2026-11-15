@@ -27,7 +27,7 @@ export function createToonKit(rnd) {
     return matCache.get(k)
   }
   const geo = (k, make) => { if (!geoCache.has(k)) geoCache.set(k, make()); return geoCache.get(k) }
-  const SPH = r => geo(`s${r}`, () => new THREE.SphereGeometry(r, 24, 18))
+  const SPH = r => geo(`s${r}`, () => new THREE.SphereGeometry(r, 16, 12))
   const CAP = (r, l) => geo(`c${r}|${l}`, () => new THREE.CapsuleGeometry(r, l, 6, 14))
   const white = new THREE.MeshBasicMaterial({ color: '#ffffff' })
   const blush = new THREE.MeshBasicMaterial({ color: '#f09a8c', transparent: true, opacity: .32, depthWrite: false })

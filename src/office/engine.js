@@ -11,6 +11,7 @@ import { buildDesks } from './desks'
 import { buildCity, ease, PROGS } from './city'
 import { createNav } from './nav'
 import { createRoutine } from './routine'
+import { optimizeScene } from './optimize'
 import { createToonKit, ToonCharacter, lookFor } from './characters/toon'
 import { GlbCharacter } from './characters/GlbCharacter'
 import { CHARACTER_MODELS, TINTS, resolveModelUrl } from './characters/registry'
@@ -32,8 +33,9 @@ export function createOffice({ container, canvas, labelsEl, tipEl, crew: crewIn,
   let tvData = null, tvDirty = true
 
   /* ── renderer, scene, camera ── */
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' })
+  const DPR = Math.min(window.devicePixelRatio, 1.5)
+  renderer.setPixelRatio(DPR)
   renderer.outputColorSpace = THREE.SRGBColorSpace
   renderer.toneMapping = THREE.ACESFilmicToneMapping
   renderer.toneMappingExposure = 1.0
@@ -95,7 +97,7 @@ export function createOffice({ container, canvas, labelsEl, tipEl, crew: crewIn,
   linear(TX, TZ - .4, 2.4); linear(TX, TZ + .5, 2.4)
   linear(-3.35, 1.3, 3.4, true)
   const pendLight = new THREE.SpotLight('#ffffff', 9, 7, 1.0, .8, 1.2); pendLight.position.set(TX, RH - .8, TZ); pendLight.target.position.set(TX, 0, TZ)
-  pendLight.castShadow = true; pendLight.shadow.mapSize.set(1024, 1024); pendLight.shadow.bias = -.0005
+  // only the main light casts shadows (a second shadow pass doubled the work)
   room.add(pendLight, pendLight.target)
   const fill = new THREE.PointLight('#fff8ee', 10, 0, 2); fill.position.set(-1.8, 3.7, -1.8); room.add(fill)
   const fill2 = new THREE.PointLight('#fff8ee', 8, 0, 2); fill2.position.set(-3.3, 3.7, 1.5); room.add(fill2)
@@ -124,6 +126,7 @@ export function createOffice({ container, canvas, labelsEl, tipEl, crew: crewIn,
     })
     hs.attach(c.k, toon.root)
   })
+  const merged = optimizeScene(scene, hs.pickables)
   const nav = createNav({
     blockObjects: [R.monG, R.pantry, R.shelf, R.files, R.couch, CT.table],
     rects: [...PLANTS.map(([x, z, s]) => [x - .25 * s, z - .25 * s, x + .25 * s, z + .25 * s]), ...D.rects],
@@ -329,6 +332,21 @@ export function createOffice({ container, canvas, labelsEl, tipEl, crew: crewIn,
   // canvas text needs the web font; redraw once it has loaded
   document.fonts?.load(`500 20px Poppins`).then(() => { if (!disposed) { tvDirty = true; clock.draw(true) } }).catch(() => {})
 
+  /* ── quality: step down on slow machines (sharpness first, then shadows) ── */
+  const qual = { level: 0, t: 0, n: 0, skip: 3 }
+  function adapt(raw) {
+    if (raw > .5 || document.hidden) return                  // tab switch or stall, not a slow GPU
+    qual.t += raw; qual.n++
+    if (qual.t < 2.5) return
+    const fps = qual.n / qual.t; qual.t = 0; qual.n = 0
+    if (qual.skip > 0) { qual.skip--; return }                // let loading settle first
+    if (fps >= 40 || qual.level >= 2) return
+    qual.level++
+    if (qual.level === 1 && DPR > 1) { renderer.setPixelRatio(1); renderer.setSize(W, H, false) }
+    else { qual.level = 2; key.castShadow = false }
+    if (dev) dev.quality = qual.level
+  }
+
   /* ── loop ── */
   const ro = new ResizeObserver(() => {
     const [w, h] = size(); if (w === W && h === H) return
@@ -341,7 +359,8 @@ export function createOffice({ container, canvas, labelsEl, tipEl, crew: crewIn,
     raf = requestAnimationFrame(frame)
     timer.update(ts)
     if (dev) dev.frames++
-    const dt = Math.min(timer.getDelta(), .1)
+    const raw = timer.getDelta(), dt = Math.min(raw, .1)
+    adapt(raw)
     if (tween) {
       const t = Math.min(1, (performance.now() - tween.start) / tween.dur), e = ease(t)
       camera.position.lerpVectors(tween.p0, tween.p1, e)
@@ -380,7 +399,7 @@ export function createOffice({ container, canvas, labelsEl, tipEl, crew: crewIn,
   if (!document.hidden) raf = requestAnimationFrame(frame)
   const introT = setTimeout(() => moveCam(home.pos, home.target, 1800, () => setOrbit('room')), 350)
 
-  const dev = import.meta.env.DEV ? (window.__xyte = { go, goHome, camera, controls, agents, routine, nav, city: CT, frames: 0, THREE }) : null
+  const dev = import.meta.env.DEV ? (window.__xyte = { go, goHome, camera, controls, agents, routine, nav, city: CT, frames: 0, THREE, renderer, scene, merged, quality: 0 }) : null
 
   /* ── API for the page ── */
   return {

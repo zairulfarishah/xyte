@@ -15,7 +15,9 @@
 /* top */
 .of-top { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: flex-start; padding: 14px 16px; pointer-events: none; z-index: 5; }
 .of-brand, .of-clock { pointer-events: auto; background: rgba(255,255,255,.94); border-radius: 14px; padding: 8px 12px; box-shadow: 0 6px 18px rgba(10,20,40,.18); }
-.of-brand { display: flex; align-items: center; gap: 8px; }
+.of-brand { display: flex; align-items: center; gap: 8px; cursor: pointer; transition: transform .15s; }
+.of-brand:hover { transform: translateY(-1px); }
+.of-brand:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
 .of-brand b { font-weight: 600; font-size: 14px; }
 .of-clock { text-align: right; }
 .of-clock b { display: block; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }

@@ -420,6 +420,7 @@ function AppShell() {
   const [lastSeen, setLastSeen] = useState(() => localStorage.getItem('xyte_notif_seen') || '1970-01-01')
   const [avatarOpen, setAvatarOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [homeNav, setHomeNav] = useState(false)
   const notifRef = useRef(null)
   const avatarRef = useRef(null)
   const { isMobile, isTablet } = useViewport()
@@ -436,7 +437,15 @@ function AppShell() {
 
   useEffect(() => {
     setMobileMenuOpen(false)
+    setHomeNav(false)
   }, [location.pathname])
+
+  useEffect(() => {
+    if (!homeNav) return undefined
+    const onKey = e => { if (e.key === 'Escape') setHomeNav(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [homeNav])
 
   useEffect(() => {
     function handle(e) {
@@ -531,8 +540,12 @@ function AppShell() {
   if (location.pathname === '/' || location.pathname === '/office') return (
     <div style={{ minHeight: '100vh', background: '#1b1c1e' }}>
       <Suspense fallback={<PageLoader />}>
-        <Office onSignOut={handleSignOut} />
+        <Office onSignOut={handleSignOut} onMenu={() => setHomeNav(o => !o)} menuOpen={homeNav} />
       </Suspense>
+      {homeNav && (<>
+        <div className="xt-home-scrim" onClick={() => setHomeNav(false)} />
+        <div className="xt-home-nav"><SideNav nav={nav} badges={badges} /></div>
+      </>)}
       <Toaster />
       <PushPrompt />
     </div>

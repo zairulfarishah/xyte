@@ -76,3 +76,11 @@ main.xt-main { padding-bottom: var(--bnav); }
 .xt-toast .act:hover { background: rgba(147,197,253,.22); }
 .xt-toast .x { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; color: #64748b; }
 .xt-toast .x:hover { color: #fff; background: rgba(255,255,255,.08); }
+
+/* Home (3D office) is full screen; the sidebar slides in from the "Xradar Office" button */
+.xt-home-scrim { position: fixed; inset: 0; z-index: 3100; background: rgba(10, 20, 40, .45); animation: xt-fade .2s ease both; }
+.xt-home-nav { position: fixed; top: 0; left: 0; bottom: 0; z-index: 3101; box-shadow: 8px 0 30px rgba(10, 20, 40, .35); animation: xt-slide .22s ease both; }
+.xt-home-nav .xt-side { position: static; }
+@keyframes xt-fade { from { opacity: 0; } }
+@keyframes xt-slide { from { transform: translateX(-100%); } }
+@media (prefers-reduced-motion: reduce) { .xt-home-scrim, .xt-home-nav { animation: none; } }

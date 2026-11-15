@@ -187,7 +187,7 @@ export function buildRoom({ kit, T, hs, tv, clock, room }) {
 
   const win = new THREE.Group(); room.add(win)
   const glass = new THREE.Mesh(new THREE.PlaneGeometry(2.7, 2.5), new THREE.MeshBasicMaterial({ map: T.night }))
-  glass.rotation.y = Math.PI / 2; glass.position.set(LX - .01, 2.35, 0.35); win.add(glass)
+  glass.userData.noMerge = true; glass.rotation.y = Math.PI / 2; glass.position.set(LX - .01, 2.35, 0.35); win.add(glass)
   const wf = M('#3a3d40', { metalness: .4, roughness: .45 })
   box(win, .08, .06, 2.82, wf, LX + .02, 3.63, .35); box(win, .08, .06, 2.82, wf, LX + .02, 1.07, .35)
   box(win, .08, 2.62, .06, wf, LX + .02, 2.35, -1.03); box(win, .08, 2.62, .06, wf, LX + .02, 2.35, 1.73)
