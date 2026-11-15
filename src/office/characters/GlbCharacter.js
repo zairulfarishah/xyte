@@ -2,11 +2,13 @@ import * as THREE from 'three'
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js'
 
 // A skinned .glb person: AnimationMixer with weighted cross-fades, walk speed matched to
-// movement, and pose layers (sit, type, read, coffee, write, city, look, talk) made by aiming
+// movement, and pose layers (sit, type, sleep, read, coffee, write, city, look, talk) made by aiming
 // bones in world space. If the model ships a real clip for a layer, the clip is used instead.
+// 'lie' lays the whole model on its back (couch nap), feet at the root, head towards -forward.
 
-export const POSE_LAYERS = ['sit', 'type', 'read', 'coffee', 'write', 'city', 'look', 'talk']
-const ACTIVITY_LAYERS = { idle: [], walk: [], turn: [], sit: ['sit'], type: ['sit', 'type'], read: ['read'], coffee: ['coffee'], write: ['write'], city: ['city'], look: ['look'], talk: ['talk'], wait: ['look'] }
+export const POSE_LAYERS = ['sit', 'type', 'sleep', 'read', 'coffee', 'write', 'city', 'look', 'talk']
+const LIE_Y = .57
+const ACTIVITY_LAYERS = { idle: [], walk: [], turn: [], lie: [], sit: ['sit'], type: ['sit', 'type'], sleep: ['sit', 'sleep'], read: ['read'], coffee: ['coffee'], write: ['write'], city: ['city'], look: ['look'], talk: ['talk'], wait: ['look'] }
 const UP = new THREE.Vector3(0, 1, 0)
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _d = new THREE.Vector3()
 const _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion(), _qc = new THREE.Quaternion()
@@ -67,6 +69,7 @@ export class GlbCharacter {
     if (a === 'talk' && !this.clipLayers.has('talk')) this.wt.nod = .9
     POSE_LAYERS.forEach(l => { this.layerT[l] = 0 })
     layers.forEach(l => { if (!this.clipLayers.has(l)) this.layerT[l] = 1 })
+    if (a === 'lie' || a === 'sleep') POSE_LAYERS.forEach(l => { this.layer[l] = this.layerT[l] })   // snap, no half-poses
   }
 
   aim(bn, cn, dir, w) {
@@ -86,11 +89,12 @@ export class GlbCharacter {
     if (this.actions.walk) this.actions.walk.timeScale = this.activity === 'turn' ? .7 : THREE.MathUtils.clamp(this.speed / this.def.walkSpeed, .3, 1.3)
     if (this.actions.nod) this.actions.nod.timeScale = .8
     POSE_LAYERS.forEach(l => { this.layer[l] = damp(this.layer[l], this.layerT[l], 5, dt) })
-    const L = this.layer
-    this.model.position.y = this.hipY === null ? 0 : (.56 - this.hipY) * L.sit
+    const L = this.layer, lie = this.activity === 'lie'
+    this.model.rotation.x = lie ? -Math.PI / 2 : 0
+    this.model.position.y = lie ? LIE_Y : this.hipY === null ? 0 : (.56 - this.hipY) * L.sit
     this.mixer.update(dt)
     this.root.updateMatrixWorld(true)
-    if (this.hipY === null && this.bones.Hips) { this.bones.Hips.getWorldPosition(_a); this.hipY = _a.y - this.root.position.y }
+    if (this.hipY === null && this.bones.Hips && !lie) { this.bones.Hips.getWorldPosition(_a); this.hipY = _a.y - this.root.position.y }
     // body frame
     const h = this.root.rotation.y, t = this.t
     const F = _F.set(Math.sin(h), 0, Math.cos(h)), Lf = _L.set(Math.cos(h), 0, -Math.sin(h)), D = _D
@@ -109,6 +113,16 @@ export class GlbCharacter {
         const bob = Math.max(0, Math.sin(t * 13 + s * 1.9)) * .06
         this.aim(n + 'Arm', n + 'ForeArm', v(D, .85, F, .55, Lf, s * .22), L.type)
         this.aim(n + 'ForeArm', n + 'Hand', v(F, 1, UP, -.04 + bob, Lf, -s * .32), L.type)
+      }
+    }
+    if (L.sleep > .002) {                                     // slumped forward, head on folded arms
+      const br = Math.sin(t * 1.4) * .03
+      this.aim('Spine', 'Spine1', v(UP, 1, F, .75 + br), L.sleep)
+      this.aim('Spine1', 'Spine2', v(UP, .55, F, 1), L.sleep)
+      this.aim('Neck', 'Head', v(F, 1, D, .7, Lf, .25), L.sleep)
+      for (const [n, s] of sides) {
+        this.aim(n + 'Arm', n + 'ForeArm', v(F, .8, D, .55, Lf, s * .35), L.sleep)
+        this.aim(n + 'ForeArm', n + 'Hand', v(Lf, -s, F, .35, D, .05), L.sleep)
       }
     }
     if (L.read > .002) {

@@ -10,8 +10,8 @@ export const BLOCKS = [
 ]
 const HAT = ['#f2f2ee', '#e8b72a', '#e46a2b', '#2f6fb3', '#f2f2ee', '#e8b72a']
 
-export function buildDesks({ kit, T, hs, room, toonKit, count }) {
-  const { M, box, cyl, keep } = kit
+export function buildDesks({ kit, T, hs, room, toonKit, count, looks }) {
+  const { M, box, cyl, keep, liveTex } = kit
   const n = Math.min(count, POD.max)
   const podG = new THREE.Group(); room.add(podG)
   const oak = M('#f3f2ef', { roughness: .45 })
@@ -97,11 +97,12 @@ export function buildDesks({ kit, T, hs, room, toonKit, count }) {
       const leg = box(ch, .3, .03, .045, blackM, Math.cos(a) * .15, .07, Math.sin(a) * .15); leg.rotation.y = -a
       const wh = new THREE.Mesh(new THREE.SphereGeometry(.025, 8, 6), blackM); wh.position.set(Math.cos(a) * .29, .03, Math.sin(a) * .29); ch.add(wh)
     }
-    const fig = toonKit.chibiSeated(i); d.add(fig)
+    const fig = toonKit.chibiSeated(looks[i]); d.add(fig)
     const k = 'crew' + i
     hs.makeHotspot(k, d, { title: '', sub: '', offset: colA ? [-1.45, 1.35, 0.95] : [1.5, 1.35, 0.95] })
     const cardFront = card.material[4]
-    cubes.push({ k, d, ch, fig, hat, card, cardFront, scr, onMat: scr.material, colA })
+    const siteCard = liveTex(256, 102)                     // "ON SITE" + where, drawn per person
+    cubes.push({ k, d, ch, fig, hat, card, cardFront, siteCard, scr, onMat: scr.material, colA })
   }
   // walk-grid blockers: one rectangle per block, including chairs
   for (let p = 0; p * POD.size < n; p++) {
@@ -110,13 +111,25 @@ export function buildDesks({ kit, T, hs, room, toonKit, count }) {
   }
   hs.makeHotspot('crew', podG, { title: 'Crew today', sub: 'Who is in the office and who is on site', offset: [3.2, 2.6, 3.6] })
 
-  // status: 'office' | 'site' | 'leave' | 'off'
-  function applyPresence(i, status) {
-    const c = cubes[i], away = status !== 'office'
-    c.fig.visible = !away; c.hat.visible = status !== 'site' && !away; c.card.visible = away
-    c.cardFront.map = status === 'leave' ? T.cardLeave : status === 'off' ? T.cardOff : T.cardSite; c.cardFront.needsUpdate = true
-    c.scr.material = away ? monOff : c.onMat
-    c.ch.position.set(away ? -.1 : 0, 0, away ? .75 : .55); c.ch.rotation.y = away ? -.5 : 0
+  function drawSiteCard(c, site) {
+    const g = c.siteCard.canvas.getContext('2d'), w = 256, h = 102
+    g.fillStyle = '#e8a43c'; g.fillRect(0, 0, w, h)
+    g.fillStyle = '#2a1a06'; g.textAlign = 'center'; g.textBaseline = 'middle'
+    g.font = '700 30px monospace'; g.fillText('ON SITE', w / 2, 30)
+    let name = (site || '').split(' + ')[0].split(' · ')[0].trim() || 'Site'
+    let px = 24; g.font = `600 ${px}px Poppins, sans-serif`
+    while (g.measureText(name).width > w - 20 && px > 15) { px--; g.font = `600 ${px}px Poppins, sans-serif` }
+    while (g.measureText(name).width > w - 20 && name.length > 4) name = name.slice(0, -2).trimEnd() + '…'
+    g.fillText(name, w / 2, 72)
+    c.siteCard.texture.needsUpdate = true
+  }
+  // person: crew entry (status 'office' | 'site' | 'leave' | 'off', site); mode: 'work' | 'sleep' | 'couch' | 'away'
+  function applyPresence(i, person, mode) {
+    const c = cubes[i], away = mode === 'away', status = person.status
+    c.fig.visible = !away; c.hat.visible = !away; c.card.visible = away
+    if (status === 'site') drawSiteCard(c, person.site)
+    c.cardFront.map = status === 'leave' ? T.cardLeave : status === 'off' ? T.cardOff : c.siteCard.texture; c.cardFront.needsUpdate = true
+    c.scr.material = mode === 'work' ? c.onMat : monOff
   }
   return { podG, cubes, rects, applyPresence }
 }

@@ -527,6 +527,17 @@ function AppShell() {
     </Suspense>
   )
 
+  // Home (the 3D office) takes the whole screen: no sidebar, top bar or bottom bar
+  if (location.pathname === '/' || location.pathname === '/office') return (
+    <div style={{ minHeight: '100vh', background: '#1b1c1e' }}>
+      <Suspense fallback={<PageLoader />}>
+        <Office onSignOut={handleSignOut} />
+      </Suspense>
+      <Toaster />
+      <PushPrompt />
+    </div>
+  )
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#f1f5f9' }}>
       {!isMobile && <SideNav nav={nav} badges={badges} />}

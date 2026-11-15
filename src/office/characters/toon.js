@@ -11,7 +11,13 @@ const LOOKS = [
   { skin: '#6e4631', hair: 'curly', hairC: '#141110', glasses: true, suit: '#5b5d61', tie: '#d39a4a' },
   { skin: '#efc3a2', hair: 'bob', hairC: '#c8682f', skirt: '#2f3f63', suit: '#2f3f63', tie: null },
   { skin: '#c8926c', hair: 'hijab', hairC: '#2e7d74', skirt: '#2b2d31', suit: '#2b2d31', tie: null },
+  { skin: '#d2a07a', hair: 'short', hairC: '#1a1512', suit: '#3b4a5e', tie: '#2f6fb3' },
+  { skin: '#a8714f', hair: 'short', hairC: '#141110', glasses: true, beard: true, suit: '#2b2d31', tie: '#8e2f25' },
 ]
+// Everyone is a man except the names listed here (only Izni for now).
+const FEMALE_NAMES = /\bizni\b/i
+const MALE_LOOKS = [0, 1, 3, 6, 7], FEMALE_LOOK = 5
+export const lookFor = (name, i) => FEMALE_NAMES.test(name || '') ? FEMALE_LOOK : MALE_LOOKS[i % MALE_LOOKS.length]
 
 export function createToonKit(rnd) {
   const matCache = new Map(), geoCache = new Map()
@@ -86,6 +92,10 @@ export function createToonKit(rnd) {
       shell(.9, .95)
       for (let k = 0; k < 34; k++) { const a = rnd() * Math.PI * 2, b = rnd() * 1.15; part(h, SPH(.05), hairM, Math.cos(a) * Math.sin(b) * .175, .07 + Math.cos(b) * .14, Math.sin(a) * Math.sin(b) * .16 + .05) }
     }
+    if (L.hair === 'short') {
+      shell(.9, .95)
+      part(h, SPH(.12), hairM, 0, .16, -.09, .3, 0, 0, 1.4, .42, .9)
+    }
     if (L.hair === 'bob') {
       part(h, SPH(.215), hairM, 0, .02, .045, 0, 0, 0, 1.08, .98, 1)
       part(h, SPH(.13), hairM, 0, .11, -.12, .15, 0, 0, 1.45, .5, .55)
@@ -158,6 +168,7 @@ export function createToonKit(rnd) {
     }
     if (female) part(g, geo('skirtSit', () => new THREE.CylinderGeometry(.155, .19, .2, 28)), skirtM, 0, .585, .44, Math.PI / 2 - .2, 0, 0, 1, 1, .72)
     else part(g, SPH(.15), suit, 0, .57, .52, 0, 0, 0, 1.05, .7, 1)
+    const lowerN = g.children.length
     part(g, CAP(.132, .1), suit, 0, .79, .55, -.06, 0, 0, 1.08, 1, .85)
     part(g, geo('collar', () => new THREE.BoxGeometry(.075, .075, .012)), shirt, 0, .895, .437, -.06, 0, Math.PI / 4, 1, 1.5, 1).castShadow = false
     for (const s of [-1, 1]) part(g, geo('lapel', () => new THREE.BoxGeometry(.028, .13, .012)), suitDark, s * .04, .87, .433, -.06, 0, s * .38).castShadow = false
@@ -172,7 +183,11 @@ export function createToonKit(rnd) {
     }
     part(g, geo('neck', () => new THREE.CylinderGeometry(.042, .048, .07, 14)), skin, 0, .955, .535)
     const h = chibiHead(L); h.position.set(0, 1.15, .52); g.add(h)
-    g.userData.hands = hands; g.userData.head = h
+    // upper body hinges at the hips so the person can lean forward and sleep on the desk
+    const upper = new THREE.Group(); upper.position.set(0, .57, .5)
+    g.children.slice(lowerN).filter(o => !hands.includes(o)).forEach(o => { g.remove(o); o.position.sub(upper.position); upper.add(o) })
+    g.add(upper)
+    g.userData.hands = hands; g.userData.head = h; g.userData.upper = upper
     g.traverse(o => { if (o.isMesh) o.receiveShadow = false })
     return g
   }
@@ -202,14 +217,22 @@ export class ToonCharacter {
   setActivity(a) { this.activity = a }
   update(dt, active, present) {
     this.t += dt
-    const seated = this.activity === 'sit' || this.activity === 'type'
+    const seated = this.activity === 'sit' || this.activity === 'type' || this.activity === 'sleep'
     this.root.visible = active && present && !seated
     this.cube.fig.visible = active && present && seated
+    const body = this.root.userData.body
     if (seated) {
-      const u = this.cube.fig.userData
+      const u = this.cube.fig.userData, sleep = this.activity === 'sleep'
       u.hands.forEach((hg, k) => { hg.position.y = this.activity === 'type' ? Math.max(0, Math.sin(this.t * 14 + k * 1.9)) * .012 : 0 })
-      u.head.rotation.y = Math.sin(this.t * .35) * .12
+      u.upper.rotation.x = sleep ? -.72 + Math.sin(this.t * 1.4) * .015 : 0
+      u.head.rotation.y = sleep ? 0 : Math.sin(this.t * .35) * .12
+      u.head.rotation.z = sleep ? .35 : 0
+    } else if (this.activity === 'lie') {            // on its back on the couch, head towards -forward
+      setPose(this.root, 'idle', 0)
+      body.rotation.x = Math.PI / 2; body.position.set(0, .6, .45)
+      this.root.userData.head.rotation.y = .4
     } else {
+      body.rotation.x = 0; body.position.z = 0
       setPose(this.root, POSE_MAP[this.activity] || 'idle', this.activity === 'turn' ? this.t * .5 : this.t)
     }
   }

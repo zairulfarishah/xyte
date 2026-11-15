@@ -11,7 +11,7 @@ import { buildDesks } from './desks'
 import { buildCity, ease, PROGS } from './city'
 import { createNav } from './nav'
 import { createRoutine } from './routine'
-import { createToonKit, ToonCharacter } from './characters/toon'
+import { createToonKit, ToonCharacter, lookFor } from './characters/toon'
 import { GlbCharacter } from './characters/GlbCharacter'
 import { CHARACTER_MODELS, TINTS, resolveModelUrl } from './characters/registry'
 
@@ -22,7 +22,8 @@ export const PANEL_W = 400
 const HOME = { pos: new THREE.Vector3(6.4, 5.2, 9.2), target: new THREE.Vector3(-0.9, 1.2, -0.6) }
 const LABEL_NAMES = { dashboard: 'Dashboard', sites: 'Sites', schedule: 'Schedule', team: 'Team', games: 'Games', library: 'Library', files: 'Claims & reports', feed: 'Feed', tasks: 'Tasks', pantry: 'Break room' }
 
-const crewLabel = c => c.status === 'site' ? `${c.name} · on site` : c.status === 'leave' ? `${c.name} · on leave` : c.status === 'off' ? `${c.name} · off` : c.name
+const siteShort = s => { const n = (s || '').split(' + ')[0].split(' · ')[0].trim(); return n.length > 26 ? n.slice(0, 25).trimEnd() + '…' : n }
+const crewLabel = c => c.status === 'site' ? `${c.name} · on site${c.site ? ` · ${siteShort(c.site)}` : ''}` : c.status === 'leave' ? `${c.name} · on leave` : c.status === 'off' ? `${c.name} · off` : c.name
 const crewSub = c => c.status === 'site' ? `On site · ${c.site}` : c.status === 'leave' ? 'On leave today' : c.status === 'off' ? `Off today${c.offLabel ? ` · ${c.offLabel}` : ''}` : `In office${c.role ? ` · ${c.role}` : ''}`
 
 export function createOffice({ container, canvas, labelsEl, tipEl, crew: crewIn, onFocus, onHint, onPeople, onModel, onDoing }) {
@@ -70,7 +71,8 @@ export function createOffice({ container, canvas, labelsEl, tipEl, crew: crewIn,
   const clock = createWallClock(kit)
   const R = buildRoom({ kit, T, hs, tv, clock, room })
   const toonKit = createToonKit(kit.rnd)
-  const D = buildDesks({ kit, T, hs, room, toonKit, count: crew.length })
+  const looks = crew.map((c, i) => lookFor(c.fullName || c.name, i))
+  const D = buildDesks({ kit, T, hs, room, toonKit, count: crew.length, looks })
   const CT = buildCity({ kit, T, hs, room })
   const { TX, TZ } = CT
 
@@ -102,13 +104,15 @@ export function createOffice({ container, canvas, labelsEl, tipEl, crew: crewIn,
   scene.updateMatrixWorld(true)
 
   /* ── people ── */
-  let peopleMode = 'mannequin'
-  try { const m = localStorage.getItem('xyte-people'); if (m === 'toon' || m === 'mannequin') peopleMode = m } catch { /* storage blocked */ }
+  // People are the built-in characters. A 3D model is only used once a real one is set in registry.js.
+  const def = CHARACTER_MODELS.default || null
+  let peopleMode = def ? 'model' : 'toon'
+  try { const m = localStorage.getItem('xyte-people'); if (def && (m === 'toon' || m === 'model')) peopleMode = m } catch { /* storage blocked */ }
   const agents = []
-  const charOf = a => (peopleMode === 'mannequin' && a.glb) ? a.glb : a.toon
+  const charOf = a => (peopleMode === 'model' && a.glb) ? a.glb : a.toon
   const chairOut = (a, out) => { a.c.ch.position.set(out ? -.1 : 0, 0, out ? .78 : .55); a.c.ch.rotation.y = out ? -.5 : 0 }
   D.cubes.forEach((c, i) => {
-    const toon = new ToonCharacter(toonKit.chibiStand(i), c); room.add(toon.root); toon.root.visible = false
+    const toon = new ToonCharacter(toonKit.chibiStand(looks[i]), c); room.add(toon.root); toon.root.visible = false
     const L = v => c.d.localToWorld(v.clone()).setY(0)
     const f0 = c.d.localToWorld(new THREE.Vector3(0, 0, 0)), f1 = c.d.localToWorld(new THREE.Vector3(0, 0, -1))
     const seatHeading = Math.atan2(f1.x - f0.x, f1.z - f0.z)
@@ -121,26 +125,30 @@ export function createOffice({ container, canvas, labelsEl, tipEl, crew: crewIn,
     hs.attach(c.k, toon.root)
   })
   const nav = createNav({
-    blockObjects: [R.monG, R.pantry, R.shelf, R.files, CT.table],
+    blockObjects: [R.monG, R.pantry, R.shelf, R.files, R.couch, CT.table],
     rects: [...PLANTS.map(([x, z, s]) => [x - .25 * s, z - .25 * s, x + .25 * s, z + .25 * s]), ...D.rects],
   })
-  const routine = createRoutine({ agents, crew, nav, charOf, chairOut, onDoing: (i, text) => { onDoing?.(i, text); tvDirty = true } })
+  const routine = createRoutine({
+    agents, crew, nav, charOf, chairOut, couch: R.couchBed,
+    onDoing: (i, text) => { onDoing?.(i, text); tvDirty = true },
+    onMode: (i, mode) => D.applyPresence(i, crew[i], mode),
+  })
+  const isNight = () => !R.updateWindow()
 
-  function applyCrew(i) {
+  function applyCrew(i, reset = true) {
     const c = crew[i], h = hs.hotspots[D.cubes[i].k]
     h.title = c.name; h.sub = crewSub(c)
-    D.applyPresence(i, c.status)
-    routine.resetAgent(i)
+    if (reset) routine.resetAgent(i)
     const l = labels[D.cubes[i].k]
-    if (l) { l.textContent = crewLabel(c); l.classList.toggle('away', c.status !== 'office') }
+    if (l) { l.textContent = crewLabel(c); l.classList.toggle('away', c.status === 'site' || c.status === 'leave') }
   }
 
-  // 3D model people (test mannequin until real crew models arrive)
+  // 3D model people (only when a real model is set in registry.js)
   let disposed = false
   const glbs = []
-  const def = CHARACTER_MODELS.mannequin
-  onModel?.('loading')
-  resolveModelUrl(def.url)
+  if (!def) onModel?.('none')
+  else onModel?.('loading')
+  if (def) resolveModelUrl(def.url)
     .then(u => new GLTFLoader().loadAsync(u))
     .then(gltf => {
       if (disposed) return
@@ -177,7 +185,8 @@ export function createOffice({ container, canvas, labelsEl, tipEl, crew: crewIn,
   })
   let labelsAll = true
   try { labelsAll = localStorage.getItem('xyte-labels') !== 'off' } catch { /* storage blocked */ }
-  crew.forEach((c, i) => applyCrew(i))
+  crew.forEach((c, i) => applyCrew(i, false))
+  routine.setRest(isNight()); routine.resetAll()
 
   /* ── camera modes and moves ── */
   let tween = null, focused = null
@@ -250,7 +259,8 @@ export function createOffice({ container, canvas, labelsEl, tipEl, crew: crewIn,
   function crewAnchor(k, v) {
     if (!k.startsWith('crew') || k === 'crew') return false
     const a = agents[+k.slice(4)]
-    if (!a || a.state === 'seated' || a.state === 'away') return false
+    if (!a || ['seated', 'away', 'sleep'].includes(a.state)) return false
+    if (a.state === 'couch') { v.set(a.pos.x - Math.sin(a.heading) * .9, 1.0, a.pos.z - Math.cos(a.heading) * .9); return true }
     v.copy(a.pos); v.y = charOf(a).kind === 'glb' ? 2.0 : 1.42; return true
   }
   function updateLabels() {
@@ -351,7 +361,7 @@ export function createOffice({ container, canvas, labelsEl, tipEl, crew: crewIn,
     }
     updateBook(dt); CT.updatePrograms(dt)
     slowT += dt
-    if (slowT > 15) { slowT = 0; R.updateWindow() }
+    if (slowT > 15) { slowT = 0; routine.setRest(isNight()) }
     clock.draw()
     tv.draw(tvData, tvDirty); tvDirty = false
     try { routine.update(dt) } catch (err) { if (!frame.warned) { console.error(err); frame.warned = true } }
@@ -365,6 +375,8 @@ export function createOffice({ container, canvas, labelsEl, tipEl, crew: crewIn,
     else if (!raf && !disposed) { timer.reset(); raf = requestAnimationFrame(frame) }
   }
   document.addEventListener('visibilitychange', onVisibility)
+  const onHash = () => routine.setRest(isNight())     // #day / #night switch straight away
+  window.addEventListener('hashchange', onHash)
   if (!document.hidden) raf = requestAnimationFrame(frame)
   const introT = setTimeout(() => moveCam(home.pos, home.target, 1800, () => setOrbit('room')), 350)
 
@@ -396,6 +408,7 @@ export function createOffice({ container, canvas, labelsEl, tipEl, crew: crewIn,
       cancelAnimationFrame(raf)
       ro.disconnect()
       document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('hashchange', onHash)
       canvas.removeEventListener('pointermove', onMove)
       canvas.removeEventListener('pointerleave', onLeave)
       canvas.removeEventListener('mousedown', onMouseDown)

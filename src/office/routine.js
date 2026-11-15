@@ -5,7 +5,9 @@ import { damp } from './characters/GlbCharacter'
 // activity for 6–13 s → walk back → sit (chair in). At most 3 people up at once. People on site
 // or on leave never wander. Movement: turn on the spot before sharp corners, ease in/out, give way,
 // walk round people standing still, sideways-only separation, slide along edges, re-plan after
-// 1.5 s without progress, squeeze past after 6 s of deadlock. Ported from the prototype unchanged.
+// 1.5 s without progress, squeeze past after 6 s of deadlock. Ported from the prototype.
+// Rest time (night, or a day off): nobody wanders. Everyone who isn't on site or on leave sleeps
+// with their head on the desk, and one person naps on the couch.
 
 export const SPOTS = {
   book: { slots: [[3.05, -3.95], [3.8, -3.95]], face: [[0, -1], [0, -1]], act: 'read', text: 'Reading at the bookshelf' },
@@ -18,9 +20,11 @@ export const SPOTS = {
 }
 const angDiff = (a, b) => ((b - a + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI
 const MAX_UP = 3
+const STILL = ['seated', 'away', 'sleep', 'couch']
 
-export function createRoutine({ agents, crew, nav, charOf, chairOut, onDoing }) {
+export function createRoutine({ agents, crew, nav, charOf, chairOut, onDoing, onMode, couch }) {
   const taken = {}
+  let rest = false, couchBy = -1
   const setDoing = (a, text) => { crew[a.i].doing = text; onDoing?.(a.i, text) }
 
   function release(a) { if (a.holding) { delete taken[a.spot + a.slot]; a.holding = false } }
@@ -30,14 +34,34 @@ export function createRoutine({ agents, crew, nav, charOf, chairOut, onDoing }) 
   function resetAgent(i) {
     const a = agents[i]; if (!a) return
     release(a); a.spot = null; a.partner = -1; a.speed = 0; a.path = null; a.final = null; a.next = null
-    if (crew[i].status !== 'office') {
-      a.state = 'away'; setAct(a, 'idle')
-      setDoing(a, crew[i].status === 'leave' ? 'On leave' : crew[i].status === 'off' ? 'Off today' : 'On site')
+    const st = crew[i].status
+    if (st === 'site' || st === 'leave') {
+      if (couchBy === i) couchBy = -1
+      a.state = 'away'; setAct(a, 'idle'); chairOut(a, true); onMode?.(i, 'away')
+      setDoing(a, st === 'leave' ? 'On leave' : 'On site')
       return
     }
+    if (rest || st === 'off') {
+      if (couch && (couchBy === -1 || couchBy === i)) {
+        couchBy = i; a.state = 'couch'; a.pos.copy(couch.pos); a.heading = couch.heading
+        setAct(a, 'lie'); chairOut(a, true); onMode?.(i, 'couch'); setDoing(a, 'Napping on the couch')
+        return
+      }
+      a.state = 'sleep'; a.pos.copy(a.seatPos); a.heading = a.seatHeading
+      setAct(a, 'sleep'); chairOut(a, false); onMode?.(i, 'sleep'); setDoing(a, 'Asleep at the desk')
+      return
+    }
+    if (couchBy === i) couchBy = -1
     a.state = 'seated'; a.timer = 3 + Math.random() * 8; a.pos.copy(a.seatPos); a.heading = a.seatHeading
-    setAct(a, 'type'); chairOut(a, false); setDoing(a, 'Working at the desk')
+    setAct(a, 'type'); chairOut(a, false); onMode?.(i, 'work'); setDoing(a, 'Working at the desk')
   }
+  // everyone, starting from a different person each day so the couch changes hands
+  function resetAll() {
+    couchBy = -1
+    const n = agents.length, start = n ? Math.floor(Date.now() / 864e5) % n : 0
+    for (let k = 0; k < n; k++) resetAgent((start + k) % n)
+  }
+  function setRest(v) { if (v !== rest) { rest = v; resetAll() } }
 
   function startTrip(a, forced) {
     const keys = forced ? [forced] : Object.keys(SPOTS).sort(() => Math.random() - .5)
@@ -80,10 +104,10 @@ export function createRoutine({ agents, crew, nav, charOf, chairOut, onDoing }) 
   }
 
   function update(dt) {
-    const out = agents.filter(a => !['seated', 'away'].includes(a.state)).length
+    const out = agents.filter(a => !STILL.includes(a.state)).length
     for (const a of agents) {
       switch (a.state) {
-        case 'away': break
+        case 'away': case 'sleep': case 'couch': break
         case 'seated':
           a.timer -= dt
           if (a.timer <= 0) { if (!(out < MAX_UP && Math.random() < .75 && startTrip(a))) a.timer = 6 + Math.random() * 10 }
@@ -154,7 +178,7 @@ export function createRoutine({ agents, crew, nav, charOf, chairOut, onDoing }) 
     // give way: someone standing close in front → slow down / wait, then sidestep
     let block = null
     for (const b of agents) {
-      if (b === a || ['seated', 'away', 'standUp', 'sitDown'].includes(b.state)) continue
+      if (b === a || STILL.includes(b.state) || ['standUp', 'sitDown'].includes(b.state)) continue
       const ox = b.pos.x - a.pos.x, oz = b.pos.z - a.pos.z, od = Math.hypot(ox, oz)
       if (od < .75) {
         const ahead = (ox * Math.sin(a.heading) + oz * Math.cos(a.heading)) / (od || 1)
@@ -180,7 +204,7 @@ export function createRoutine({ agents, crew, nav, charOf, chairOut, onDoing }) 
     }
     // separation: never stand inside someone else
     for (const b of agents) {
-      if (b === a || b.state === 'away' || b.state === 'seated') continue
+      if (b === a || STILL.includes(b.state)) continue
       if (a.ghost > 0) break
       const ox = nx - b.pos.x, oz = nz - b.pos.z, od = Math.hypot(ox, oz)
       if (od < .45 && od > 1e-4) {
@@ -220,5 +244,5 @@ export function createRoutine({ agents, crew, nav, charOf, chairOut, onDoing }) 
     }
   }
 
-  return { update, resetAgent, startTrip, taken }
+  return { update, resetAgent, resetAll, setRest, get rest() { return rest }, startTrip, taken }
 }

@@ -205,10 +205,11 @@ export function buildRoom({ kit, T, hs, tv, clock, room }) {
     const f = location.hash.replace('#', '')
     const hr = myTime().hour
     const day = f === 'day' ? true : f === 'night' ? false : hr >= 7 && hr < 19
-    if (day === dayState) return
+    if (day === dayState) return day
     dayState = day
     glass.material.map = day ? T.day : T.night; glass.material.needsUpdate = true
     moon.color.set(day ? '#fff1d6' : '#9fb6d6'); moon.intensity = day ? 1.6 : .35
+    return day
   }
   updateWindow()
 
@@ -226,6 +227,20 @@ export function buildRoom({ kit, T, hs, tv, clock, room }) {
   box(tasks, .1, .03, 1.2, M('#bfc3c4', { metalness: .6, roughness: .35 }), LX + .05, 1.57, 2.65)
   ;['#2d4a7a', '#b23a2e', '#2f8a4a'].forEach((c, i) => { cyl(tasks, .012, .012, .13, M(c), LX + .07, 1.6, 2.3 + i * .12, 8).rotation.x = Math.PI / 2 })
   makeHotspot('tasks', tasks, { title: 'Whiteboard', sub: 'Tasks · who is doing what', offset: [2.5, 0.05, 0.1] })
+
+  /* ── couch on the right, for naps (free-standing, seat facing into the room) ── */
+  // Kept between the plant and z ≈ -0.3 so the walkway behind the second desk block stays open.
+  const couch = new THREE.Group(); room.add(couch)
+  const CX = 5.3, CZ2 = -1.4, CL = 2.2
+  const fab = M('#56646c', { roughness: .95 }), fabD = M('#47535a', { roughness: .95 }), legM = M('#2a2b2e', { roughness: .5 })
+  box(couch, .86, .2, CL, fabD, CX, .21, CZ2)                                   // base
+  for (const s of [-1, 1]) box(couch, .66, .13, CL / 2 - .16, fab, CX - .08, .375, CZ2 + s * (CL / 4 - .07))   // seat cushions
+  box(couch, .2, .44, CL, fabD, CX + .33, .53, CZ2)                              // low back, so a sleeper is visible
+  for (const s of [-1, 1]) box(couch, .86, .3, .13, fabD, CX, .44, CZ2 + s * (CL / 2 - .065))   // arms
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) box(couch, .05, .11, .05, legM, CX + sx * .37, .055, CZ2 + sz * (CL / 2 - .08))
+  const pillow = box(couch, .4, .1, .3, M('#e8e3d8', { roughness: 1 }), CX - .08, .48, CZ2 - CL / 2 + .32); pillow.rotation.z = .12
+  box(couch, .6, .04, .5, M('#c8682f', { roughness: .95 }), CX - .06, .46, CZ2 + CL / 2 - .45)   // folded blanket
+  const couchBed = { pos: new THREE.Vector3(CX - .1, 0, CZ2 + CL / 2 - .2), heading: 0 }   // feet end; head goes towards -z
 
   /* ── plants ── */
   const leafA = M('#3d6b3b', { roughness: .6 }), leafB = M('#4f7f46', { roughness: .6 }), leafGeo = new THREE.SphereGeometry(.1, 10, 6)
@@ -246,5 +261,5 @@ export function buildRoom({ kit, T, hs, tv, clock, room }) {
     if (tall) cyl(g, .015, .02, 1.2, stem, 0, 1.1, 0, 6)
   }
 
-  return { monG, pantry, shelf, files, gameBook, coverPivot, bookHome, updateWindow }
+  return { monG, pantry, shelf, files, couch, couchBed, gameBook, coverPivot, bookHome, updateWindow }
 }

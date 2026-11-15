@@ -136,3 +136,19 @@
 .of-fail b { color: #fff; font-size: 16px; font-weight: 600; }
 .of-fail span { font-size: 13px; }
 .of-fail div { display: flex; gap: 8px; justify-content: center; margin-top: 8px; }
+
+/* welcome card (once per visit) */
+.of-welcome { position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; background: #121c33; color: #fff; cursor: pointer; transition: opacity .55s ease; outline: none; }
+.of-welcome.out { opacity: 0; pointer-events: none; }
+.of-welcome-in { text-align: center; padding: 0 16px; animation: of-wl .7s ease both; }
+.of-welcome-in svg { display: block; margin: 0 auto 18px; }
+.of-welcome-k { font-size: 13px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: #9fd9e0; }
+.of-welcome h1 { margin: 6px 0 0; font-size: clamp(30px, 6vw, 52px); font-weight: 600; letter-spacing: -.02em; line-height: 1.1; color: #fff; }
+.of-welcome-d { margin-top: 10px; font-size: 15px; color: #c7d6ee; }
+.of-welcome-f { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 26px; }
+.of-welcome-f span { display: flex; align-items: baseline; gap: 6px; background: #1b2f57; border: 1px solid #2a4170; border-radius: 10px; padding: 8px 14px; font-size: 13px; color: #c7d6ee; }
+.of-welcome-f b { font-size: 18px; font-weight: 600; color: #fff; }
+.of-welcome-h { position: absolute; bottom: calc(28px + env(safe-area-inset-bottom)); left: 0; right: 0; text-align: center; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: #b3c3dc; }
+.of-out { display: inline-flex; align-items: center; gap: 6px; color: var(--alert); }
+@keyframes of-wl { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .of-welcome-in { animation: none; } .of-welcome { transition: none; } }

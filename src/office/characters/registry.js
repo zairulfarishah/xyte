@@ -5,15 +5,9 @@
 //              optional — if a model has them, the real clip is used instead of the pose layer
 //   additive   clips layered on top (nods, head shakes)
 //   walkSpeed  metres per second the walk clip was made for
-export const CHARACTER_MODELS = {
-  // three.js sample mannequin (Mixamo rig). Test model until real crew models arrive.
-  mannequin: {
-    url: '/models/Xbot.glb',
-    clips: { idle: 'idle', walk: 'walk', nod: 'agree', shake: 'headShake' },
-    additive: ['nod', 'shake'],
-    walkSpeed: 1.25,
-  },
-}
+// Put the model under the key `default` to switch it on. Until then the built-in people are used.
+//   default: { url: '/models/crew.glb', clips: { idle: 'Idle', walk: 'Walk' }, additive: [], walkSpeed: 1.25 },
+export const CHARACTER_MODELS = {}
 
 export const TINTS = [
   { body: '#4a4d52', joint: '#e0b131' }, { body: '#7c8189', joint: '#c4302b' }, { body: '#c8a888', joint: '#7a3e33' },
