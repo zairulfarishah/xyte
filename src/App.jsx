@@ -16,6 +16,7 @@ const LoginPage = lazy(() => import('./pages/LoginPage'))
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Office = lazy(() => import('./office/OfficePage'))
+const PhotoHome = lazy(() => import('./office/PhotoHome'))
 const Sites = lazy(() => import('./pages/Sites'))
 const SiteDetail = lazy(() => import('./pages/SiteDetail'))
 const MapView = lazy(() => import('./pages/MapView'))
@@ -536,11 +537,13 @@ function AppShell() {
     </Suspense>
   )
 
-  // Home (the 3D office) takes the whole screen: no sidebar, top bar or bottom bar
+  // Home (photo office, /) and the live 3D office (/office) take the whole screen: no sidebar, top bar or bottom bar
   if (location.pathname === '/' || location.pathname === '/office') return (
     <div style={{ minHeight: '100vh', background: '#1b1c1e' }}>
       <Suspense fallback={<PageLoader />}>
-        <Office onSignOut={handleSignOut} onMenu={() => setHomeNav(o => !o)} menuOpen={homeNav} />
+        {location.pathname === '/office'
+          ? <Office onSignOut={handleSignOut} onMenu={() => setHomeNav(o => !o)} menuOpen={homeNav} />
+          : <PhotoHome nav={nav} badges={badges} onSignOut={handleSignOut} onMenu={() => setHomeNav(o => !o)} menuOpen={homeNav} />}
       </Suspense>
       {homeNav && (<>
         <div className="xt-home-scrim" onClick={() => setHomeNav(false)} />

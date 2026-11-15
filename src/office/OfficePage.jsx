@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, LogOut } from 'lucide-react'
+import { ArrowLeft, LogOut, Image as ImageIcon } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { createOffice, PANEL_W } from './engine'
 import { useOfficeData } from './useOfficeData'
 import OfficePanel from './panels'
+import Welcome from './Welcome'
 import './office.css'
 
-// The 3D virtual office home screen (/), shown full screen without the app's sidebar.
-// A welcome card greets the person once per visit; click anywhere to enter.
+// The live 3D office (/office), full screen without the app's sidebar. The photo home (/) links here.
 // Click an object → the camera moves to it and a panel opens with a short summary and a link to its page.
 
 const MENU = [
@@ -20,8 +20,6 @@ const MENU = [
 ]
 const TZ = 'Asia/Kuala_Lumpur'
 const stored = k => { try { return localStorage.getItem(k) } catch { return null } }
-const welcomed = () => { try { return sessionStorage.getItem('xyte-welcomed') === '1' } catch { return false } }
-const touch = () => window.matchMedia?.('(pointer: coarse)').matches
 const PROG_TITLES = {
   pt: { title: 'PT Mapper', sub: 'Post-tension cable mapping' }, scan: { title: 'Scan Points', sub: 'Mark drill points before drilling' },
   layout: { title: 'Site Layouts', sub: 'Structural layouts, sections, loads' }, pdf: { title: 'PDF Tools', sub: 'Merge, split, rotate, compress' },
@@ -39,7 +37,6 @@ export default function OfficePage({ onSignOut, onMenu, menuOpen }) {
   const [focus, setFocus] = useState({ key: null, open: false })
   const [menu, setMenu] = useState(false)
   const [labelsOn, setLabelsOn] = useState(() => stored('xyte-labels') !== 'off')
-  const [welcome, setWelcome] = useState(() => (welcomed() ? 'off' : 'on'))
   const [people, setPeople] = useState(() => (stored('xyte-people') === 'toon' ? 'toon' : 'model'))
   const [model, setModel] = useState('loading')
   const [hint, setHint] = useState('')
@@ -90,15 +87,9 @@ export default function OfficePage({ onSignOut, onMenu, menuOpen }) {
   const goHome = useCallback(() => engineRef.current?.goHome(), [])
   const toggleLabels = useCallback(() => { const e = engineRef.current; if (!e) return; e.setLabels(!e.labels); setLabelsOn(e.labels) }, [])
   const togglePeople = useCallback(() => { const e = engineRef.current; if (!e) return; e.setPeopleMode(e.people === 'model' ? 'toon' : 'model') }, [])
-  const enter = useCallback(() => {
-    try { sessionStorage.setItem('xyte-welcomed', '1') } catch { /* storage blocked */ }
-    setWelcome(w => (w === 'on' ? 'out' : w))
-    setTimeout(() => setWelcome('off'), 600)
-  }, [])
 
   useEffect(() => {
     const onKey = e => {
-      if (welcome === 'on') { enter(); return }
       if (e.metaKey || e.ctrlKey || e.altKey) return
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName) || e.target?.isContentEditable) return
       if (e.key === 'Escape') { if (menu) setMenu(false); else if (engineRef.current?.focused) goHome() }
@@ -108,7 +99,7 @@ export default function OfficePage({ onSignOut, onMenu, menuOpen }) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [menu, goHome, toggleLabels, togglePeople, welcome, enter])
+  }, [menu, goHome, toggleLabels, togglePeople])
 
   const panel = !!(focus.open && focus.key && data)
 
@@ -137,6 +128,7 @@ export default function OfficePage({ onSignOut, onMenu, menuOpen }) {
             People: {model === 'failed' || people === 'toon' ? 'cartoon' : '3D model'} <kbd>P</kbd>
           </button>
         )}
+        <Link className="of-btn" to="/"><ImageIcon size={13} /> Home view</Link>
         {hint && !focus.key && <span className="of-hint">{hint}</span>}
       </div>
 
@@ -166,7 +158,7 @@ export default function OfficePage({ onSignOut, onMenu, menuOpen }) {
           ctx={{ data, crew: data.crew.slice(0, 12), doing, isZairul, go, hotspotTitle: k => PROG_TITLES[k] }} />}
       </aside>
 
-      {welcome !== 'off' && <Welcome name={firstName} data={data} out={welcome === 'out'} onEnter={enter} />}
+      <Welcome name={firstName} data={data} />
       {!data && !error && <div className="of-loader"><div>Opening the office<i><b /></i></div></div>}
       {error && !data && (
         <div className="of-loader"><div className="of-fail">
@@ -174,33 +166,6 @@ export default function OfficePage({ onSignOut, onMenu, menuOpen }) {
           <div><button className="of-btn primary" onClick={reload}>Try again</button><Link className="of-btn" to="/dashboard">Open the dashboard</Link></div>
         </div></div>
       )}
-    </div>
-  )
-}
-
-export function Welcome({ name, data, out, onEnter }) {
-  const now = new Date()
-  const hr = Number(now.toLocaleString('en-GB', { timeZone: TZ, hour: '2-digit', hourCycle: 'h23' }))
-  const part = hr < 12 ? 'Good morning' : hr < 19 ? 'Good afternoon' : 'Good evening'
-  const crew = data?.crew || []
-  const facts = data ? [
-    [data.todaySites?.length ?? 0, 'sites today'],
-    [crew.filter(c => c.status === 'site').length, 'on site'],
-    [crew.filter(c => c.status === 'office').length, 'in the office'],
-    [crew.filter(c => c.status === 'leave').length, 'on leave'],
-  ] : null
-  return (
-    <div className={`of-welcome${out ? ' out' : ''}`} onPointerDown={onEnter} role="button" tabIndex={0} aria-label="Enter the office">
-      <div className="of-welcome-in">
-        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true">
-          <path d="M5 13a6 6 0 0 1 6 6" stroke="#4fd36f" /><path d="M5 8a11 11 0 0 1 11 11" stroke="#38cc8a" /><path d="M5 3a16 16 0 0 1 16 16" stroke="#27c4a8" />
-        </svg>
-        <p className="of-welcome-k">{part}</p>
-        <h1>Welcome, {name}</h1>
-        <p className="of-welcome-d">{now.toLocaleDateString('en-GB', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
-        {facts && <div className="of-welcome-f">{facts.map(([n, l]) => <span key={l}><b>{n}</b>{l}</span>)}</div>}
-      </div>
-      <p className="of-welcome-h">{touch() ? 'Tap' : 'Click'} anywhere to enter</p>
     </div>
   )
 }
