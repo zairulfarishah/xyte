@@ -56,7 +56,6 @@ export function buildRoom({ kit, T, hs, tv, clock, room }) {
   const leafM = M('#3d6b3b'), leafG = new THREE.SphereGeometry(.06, 8, 6)
   for (let k = 0; k < 7; k++) { const l = new THREE.Mesh(leafG, leafM); l.scale.set(.5, 1.5, .2); l.position.set(TVX + .8 + (rnd() - .5) * .1, .72 + rnd() * .12, CZ + (rnd() - .5) * .08); l.rotation.set(rnd() - .5, rnd() * 3, rnd() - .5); monG.add(l) }
   makeHotspot('dashboard', monG, { title: 'Dashboard', sub: 'Today at a glance · live on the wall TV', offset: [0.3, 0.3, 3.7] })
-  const tvGlow = new THREE.PointLight('#d8ecff', .5, 2.6, 2); tvGlow.position.set(TVX, TVY, TVZ + .6); room.add(tvGlow)
 
   /* ── framed pictures ── */
   function frame(key, x, y, w, h, picture, plaque, frameMat, def) {
@@ -67,14 +66,12 @@ export function buildRoom({ kit, T, hs, tv, clock, room }) {
     box(g, t, h, d, frameMat, x - w / 2 - t / 2, y, z)
     box(g, t, h, d, frameMat, x + w / 2 + t / 2, y, z)
     box(g, w, h, .01, M('#f4efe4'), x, y, z - .01, { cast: false })
-    const pic = new THREE.Mesh(new THREE.PlaneGeometry(w * .86, h * .86), M('#ffffff', { map: picture, roughness: .9 }))
+    const pic = new THREE.Mesh(new THREE.PlaneGeometry(w * .86, h * .86), M('#ffffff', { map: picture, roughness: .9, emissive: '#ffffff', emissiveMap: picture, emissiveIntensity: .22 }))   // looks lit, no spotlight
     pic.position.set(x, y, z + .001); g.add(pic)
     const pl = new THREE.Mesh(new THREE.PlaneGeometry(.36, .09), M('#ffffff', { map: T.plaque(plaque), metalness: .4, roughness: .4 }))
     pl.position.set(x, y - h / 2 - .2, z - .01); g.add(pl)
     box(g, w * .55, .04, .05, brass, x, y + h / 2 + .24, z + .12)
     box(g, .03, .03, .14, brass, x, y + h / 2 + .24, z + .05)
-    const sp = new THREE.SpotLight('#fff6e8', 1.2, 3, .75, .7, 1.5)
-    sp.position.set(x, y + h / 2 + .22, z + .2); sp.target.position.set(x, y - .1, z); room.add(sp, sp.target)
     makeHotspot(key, g, { ...def, offset: [0.25, 0.05, 2.1] })
     return g
   }

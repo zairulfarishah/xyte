@@ -46,6 +46,8 @@ export default function OfficePage({ onSignOut, onMenu, menuOpen }) {
   const [doing, setDoing] = useState({})
   const [clock, setClock] = useState(nowText)
   const crewCount = data?.crew.length ?? -1
+  const [perf, setPerf] = useState(null)
+  const [noGpu, setNoGpu] = useState(false)
 
   // Fill the space under the top bar and above the phone bottom bar
   useLayoutEffect(() => {
@@ -68,8 +70,11 @@ export default function OfficePage({ onSignOut, onMenu, menuOpen }) {
       onDoing: (i, text) => setDoing(prev => (prev[i] === text ? prev : { ...prev, [i]: text })),
     })
     engineRef.current = engine
+    const showPerf = new URLSearchParams(window.location.search).has('perf')
+    const perfT = showPerf ? setInterval(() => { const s = engine.stats; setPerf(`${s.fps} fps · ${s.ms.toFixed(1)} ms · ${s.calls} draws · quality ${s.quality} · ${s.gpu || 'unknown GPU'}`) }, 1000) : 0
+    if (engine.stats.softwareGL) setTimeout(() => setNoGpu(true), 0)
     engine.setTVData({ sites: data.todaySites, approvals: data.approvals })
-    return () => { engine.dispose(); engineRef.current = null; setFocus({ key: null, open: false }) }
+    return () => { clearInterval(perfT); engine.dispose(); engineRef.current = null; setFocus({ key: null, open: false }) }
     // data is read once here; later updates go through setCrew / setTVData below
   }, [crewCount]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -147,6 +152,14 @@ export default function OfficePage({ onSignOut, onMenu, menuOpen }) {
       )}
 
       <div ref={tipRef} className="of-tip"><b /><span /></div>
+      {perf && <div className="of-perf">{perf}</div>}
+      {noGpu && (
+        <div className="of-nogpu" role="status">
+          <b>3D is running without your graphics card, so it will be slow.</b>
+          <span>Turn on “Use graphics acceleration when available” in your browser settings (System), then restart the browser.</span>
+          <button className="of-btn" onClick={() => setNoGpu(false)}>OK</button>
+        </div>
+      )}
 
       <aside className={`of-panel${panel ? ' open' : ''}`} aria-hidden={!panel}>
         {panel && <OfficePanel k={focus.key} onClose={goHome}

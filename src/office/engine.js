@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { C, createKit, disposeAll } from './kit'
+import { createKit, disposeAll } from './kit'
 import { buildTextures } from './textures'
 import { createHotspots } from './hotspots'
 import { createTV } from './tv'
@@ -34,7 +34,15 @@ export function createOffice({ container, canvas, labelsEl, tipEl, crew: crewIn,
 
   /* ── renderer, scene, camera ── */
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' })
-  const DPR = Math.min(window.devicePixelRatio, 1.5)
+  const DPR = Math.min(window.devicePixelRatio, 1.25)
+  // Browser drawing 3D without the graphics card (hardware acceleration off): start at lowest quality
+  let gpu = ''
+  try { const gl = renderer.getContext(), ext = gl.getExtension('WEBGL_debug_renderer_info'); gpu = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER) } catch { /* not available */ }
+  const softwareGL = /swiftshader|llvmpipe|software|basic render/i.test(gpu)
+  // only draw every frame while something is moving; otherwise 30 fps is plenty for the people
+  let lastInput = 0, lastFrame = 0
+  const poke = () => { lastInput = performance.now() }
+  let dev = null   // DEV-only debug hooks, filled in at the end
   renderer.setPixelRatio(DPR)
   renderer.outputColorSpace = THREE.SRGBColorSpace
   renderer.toneMapping = THREE.ACESFilmicToneMapping
@@ -79,7 +87,8 @@ export function createOffice({ container, canvas, labelsEl, tipEl, crew: crewIn,
   const { TX, TZ } = CT
 
   /* ── lights: one shadow-casting directional + one spot ── */
-  scene.add(new THREE.HemisphereLight('#ffffff', '#8d8f92', 1.15))
+  // 5 lights in all: every extra light is paid for on every pixel
+  scene.add(new THREE.HemisphereLight('#ffffff', '#8d8f92', 1.3))
   const key = new THREE.DirectionalLight('#fffaf2', 1.25)
   key.position.set(4, 9, 6); key.target.position.set(-.5, 0, -1.5)
   key.castShadow = true; key.shadow.mapSize.set(2048, 2048)
@@ -99,10 +108,7 @@ export function createOffice({ container, canvas, labelsEl, tipEl, crew: crewIn,
   const pendLight = new THREE.SpotLight('#ffffff', 9, 7, 1.0, .8, 1.2); pendLight.position.set(TX, RH - .8, TZ); pendLight.target.position.set(TX, 0, TZ)
   // only the main light casts shadows (a second shadow pass doubled the work)
   room.add(pendLight, pendLight.target)
-  const fill = new THREE.PointLight('#fff8ee', 10, 0, 2); fill.position.set(-1.8, 3.7, -1.8); room.add(fill)
-  const fill2 = new THREE.PointLight('#fff8ee', 8, 0, 2); fill2.position.set(-3.3, 3.7, 1.5); room.add(fill2)
-  const wash = new THREE.PointLight('#f4f8ff', 4, 0, 2); wash.position.set(-4.4, 3.2, 1.2); room.add(wash)
-  const cityGlow = new THREE.PointLight(C.green, 0, 2.2, 2); cityGlow.position.set(TX, 1.5, TZ); room.add(cityGlow)
+  const fill = new THREE.PointLight('#fff8ee', 17, 0, 2); fill.position.set(-2.7, 3.7, -.3); room.add(fill)
   scene.updateMatrixWorld(true)
 
   /* ── people ── */
@@ -246,12 +252,11 @@ export function createOffice({ container, canvas, labelsEl, tipEl, crew: crewIn,
     if (k === 'games') bookAnim.dir = 1
     if (h.prog) { h.prog.dir = 1; h.prog.t = 0 }
     const model = k === 'city' || !!h.prog
-    cityGlow.intensity = model ? .6 : 0
     moveCam(pos, target, 1100, () => { onFocus?.(k, true); if (model) setOrbit('model') })
   }
   function goHome() {
     focused = null; panelShift.to = 0
-    resetAnims(); cityGlow.intensity = 0; controls.enabled = false
+    resetAnims(); controls.enabled = false
     onFocus?.(null, false)
     moveCam(home.pos, home.target, 1000, () => setOrbit('room'))
   }
@@ -320,6 +325,7 @@ export function createOffice({ container, canvas, labelsEl, tipEl, crew: crewIn,
     else if (focused) goHome()
   }
   const onContext = e => e.preventDefault()
+  for (const ev of ['pointerdown', 'pointermove', 'wheel']) canvas.addEventListener(ev, poke, { passive: true })
   canvas.addEventListener('pointermove', onMove)
   canvas.addEventListener('pointerleave', onLeave)
   canvas.addEventListener('mousedown', onMouseDown)
@@ -332,20 +338,30 @@ export function createOffice({ container, canvas, labelsEl, tipEl, crew: crewIn,
   // canvas text needs the web font; redraw once it has loaded
   document.fonts?.load(`500 20px Poppins`).then(() => { if (!disposed) { tvDirty = true; clock.draw(true) } }).catch(() => {})
 
-  /* ── quality: step down on slow machines (sharpness first, then shadows) ── */
-  const qual = { level: 0, t: 0, n: 0, skip: 3 }
-  function adapt(raw) {
-    if (raw > .5 || document.hidden) return                  // tab switch or stall, not a slow GPU
-    qual.t += raw; qual.n++
-    if (qual.t < 2.5) return
-    const fps = qual.n / qual.t; qual.t = 0; qual.n = 0
-    if (qual.skip > 0) { qual.skip--; return }                // let loading settle first
-    if (fps >= 40 || qual.level >= 2) return
+  /* ── quality: step down on slow machines (sharpness → shadows → lower resolution) ── */
+  // Frames are counted as late when they miss the pace we asked for (60 fps while moving, 30 when still).
+  const qual = { level: 0, t: 0, n: 0, late: 0, skip: 1 }
+  function degrade() {
+    if (qual.level >= 3) return
     qual.level++
-    if (qual.level === 1 && DPR > 1) { renderer.setPixelRatio(1); renderer.setSize(W, H, false) }
-    else { qual.level = 2; key.castShadow = false }
+    if (qual.level === 1) { if (DPR > 1) { renderer.setPixelRatio(1); renderer.setSize(W, H, false) } else qual.level = 2 }
+    if (qual.level === 2) key.castShadow = false
+    if (qual.level === 3) { renderer.setPixelRatio(.75); renderer.setSize(W, H, false) }
     if (dev) dev.quality = qual.level
   }
+  if (softwareGL && !(import.meta.env.DEV && location.search.includes('hq'))) { degrade(); degrade(); degrade() }
+  function adapt(interval, busy) {
+    if (interval > .5 || document.hidden) return             // tab switch or stall, not a slow GPU
+    qual.t += interval; qual.n++
+    if (interval > (busy ? 1 / 42 : 1 / 25)) qual.late++
+    if (qual.t < 2) return
+    const late = qual.late / qual.n; stats.fps = Math.round(qual.n / qual.t)
+    qual.t = 0; qual.n = 0; qual.late = 0
+    if (qual.skip > 0) { qual.skip--; return }                // let loading settle first
+    if (late > .4) degrade()
+  }
+  const stats = { fps: 0, ms: 0, calls: 0, gpu, softwareGL, get quality() { return qual.level } }
+
 
   /* ── loop ── */
   const ro = new ResizeObserver(() => {
@@ -357,10 +373,14 @@ export function createOffice({ container, canvas, labelsEl, tipEl, crew: crewIn,
   let raf = 0, slowT = 0
   function frame(ts) {
     raf = requestAnimationFrame(frame)
+    const busy = !!tween || ts - lastInput < 1500 || panelShift.v !== panelShift.to || bookAnim.dir !== 0 || CT.programs.some(p => p.dir)
+    if (!busy && ts - lastFrame < 31) return
+    if (lastFrame) adapt((ts - lastFrame) / 1000, busy)
+    lastFrame = ts
     timer.update(ts)
     if (dev) dev.frames++
-    const raw = timer.getDelta(), dt = Math.min(raw, .1)
-    adapt(raw)
+    const t0 = performance.now()
+    const dt = Math.min(timer.getDelta(), .1)
     if (tween) {
       const t = Math.min(1, (performance.now() - tween.start) / tween.dur), e = ease(t)
       camera.position.lerpVectors(tween.p0, tween.p1, e)
@@ -384,14 +404,14 @@ export function createOffice({ container, canvas, labelsEl, tipEl, crew: crewIn,
     clock.draw()
     tv.draw(tvData, tvDirty); tvDirty = false
     try { routine.update(dt) } catch (err) { if (!frame.warned) { console.error(err); frame.warned = true } }
-    if (cityGlow.intensity > 0) cityGlow.intensity = .5 + Math.sin(performance.now() * .004) * .12
     updateLabels()
     renderer.render(scene, camera)
+    stats.ms = stats.ms * .9 + (performance.now() - t0) * .1; stats.calls = renderer.info.render.calls
   }
   // pause rendering while the tab is hidden
   const onVisibility = () => {
     if (document.hidden) { cancelAnimationFrame(raf); raf = 0 }
-    else if (!raf && !disposed) { timer.reset(); raf = requestAnimationFrame(frame) }
+    else if (!raf && !disposed) { timer.reset(); lastFrame = 0; raf = requestAnimationFrame(frame) }
   }
   document.addEventListener('visibilitychange', onVisibility)
   const onHash = () => routine.setRest(isNight())     // #day / #night switch straight away
@@ -399,11 +419,12 @@ export function createOffice({ container, canvas, labelsEl, tipEl, crew: crewIn,
   if (!document.hidden) raf = requestAnimationFrame(frame)
   const introT = setTimeout(() => moveCam(home.pos, home.target, 1800, () => setOrbit('room')), 350)
 
-  const dev = import.meta.env.DEV ? (window.__xyte = { go, goHome, camera, controls, agents, routine, nav, city: CT, frames: 0, THREE, renderer, scene, merged, quality: 0 }) : null
+  dev = import.meta.env.DEV ? (window.__xyte = { go, goHome, camera, controls, agents, routine, nav, city: CT, frames: 0, THREE, renderer, scene, merged, quality: 0 }) : null
 
   /* ── API for the page ── */
   return {
     go, goHome,
+    stats,
     get focused() { return focused },
     setTVData,
     setCrew(next) {
@@ -428,6 +449,7 @@ export function createOffice({ container, canvas, labelsEl, tipEl, crew: crewIn,
       ro.disconnect()
       document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener('hashchange', onHash)
+      for (const ev of ['pointerdown', 'pointermove', 'wheel']) canvas.removeEventListener(ev, poke)
       canvas.removeEventListener('pointermove', onMove)
       canvas.removeEventListener('pointerleave', onLeave)
       canvas.removeEventListener('mousedown', onMouseDown)
