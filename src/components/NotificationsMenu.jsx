@@ -57,7 +57,15 @@ const initials = name => String(name || '?').split(' ').filter(Boolean).map(p =>
 
 function Item({ n, unread, member, onOpen }) {
   const system = !n.actor || n.actor === 'System'
-  const { lead, quote } = splitQuote(n.message)
+  const split = splitQuote(n.message)
+  const { quote } = split
+  // the name is already shown in bold, so drop it from the start of the text ("Zairul gave you a task" → "gave you a task")
+  let lead = split.lead
+  if (!system) {
+    const names = [n.actor, String(n.actor).split(' ')[0]]
+    const hit = names.find(nm => nm && lead.toLowerCase().startsWith(`${nm.toLowerCase()} `))
+    if (hit) lead = lead.slice(hit.length + 1)
+  }
   return (
     <button type="button" className={`nm-item${unread ? ' unread' : ''}`} onClick={() => onOpen(n)}>
       <span className={`nm-av${system ? ' sys' : ''}`}>

@@ -5,6 +5,7 @@ export const NOTIFICATION_CATEGORIES = [
   { key: 'assignment',        label: 'Site assignments',       hint: 'When you are assigned to a site as PIC or crew',                          url: '/calendar', defaultOn: true },
   { key: 'pic_update',        label: 'Sites you lead (PIC)',   hint: 'Status, report and detail changes on sites where you are PIC',            url: '/sites',    defaultOn: true },
   { key: 'site_update',       label: 'Sites you work on',      hint: 'Status and report changes on sites where you are crew',                   url: '/sites',    defaultOn: true },
+  { key: 'task',              label: 'Tasks',                  hint: 'When someone gives you a task, or finishes a task you gave',              url: '/tasks',    defaultOn: true },
   { key: 'feed_post',         label: 'New Feed posts',         hint: 'Whenever someone posts in Feed',                                          url: '/feed',     defaultOn: true },
   { key: 'feed_comment',      label: 'Comments on your posts', hint: 'When someone comments on a Feed post you wrote',                         url: '/feed',     defaultOn: true },
   { key: 'mention',           label: 'Mentions',               hint: 'When someone @mentions you in a Feed post or comment',                    url: '/feed',     defaultOn: true },
@@ -28,6 +29,7 @@ export function categoryOf(notification) {
   if (m.includes('mentioned you')) return 'mention'
   if (m.includes('commented on your feed post')) return 'feed_comment'
   if (m.includes('posted in feed') || m.includes('new feed post')) return 'feed_post'
+  if (m.includes('gave you a task') || m.includes('finished your task')) return 'task'
   if (m.includes('assigned as')) return 'assignment'
   if (m.includes('key in your timecard')) return 'schedule_reminder'
   if (m.includes('claim')) return 'claim'

@@ -1,0 +1,78 @@
+/* Dashboard "My tasks" strip — navy, same look as the Sites cards. Classes prefixed tks-. */
+.tks { background: var(--x-navy); color: #fff; border-radius: 16px; padding: 14px 16px 16px; margin-bottom: 16px; font-family: var(--x-font);
+  box-shadow: 0 1px 2px rgba(23,35,53,.11), 0 8px 20px -6px rgba(23,35,53,.32); }
+.tks.empty { padding-bottom: 12px; }
+.tks a { color: inherit; text-decoration: none; }
+
+.tks-h { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.tks.empty .tks-h { margin-bottom: 6px; }
+.tks-h h2 { margin: 0; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.tks-h h2 .n { min-width: 22px; height: 22px; padding: 0 7px; border-radius: 99px; display: inline-grid; place-items: center; font-size: 12px; font-weight: 600; background: var(--x-orange); color: #fff; }
+.tks-h .sp { flex: 1; }
+.tks .x-seg { background: rgba(255,255,255,.08); }
+.tks .x-seg button { color: #b9c4d4; }
+.tks .x-seg button:hover { color: #fff; }
+.tks .x-seg button.on { background: #fff; color: var(--x-ink); }
+.tks-all { font-size: 13px; font-weight: 500; color: #b9c4d4 !important; white-space: nowrap; }
+.tks-all:hover { color: #fff !important; }
+.tks-add { border: 0; font: inherit; font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 9px; background: var(--x-orange); color: #fff; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; user-select: none; }
+.tks-add:hover { background: var(--x-orange-d); }
+
+.tks-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.tks-t { border-radius: 12px; padding: 12px 12px 11px; display: flex; flex-direction: column; gap: 10px; position: relative; min-height: 108px; min-width: 0;
+  background: var(--x-navy-2); border: 1px solid rgba(255,255,255,.08); border-top: 3px solid #5b6b82; transition: opacity .35s, transform .35s; }
+.tks-t.over { border-top-color: var(--x-danger); }
+.tks-t.today { border-top-color: var(--x-orange); }
+.tks-t.done { border-top-color: var(--x-success); opacity: .7; }
+.tks-t.going { opacity: .35; transform: scale(.97); }
+.tks-top { display: flex; align-items: flex-start; gap: 9px; min-width: 0; }
+.tks-ck { width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; margin-top: 1px; padding: 0; cursor: pointer; display: grid; place-items: center;
+  border: 2px solid rgba(255,255,255,.45); background: transparent; color: #fff; transition: background .15s, border-color .15s; }
+.tks-ck:hover { border-color: var(--x-success); background: rgba(22,163,106,.25); }
+.tks-ck.on { background: var(--x-success); border-color: var(--x-success); }
+.tks-title { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+.tks-title:hover { text-decoration: underline; text-underline-offset: 2px; }
+.tks-t.done .tks-title, .tks-t.going .tks-title { text-decoration: line-through; color: #b9c4d4; }
+.tks-pri { width: 7px; height: 7px; border-radius: 50%; background: var(--x-danger); flex-shrink: 0; margin-top: 6px; box-shadow: 0 0 0 3px rgba(220,69,69,.25); }
+.tks-foot { margin-top: auto; display: flex; align-items: center; gap: 7px; font-size: 12px; min-width: 0; }
+.tks-av { width: 22px; height: 22px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 9.5px; font-weight: 700; flex-shrink: 0; overflow: hidden;
+  background: #3a4f78; color: #fff; border: 2px solid #22334a; }
+.tks-av img { width: 100%; height: 100%; object-fit: cover; }
+.tks-foot .from { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #b9c4d4; }
+.tks-foot .from b { color: #fff; font-weight: 500; }
+.tks-foot .due { font-size: 11.5px; font-weight: 600; padding: 3px 8px; border-radius: 99px; white-space: nowrap; background: rgba(255,255,255,.1); color: #e2e8f0; }
+.tks-t.over .due { background: var(--x-danger); color: #fff; }
+.tks-t.today .due { background: var(--x-orange); color: #fff; }
+.tks-t.done .due { background: var(--x-success); color: #fff; }
+.tks-more { display: inline-block; margin-top: 10px; font-size: 12.5px; color: #b9c4d4 !important; }
+.tks-more:hover { color: #fff !important; }
+.tks-empty { margin: 0; font-size: 13.5px; color: #b9c4d4; }
+.tks-empty button { border: 0; background: none; font: inherit; color: #fdba74; font-weight: 600; cursor: pointer; padding: 0 0 0 6px; }
+.tks-empty button:hover { color: #fff; }
+
+/* add-task popup (light, inside the kit modal) */
+.tks-form { display: flex; flex-direction: column; gap: 14px; }
+.tks-form textarea { resize: vertical; }
+.tks-two { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: start; }
+.tks-people { display: flex; flex-wrap: wrap; gap: 6px; }
+.tks-people button { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 3px; border-radius: 99px; border: 1px solid var(--x-border); background: #fff;
+  font: inherit; font-size: 13px; color: var(--x-ink-2); cursor: pointer; user-select: none; }
+.tks-people button:hover { border-color: #c5cfdc; }
+.tks-people button.on { background: var(--x-orange-soft); border-color: var(--x-orange); color: var(--x-orange-d); font-weight: 500; }
+.tks-people .tks-av { width: 24px; height: 24px; border: 0; background: var(--x-navy); }
+
+@media (max-width: 1100px) {
+  .tks-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .tks { padding: 12px 12px 14px; border-radius: 14px; }
+  .tks-h { flex-wrap: wrap; gap: 8px 10px; }
+  .tks-h .sp { display: none; }
+  .tks-h .x-seg { order: 5; }
+  .tks-add { margin-left: auto; }
+  .tks-row { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; margin: 0 -12px; padding: 0 12px 2px; scrollbar-width: none; }
+  .tks-row::-webkit-scrollbar { display: none; }
+  .tks-t { flex: 0 0 76%; scroll-snap-align: start; }
+  .tks-two { grid-template-columns: minmax(0, 1fr); }
+}

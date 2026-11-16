@@ -3,6 +3,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../supabase'
 import { cachedPage, rememberPage } from '../utils/pageCache'
 import { useAuth } from '../context/AuthContext'
+import { createTask, setTaskDone } from '../utils/tasks'
 import { useViewport } from '../utils/useViewport'
 import { Plus, Trash2, Check, X, Calendar } from 'lucide-react'
 
@@ -24,7 +25,7 @@ const lLabel = { display: 'block', fontSize: '12px', fontWeight: '600', color: '
 const input  = { width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', color: '#0f172a', boxSizing: 'border-box', fontFamily: 'inherit' }
 
 export default function TaskPage() {
-  const { memberId } = useAuth()
+  const { memberId, fullName } = useAuth()
   const { isMobile } = useViewport()
   const [members, setMembers] = useState(() => cachedPage('tasks')?.members || [])
   const [tasks, setTasks]     = useState(() => cachedPage('tasks')?.tasks || [])
@@ -68,19 +69,9 @@ export default function TaskPage() {
     if (form.assignees.length === 0) { setFormError('Assign to at least one person.'); return }
     setSaving(true); setFormError(null)
 
-    const { data: task, error } = await supabase.from('tasks').insert({
-      title:       form.title.trim(),
-      description: form.description.trim() || null,
-      priority:    form.priority,
-      due_date:    form.due_date || null,
-      created_by:  memberId,
-    }).select().single()
-
+    // creates the task + assignments and notifies the people it was given to
+    const { error } = await createTask(form, { memberId, fullName })
     if (error) { setFormError(error.message); setSaving(false); return }
-
-    await supabase.from('task_assignments').insert(
-      form.assignees.map(mid => ({ task_id: task.id, member_id: mid }))
-    )
 
     setSaving(false)
     setShowModal(false)
@@ -89,7 +80,8 @@ export default function TaskPage() {
 
   async function toggleDone(task) {
     const next = task.status === 'done' ? 'todo' : 'done'
-    await supabase.from('tasks').update({ status: next }).eq('id', task.id)
+    const { error } = await setTaskDone(task, next === 'done', { memberId, fullName })
+    if (error) return
     setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: next } : t))
   }
 

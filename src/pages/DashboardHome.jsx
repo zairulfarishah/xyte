@@ -13,6 +13,7 @@ import { buildJobIndex, isActiveSite, memberDayStatus } from '../utils/memberDay
 import { buildActions } from '../utils/dashboardActions'
 import { PinnedFeedCard } from '../components/FeedWidgets'
 import { Skyline } from '../components/SceneArt'
+import TasksStrip from '../components/TasksStrip'
 import './DashboardHome.css'
 
 // The dashboard: greeting banner, four stat cards, this week's sites on a satellite map,
@@ -134,12 +135,13 @@ const PIN_SVG = '<svg width="26" height="34" viewBox="0 0 26 34"><path d="M13 33
 const PIN = L.divIcon({ html: PIN_SVG, className: 'dh-pin', iconSize: [26, 34], iconAnchor: [13, 33], popupAnchor: [0, -30] })
 const PIN_TODAY = L.divIcon({ html: '<span class="dh-pin-now"></span>', className: 'dh-pin', iconSize: [22, 22], iconAnchor: [11, 11], popupAnchor: [0, -12] })
 
-export default function DashboardHome({ sites, members, leaves, firstName, memberId, isZairul, onAssign, onUpdate, onAdd }) {
+export default function DashboardHome({ sites, members, leaves, firstName, fullName, memberId, isZairul, onAssign, onUpdate, onAdd }) {
   const navigate = useNavigate()
   const today = isoOf(new Date())
   const [tip, setTip] = useState(null)
   const [showActions, setShowActions] = useState(false)
   const [notifs, setNotifs] = useState(null)
+  const [dueTasks, setDueTasks] = useState([])
   const showTip = (e, body) => setTip({ x: e.clientX, y: e.clientY, body })
   const hideTip = () => setTip(null)
 
@@ -179,8 +181,8 @@ export default function DashboardHome({ sites, members, leaves, firstName, membe
   const countLeave = date => members.filter(m => statusOf(m.id, date).kind === 'leave').length
 
   const actions = useMemo(
-    () => buildActions({ sites, leaves, memberById, today, isZairul, onAssign, onUpdate }),
-    [sites, leaves, memberById, today, isZairul], // eslint-disable-line react-hooks/exhaustive-deps -- callbacks are recreated each render
+    () => [...dueTasks, ...buildActions({ sites, leaves, memberById, today, isZairul, onAssign, onUpdate })],
+    [dueTasks, sites, leaves, memberById, today, isZairul], // eslint-disable-line react-hooks/exhaustive-deps -- callbacks are recreated each render
   )
   const urgent = actions.filter(a => a.sev === 'red').length
 
@@ -287,6 +289,8 @@ export default function DashboardHome({ sites, members, leaves, firstName, membe
           )
           : <Skyline className="city" />}
       </section>
+
+      <TasksStrip members={members} memberId={memberId} fullName={fullName} onDue={setDueTasks} />
 
       <div className="dh-pinned"><PinnedFeedCard /></div>
 

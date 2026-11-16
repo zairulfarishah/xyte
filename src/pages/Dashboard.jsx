@@ -308,6 +308,7 @@ export default function Dashboard() {
       <DashboardHome
         sites={sites}
         members={members}
+        fullName={fullName}
         leaves={leaves}
         firstName={firstName}
         memberId={memberId}
