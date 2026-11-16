@@ -30,6 +30,8 @@ const TYPE_LABEL = {
   site_visit:    'Site Visit',
   meeting:       'Meeting',
 }
+// Card look: 'navy' (dark card, photo on top) or 'glass' (photo fills the card, frosted panel)
+const CARD_STYLE = 'navy'
 const SITE_TYPES   = [
   { value:'site_scanning', label:'Site Scanning' },
   { value:'site_visit',    label:'Site Visit'    },
@@ -573,7 +575,7 @@ export default function Sites() {
 
   // Skeleton cards in the real grid, so nothing jumps when the data lands
   if (loading) return (
-    <Page className="ss">
+    <Page className={`ss ss-${CARD_STYLE}`}>
       <section className="ss-hero"><PageHeader title="Sites" subtitle="Loading sites…" actions={headerActions} /></section>
       <div className="x-card ss-board">
         <div className="ss-grid">
@@ -619,7 +621,7 @@ export default function Sites() {
   const salespeople = [...new Set([...SALESPERSONS, ...sites.map(s => s.salesperson).filter(Boolean)])]
 
   return (
-    <Page className="ss">
+    <Page className={`ss ss-${CARD_STYLE}`}>
       {/* ── Dark header: title, summary, views, status tabs ── */}
       <section className="ss-hero">
       <PageHeader

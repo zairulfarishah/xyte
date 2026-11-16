@@ -243,3 +243,30 @@
 }
 /* no photo yet: the drawn skyline sits above the glass panel instead of behind it */
 .ss-bg.nophoto img { height: 58%; object-position: center bottom; }
+
+/* ── Card style "navy" (idea 4): dark navy card, photo on top fading into it, progress in its own box ── */
+.ss-navy .ss-card { min-height: 0; background: linear-gradient(165deg, #1a2a40 0%, var(--x-navy) 100%); border: 1px solid #24364f;
+  box-shadow: 0 10px 26px -10px rgba(20,33,49,.6); }
+.ss-navy .ss-card:hover { border-color: var(--x-orange); box-shadow: 0 18px 36px -12px rgba(20,33,49,.75), 0 0 0 1px var(--x-orange); }
+.ss-navy .ss-card.on, .ss-navy .ss-card.sel { border-color: var(--x-orange); box-shadow: 0 0 0 2px var(--x-orange), 0 10px 26px -10px rgba(20,33,49,.6); }
+.ss-navy .ss-bg { bottom: auto; height: 158px; border-radius: var(--x-r-lg) var(--x-r-lg) 0 0; }
+.ss-navy .ss-bg::after { background: linear-gradient(180deg, rgba(10,18,30,.35) 0%, rgba(10,18,30,0) 35%, rgba(26,42,64,.55) 72%, #1a2a40 100%); }
+.ss-navy .ss-bg.nophoto img { height: 100%; object-position: center 75%; }
+.ss-navy .ss-body { margin-top: 92px; }
+.ss-navy .ss-head { padding: 0 14px 12px; text-shadow: none; }
+.ss-navy .ss-eb { color: #fdba74; }
+.ss-navy .ss-name { font-size: 16.5px; }
+.ss-navy .ss-sub { color: #aab6c8; }
+.ss-navy .ss-meta { display: inline-flex; margin-top: 8px; padding: 3px 9px; border-radius: 7px; background: rgba(255,255,255,.08); color: #d6dde8; }
+.ss-navy .ss-glass { margin: 0; padding: 0 14px 14px; background: none; border: 0; border-radius: 0; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.ss-navy .ss-track { padding: 10px; border-radius: 10px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08); }
+.ss-navy .ss-step i { background: #1a2a40; border-color: #3b4d68; }
+.ss-navy .ss-step::before { background: #3b4d68; }
+.ss-navy .ss-step.done i { background: var(--x-success); border-color: var(--x-success); }
+.ss-navy .ss-step.cur i { background: var(--sc2, var(--x-orange)); border-color: var(--sc2, var(--x-orange)); }
+.ss-navy .ss-step.done::before, .ss-navy .ss-step.cur::before { background: var(--x-success); }
+.ss-navy .ss-step span { color: #8e9bb0; }
+.ss-navy .ss-step.done span { color: #c3cddc; }
+.ss-navy .ss-foot { margin-top: 12px; padding-top: 0; border-top: 0; }
+.ss-navy .ss-av { border-color: #1a2a40; }
+.ss-navy .ss-ib { background: rgba(255,255,255,.07); border-color: rgba(255,255,255,.14); color: #e2e8f0; }
