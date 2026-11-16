@@ -9,13 +9,15 @@ import { useAuth } from '../context/AuthContext'
 import { assignmentsForDate } from '../utils/siteDays'
 import CalendarListView from './CalendarList'
 import SitesViewSwitch from '../components/SitesViewSwitch'
+import { Page, PageHeader, Tabs } from '../components/ui'
+import './Calendar.css'
 import { DEFAULT_CALENDAR_SETTINGS, fetchCalendarSettings, saveCalendarSettings } from '../utils/calendarSettings'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 const VIEWS = [
+  { key: 'list',   label: 'Sheet' },
   { key: 'month',  label: 'Month' },
-  { key: 'list',   label: 'List' },
 ]
 
 const TYPE_COLORS = {
@@ -265,59 +267,29 @@ export default function CalendarPage() {
   const SHOW = 2 // max chips before "+X more"
 
   return (
-    <div style={{ minHeight: '100vh', background: '#c8d4e3' }}>
+    <Page className="cal">
 
-      {/* ── Header ── */}
-      <div style={{ padding: '24px 40px 22px', background: '#071226', display: 'grid', gap: '14px' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '18px', flexWrap: 'wrap' }}>
-          <div>
-            <h1 style={{ fontSize: '22px', fontWeight: '700', color: 'white' }}>Calendar</h1>
-            <p style={{ color: '#94a3b8', fontSize: '13px', marginTop: '2px' }}>
-              {sites.length} site{sites.length !== 1 ? 's' : ''} this month
-            </p>
-            <SitesViewSwitch style={{ marginTop: '12px' }} />
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            <button onClick={() => setCurrent(new Date(year, month - 1, 1))} style={{ padding: '8px', borderRadius: '8px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.12)', color: 'white', cursor: 'pointer', display: 'flex' }}>
-              <ChevronLeft size={16} />
-            </button>
-            <span style={{ color: 'white', fontWeight: '700', fontSize: '15px', minWidth: '170px', textAlign: 'center' }}>{monthLabel}</span>
-            <button onClick={() => setCurrent(new Date(year, month + 1, 1))} style={{ padding: '8px', borderRadius: '8px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.12)', color: 'white', cursor: 'pointer', display: 'flex' }}>
-              <ChevronRight size={16} />
-            </button>
-            <button
-              onClick={() => setCurrent(new Date(today.getFullYear(), today.getMonth(), 1))}
-              style={{ padding: '7px 14px', borderRadius: '8px', background: '#2563eb', border: 'none', color: 'white', fontSize: '12px', fontWeight: '600', cursor: 'pointer', marginLeft: '4px' }}
-            >
-              Today
-            </button>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '4px', marginLeft: '4px' }}>
-              {visibleViews.map(({ key: v, label }) => (
-                <button
-                  key={v}
-                  onClick={() => setView(v)}
-                  style={{
-                    padding: '10px 22px', borderRadius: '7px', border: 'none', cursor: 'pointer',
-                    fontSize: '14px', fontWeight: '700', textTransform: 'capitalize',
-                    background: view === v ? '#2563eb' : 'transparent',
-                    color: view === v ? 'white' : '#94a3b8',
-                    transition: 'background-color .15s ease, color .15s ease',
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+      {/* ── Header (same navy card as Sites): title, view switch, Sheet/Month tabs, month nav ── */}
+      <section className="cal-hero">
+        <PageHeader
+          title="Calendar"
+          subtitle={<><b>{sites.length} site{sites.length !== 1 ? 's' : ''}</b> in {monthLabel}</>}
+          actions={<SitesViewSwitch />}
+        />
+        <div className="cal-bar">
+          <Tabs tabs={visibleViews.map(v => ({ key: v.key, label: v.label }))} active={view} onChange={setView} />
+          <div className="cal-nav">
+            <button type="button" className="ar" onClick={() => setCurrent(new Date(year, month - 1, 1))} aria-label="Previous month"><ChevronLeft size={16} /></button>
+            <span className="m">{monthLabel}</span>
+            <button type="button" className="ar" onClick={() => setCurrent(new Date(year, month + 1, 1))} aria-label="Next month"><ChevronRight size={16} /></button>
+            <button type="button" className="today" onClick={() => setCurrent(new Date(today.getFullYear(), today.getMonth(), 1))}>Today</button>
             {isZairul && <TabsMenu enabledTabs={enabledTabs} onToggle={toggleTab} />}
           </div>
         </div>
-
-      </div>
+      </section>
 
       {/* ── Grid ── */}
-      <div style={{ padding: '20px 40px 48px', display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
 
         {/* Calendar */}
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -568,7 +540,7 @@ export default function CalendarPage() {
           </div>
         </div>
       )}
-    </div>
+    </Page>
   )
 }
 

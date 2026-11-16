@@ -1,0 +1,21 @@
+/* Calendar page header — the same navy card as Sites. Classes prefixed cal-. */
+.cal-hero { background: linear-gradient(135deg, var(--x-navy) 0%, #1d2f47 100%); border-radius: var(--x-r-lg); padding: 18px 20px 0; margin: 4px 0 14px;
+  box-shadow: 0 10px 28px -12px rgba(20,33,49,.55); color: #fff; }
+.cal-hero .x-ph { margin: 0 0 14px; }
+.cal-hero .x-ph h1 { color: #fff; }
+.cal-hero .x-ph .x-sub { color: #aab6c8; }
+.cal-hero .x-sub b { color: #fff; font-weight: 600; }
+
+.cal-bar { display: flex; align-items: center; gap: 10px; margin: 0 -20px; padding: 0 12px; border-top: 1px solid rgba(255,255,255,.1); }
+.cal-bar .x-tabs { border-bottom: 0; margin: 0; padding: 0; }
+.cal-bar .x-tabs button { color: #9aa6bd; padding: 12px 14px; border-bottom-width: 3px; }
+.cal-bar .x-tabs button:hover { color: #fff; }
+.cal-bar .x-tabs button.on { color: #fff; font-weight: 600; border-bottom-color: var(--x-orange); }
+
+.cal-nav { margin-left: auto; display: flex; align-items: center; gap: 6px; padding: 8px 0; }
+.cal-nav button { font: inherit; cursor: pointer; }
+.cal-nav .ar { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; color: #dbe2ec; background: none; border: 1px solid rgba(255,255,255,.14); }
+.cal-nav .ar:hover { background: rgba(255,255,255,.08); color: #fff; }
+.cal-nav .m { min-width: 150px; text-align: center; font-weight: 600; font-size: 14.5px; }
+.cal-nav .today { padding: 7px 12px; border-radius: 8px; border: 0; background: var(--x-orange); color: #fff; font-size: 13px; font-weight: 600; margin: 0 2px 0 4px; }
+.cal-nav .today:hover { background: var(--x-orange-d); }
