@@ -145,13 +145,13 @@ export function FormSection({ title, description, children }) {
   return <div className="x-section">{title && <h3>{title}</h3>}{description && <p>{description}</p>}{children}</div>
 }
 
-export function Pagination({ page, pages, total, from, to, onChange }) {
-  if (pages <= 1) return total != null ? <div className="x-pager">Showing {total} {total === 1 ? 'item' : 'items'}</div> : null
+export function Pagination({ page, pages, total, from, to, onChange, noun = "items" }) {
+  if (pages <= 1) return total ? <div className="x-pager">Showing {total} {noun}</div> : null
   const nums = []
   for (let p = Math.max(1, page - 2); p <= Math.min(pages, page + 2); p++) nums.push(p)
   return (
     <div className="x-pager">
-      {total != null && <span>Showing {from}–{to} of {total}</span>}
+      {total != null && <span>Showing {from}–{to} of {total} {noun}</span>}
       <span className="x-sp" />
       <button onClick={() => onChange(page - 1)} disabled={page <= 1} aria-label="Previous page"><ChevronLeft size={14} /></button>
       {nums[0] > 1 && <><button onClick={() => onChange(1)}>1</button>{nums[0] > 2 && <span>…</span>}</>}

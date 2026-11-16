@@ -8,9 +8,9 @@ const VIEWS = [
   { to: '/map',      label: 'Map',      Icon: Map },
 ]
 
-export default function SitesViewSwitch({ style }) {
+export default function SitesViewSwitch({ style, variant }) {
   return (
-    <nav className="xt-views" aria-label="Sites view" style={style}>
+    <nav className={`xt-views${variant === "light" ? " light" : ""}`} aria-label="Sites view" style={style}>
       {VIEWS.map(({ to, label, Icon }) => (
         <NavLink key={to} to={to} end className={({ isActive }) => (isActive ? 'on' : '')}>
           <Icon size={13} /> {label}

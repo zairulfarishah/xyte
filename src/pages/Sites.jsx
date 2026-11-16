@@ -21,54 +21,15 @@ import {
   assignmentMemberId, assignmentsForDate, crewForDate, getSiteDates, hasDailyCrew,
   isPic, picForDate, siteCrew, sitePic, uniqueAssignments,
 } from '../utils/siteDays'
+import { Button, EmptyState, Field, FilterBar, Modal, Page, PageHeader, Pagination, StatusBadge, Tabs } from '../components/ui'
+import { REPORT_STATUS, SITE_STATUS, statusInfo } from '../components/ui/status'
 import './Sites.css'
 
-/* ── Design tokens (Dashboard light-mode parity) ── */
-const TYPE_META = {
-  site_scanning: { label:'Site Scanning', color:'#1d4ed8', chipBg:'#eff6ff', chipBorder:'#93c5fd' },
-  site_visit:    { label:'Site Visit',    color:'#166534', chipBg:'#f0fdf4', chipBorder:'#4ade80'  },
-  meeting:       { label:'Meeting',       color:'#6d28d9', chipBg:'#faf5ff', chipBorder:'#c4b5fd'  },
+const TYPE_LABEL = {
+  site_scanning: 'Site Scanning',
+  site_visit:    'Site Visit',
+  meeting:       'Meeting',
 }
-const CARD_GRADIENTS = {
-  site_scanning: 'linear-gradient(135deg,#0f2460 0%,#1a4b8c 55%,#0891b2 100%)',
-  site_visit:    'linear-gradient(135deg,#042f2e 0%,#065f46 55%,#0d9488 100%)',
-  meeting:       'linear-gradient(135deg,#1e0a3c 0%,#4c1d95 55%,#7c3aed 100%)',
-}
-const CARD_GLOW = {
-  site_scanning: 'rgba(37,99,235,.45)',
-  site_visit:    'rgba(13,148,136,.4)',
-  meeting:       'rgba(124,58,237,.4)',
-}
-// Soft tones for the card pills and the quick-update chips
-const STATUS_TONE = {
-  upcoming:  { text:'#b45309', bg:'#fffbeb', dot:'#f59e0b' },
-  ongoing:   { text:'#c2410c', bg:'#fff7ed', dot:'#f97316' },
-  completed: { text:'#15803d', bg:'#f0fdf4', dot:'#22c55e' },
-  cancelled: { text:'#b91c1c', bg:'#fef2f2', dot:'#ef4444' },
-  postponed: { text:'#475569', bg:'#f8fafc', dot:'#94a3b8' },
-}
-const REPORT_TONE = {
-  pending:        { text:'#b91c1c', bg:'#fef2f2', dot:'#ef4444' },
-  in_progress:    { text:'#b45309', bg:'#fffbeb', dot:'#f59e0b' },
-  submitted:      { text:'#1d4ed8', bg:'#eff6ff', dot:'#3b82f6' },
-  approved:       { text:'#15803d', bg:'#f0fdf4', dot:'#22c55e' },
-  not_applicable: { text:'#64748b', bg:'#f1f5f9', dot:'#94a3b8' },
-}
-const SITE_PROGRESS = {
-  upcoming:  { pct:15,  color:'#f59e0b' },
-  ongoing:   { pct:55,  color:'#2563eb' },
-  completed: { pct:100, color:'#16a34a' },
-  cancelled: { pct:0,   color:'#ef4444' },
-  postponed: { pct:25,  color:'#94a3b8' },
-}
-const REPORT_PROGRESS = {
-  pending:        { pct:10,  color:'#ef4444' },
-  in_progress:    { pct:40,  color:'#f59e0b' },
-  submitted:      { pct:75,  color:'#7c3aed' },
-  approved:       { pct:100, color:'#16a34a' },
-  not_applicable: { pct:0,   color:'#cbd5e1' },
-}
-const AVATAR_COLORS = ['#2563eb','#7c3aed','#db2777','#059669','#d97706','#dc2626']
 const SITE_TYPES   = [
   { value:'site_scanning', label:'Site Scanning' },
   { value:'site_visit',    label:'Site Visit'    },
@@ -204,35 +165,15 @@ function shortLocation(location) {
   return String(location || '').split(',').map(x => x.trim()).filter(Boolean).slice(0, 2).join(', ')
 }
 
-function MemberAvatar({ member, index = 0, className = '' }) {
+// Initials (or photo); the PIC gets an orange ring
+function MemberAvatar({ member, className = '' }) {
   const name = member?.full_name || '?'
   const initials = name.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0,2).toUpperCase() || '?'
   return (
-    <span className={`ss-av ${className}`} title={name} style={{ '--c':AVATAR_COLORS[Math.max(0, index) % AVATAR_COLORS.length] }}>
+    <span className={`ss-av ${className}`} title={name}>
       {member?.avatar_url ? <img src={member.avatar_url} alt={name} loading="lazy" decoding="async" /> : initials}
     </span>
   )
-}
-
-// Compact page list: first, last, current ± siblingCount, '…' for the rest.
-function getPageNumbers(current, total, siblingCount = 1) {
-  const totalSlots = siblingCount * 2 + 5
-  if (totalSlots >= total) return Array.from({ length: total }, (_, i) => i + 1)
-
-  const left  = Math.max(current - siblingCount, 1)
-  const right = Math.min(current + siblingCount, total)
-  const showLeftGap  = left > 2
-  const showRightGap = right < total - 1
-
-  if (!showLeftGap && showRightGap) {
-    const end = 3 + siblingCount * 2
-    return [...Array.from({ length: end }, (_, i) => i + 1), '…', total]
-  }
-  if (showLeftGap && !showRightGap) {
-    const start = total - (3 + siblingCount * 2) + 1
-    return [1, '…', ...Array.from({ length: total - start + 1 }, (_, i) => start + i)]
-  }
-  return [1, '…', ...Array.from({ length: right - left + 1 }, (_, i) => left + i), '…', total]
 }
 
 // Last loaded data, kept for the session so coming back to Sites shows the list
@@ -623,41 +564,32 @@ export default function Sites() {
   const myCount = memberId ? viewSites.filter(isMine).length : 0
 
 
-  const lightInput = {
-    width:'100%', padding:'8px 12px', borderRadius:'8px',
-    border:'1px solid #e2e8f0', fontSize:'13px', outline:'none',
-    background:'white', color:'#0f172a', fontFamily:'inherit', boxSizing:'border-box',
-  }
-  const lLabel = { display:'block', fontSize:'12px', fontWeight:'500', color:'#64748b', marginBottom:'6px' }
+  const tabItems = TABS.map(t => ({ key: t, label: t, count: counts[t] }))
+  const extraFilters = filterCount - (mine ? 1 : 0)
+  const headerActions = <>
+    <SitesViewSwitch variant="light" />
+    <Button variant="primary" icon={Plus} onClick={openAdd}>Add site</Button>
+  </>
 
   // Skeleton cards in the real grid, so nothing jumps when the data lands
   if (loading) return (
-    <div className="ss">
-      <main className="ss-main">
-        <div className="ss-top">
-          <div className="ss-head">
-            <div>
-              <div className="ss-eyebrow">{new Date().toLocaleDateString('en-MY', { weekday:'long', day:'numeric', month:'long' })}</div>
-              <h1>Sites</h1>
-              <p className="ss-sub">Loading sites…</p>
-            </div>
-          </div>
-          <div className="ss-bar"><div className="ss-tabs ss-sk-tabs"><span /><span /><span /><span /></div></div>
-        </div>
+    <Page className="ss">
+      <PageHeader title="Sites" subtitle="Loading sites…" actions={headerActions} />
+      <div className="x-card ss-board">
         <div className="ss-grid">
           {Array.from({ length: perPage }, (_, i) => (
             <div key={i} className="ss-card ss-sk">
-              <div className="ss-spacer" />
-              <div className="ss-panel-g">
-                <i style={{ width:'30%', height:'10px' }} /><i style={{ width:'75%', height:'18px', marginTop:'8px' }} />
-                <i style={{ width:'50%', marginTop:'8px' }} /><i style={{ width:'85%', marginTop:'14px' }} />
-                <i style={{ height:'34px', marginTop:'16px' }} />
+              <div className="ss-photo" />
+              <div className="ss-body">
+                <i style={{ width:'30%' }} /><i style={{ width:'75%', height:'16px', marginTop:'8px' }} />
+                <i style={{ width:'50%', marginTop:'8px' }} /><i style={{ width:'90%', marginTop:'16px' }} />
+                <i style={{ height:'30px', marginTop:'16px' }} />
               </div>
             </div>
           ))}
         </div>
-      </main>
-    </div>
+      </div>
+    </Page>
   )
 
   const closePanel = () => { setExpandedCard(null); setDraftStatus(null); setPanelAnchor(null) }
@@ -687,27 +619,27 @@ export default function Sites() {
   const salespeople = [...new Set([...SALESPERSONS, ...sites.map(s => s.salesperson).filter(Boolean)])]
 
   return (
-    <div className="ss">
-      <main className="ss-main">
+    <Page className="ss">
+      <PageHeader
+        title={showHidden ? 'Hidden sites' : 'Sites'}
+        subtitle={<>
+          <b>{ongoingCount}</b> ongoing · <b>{upcomingCount}</b> upcoming
+          {attentionCount > 0 && (
+            <> · <button className={`ss-attn${attention ? ' on' : ''}`} onClick={() => setParam({ attention: !attention })}>
+              <AlertTriangle size={12} /> {attentionCount} need attention
+            </button></>
+          )}
+        </>}
+        actions={headerActions}
+      />
 
-        {/* ── HEADER (the dark band grows with whatever is in here) ── */}
-        <div className="ss-top">
-        <div className="ss-head">
-          <div>
-            <div className="ss-eyebrow">{new Date().toLocaleDateString('en-MY', { weekday:'long', day:'numeric', month:'long' })}</div>
-            <h1>Sites</h1>
-            <p className="ss-sub">
-              Manage and track all site activities · <b>{ongoingCount}</b> ongoing · <b>{upcomingCount}</b> upcoming
-              {attentionCount > 0 && (
-                <> · <button className={`ss-attn${attention ? ' on' : ''}`} onClick={() => setParam({ attention: !attention })}>
-                  <AlertTriangle size={12} /> {attentionCount} need attention
-                </button></>
-              )}
-            </p>
-            <SitesViewSwitch style={{ marginTop:'12px' }} />
-          </div>
-          <label className="ss-search">
-            <Search size={15} strokeWidth={2.2} />
+      <Tabs tabs={tabItems} active={tab} onChange={t => setParam({ tab: t })} />
+
+      <div className="x-card ss-board">
+        {/* ── SEARCH + TOOLS ── */}
+        <FilterBar>
+          <label className="x-inp ss-search">
+            <Search />
             <input
               ref={searchRef}
               placeholder="Search sites, clients, people, DO…"
@@ -715,97 +647,77 @@ export default function Sites() {
               onChange={e => setParam({ q: e.target.value }, { replace:true })}
             />
             {search
-              ? <button className="clr" title="Clear search" onClick={() => setParam({ q:'' })}><X size={13} /></button>
+              ? <button className="x-clear" title="Clear search" onClick={() => setParam({ q:'' })}><X size={14} /></button>
               : <kbd>/</kbd>}
           </label>
-        </div>
-
-        {/* ── STATUS TABS + TOOLBAR ── */}
-        <div className="ss-bar">
-          <div className="ss-tabs">
-            {TABS.map(t => (
-              <button key={t} className={tab === t ? 'on' : ''} onClick={() => setParam({ tab: t })}>
-                {t}<i>{counts[t]}</i>
-              </button>
-            ))}
-          </div>
-          <div className="ss-tools">
-            {memberId && (
-              <button className={`ss-tool${mine ? ' on' : ''}`} onClick={() => setParam({ mine: !mine })} title="Only sites where you are PIC or crew">
-                My sites<i>{myCount}</i>
-              </button>
-            )}
-            <button className={`ss-tool${showFilters || filterCount - (mine ? 1 : 0) > 0 ? ' on' : ''}`} onClick={() => setShowFilters(v => !v)}>
-              <Filter size={13} /> Filters{filterCount - (mine ? 1 : 0) > 0 && <i>{filterCount - (mine ? 1 : 0)}</i>}
+          {memberId && (
+            <button className={`ss-tool${mine ? ' on' : ''}`} onClick={() => setParam({ mine: !mine })} title="Only sites where you are PIC or crew">
+              My sites<i>{myCount}</i>
             </button>
-            <select className="ss-tool sel" value={sort} onChange={e => setParam({ sort: e.target.value })} title="Sort">
-              {SORTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-            <button className={`ss-tool${grouped ? ' on' : ''}`} onClick={() => setParam({ group: !grouped }, { replace:true })} title="Group by Today / This week / Later / Past">
-              <Layers size={13} /> Group
+          )}
+          <button className={`ss-tool${showFilters || extraFilters > 0 ? ' on' : ''}`} onClick={() => setShowFilters(v => !v)} aria-expanded={showFilters}>
+            <Filter size={14} /> Filters{extraFilters > 0 && <i>{extraFilters}</i>}
+          </button>
+          <select className="x-select" value={sort} onChange={e => setParam({ sort: e.target.value })} title="Sort" aria-label="Sort">
+            {SORTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          <button className={`ss-tool${grouped ? ' on' : ''}`} onClick={() => setParam({ group: !grouped }, { replace:true })} title="Group by Today / This week / Later / Past">
+            <Layers size={14} /> Group
+          </button>
+          <button className={`ss-tool${selectMode ? ' on' : ''}`} onClick={() => { setSelectMode(v => !v); setSelected(new Set()) }} title="Select several sites to update at once">
+            <CheckSquare size={14} /> Select
+          </button>
+          {isZairul && (hiddenCount > 0 || showHidden) && (
+            <button className={`ss-tool${showHidden ? ' on' : ''}`} onClick={() => setParam({ hidden: !showHidden })} title="Sites you've hidden from this page">
+              <EyeOff size={14} /> Hidden<i>{hiddenCount}</i>
             </button>
-            <button className={`ss-tool${selectMode ? ' on' : ''}`} onClick={() => { setSelectMode(v => !v); setSelected(new Set()) }} title="Select several sites to update at once">
-              <CheckSquare size={13} /> Select
-            </button>
-            {isZairul && (hiddenCount > 0 || showHidden) && (
-              <button className={`ss-tool${showHidden ? ' on' : ''}`} onClick={() => setParam({ hidden: !showHidden })} title="Sites you've hidden from this page">
-                <EyeOff size={13} /> Hidden<i>{hiddenCount}</i>
-              </button>
-            )}
-          </div>
-        </div>
-        </div>
+          )}
+        </FilterBar>
 
         {/* ── MORE FILTERS ── */}
         {showFilters && (
           <div className="ss-filters">
-            <label>Type
-              <select value={typeFilter} onChange={e => setParam({ type: e.target.value })}>
+            <Field label="Type">
+              <select className={`x-select${typeFilter ? ' on' : ''}`} value={typeFilter} onChange={e => setParam({ type: e.target.value })}>
                 <option value="">All types</option>
                 {SITE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
-            </label>
-            <label>Report
-              <select value={repFilter} onChange={e => setParam({ report: e.target.value })}>
+            </Field>
+            <Field label="Report">
+              <select className={`x-select${repFilter ? ' on' : ''}`} value={repFilter} onChange={e => setParam({ report: e.target.value })}>
                 <option value="">Any report status</option>
                 {REPORT_FILTERS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
               </select>
-            </label>
-            <label>Salesperson
-              <select value={spFilter} onChange={e => setParam({ sp: e.target.value })}>
+            </Field>
+            <Field label="Salesperson">
+              <select className={`x-select${spFilter ? ' on' : ''}`} value={spFilter} onChange={e => setParam({ sp: e.target.value })}>
                 <option value="">Anyone</option>
                 {salespeople.map(sp => <option key={sp} value={sp}>{sp}</option>)}
               </select>
-            </label>
-            <label>From
-              <input type="date" value={dateFrom} max={dateTo || undefined} onChange={e => setParam({ from: e.target.value })} />
-            </label>
-            <label>To
-              <input type="date" value={dateTo} min={dateFrom || undefined} onChange={e => setParam({ to: e.target.value })} />
-            </label>
-            <label className="chk">
+            </Field>
+            <Field label="From">
+              <input className="x-control ss-date" type="date" value={dateFrom} max={dateTo || undefined} onChange={e => setParam({ from: e.target.value })} />
+            </Field>
+            <Field label="To">
+              <input className="x-control ss-date" type="date" value={dateTo} min={dateFrom || undefined} onChange={e => setParam({ to: e.target.value })} />
+            </Field>
+            <label className="ss-chk">
               <input type="checkbox" checked={attention} onChange={e => setParam({ attention: e.target.checked })} />
               Needs attention only
             </label>
-            {hasAnyFilter && <button className="ss-clear" onClick={clearFilters}>Clear all</button>}
+            {hasAnyFilter && <Button variant="ghost" size="sm" onClick={clearFilters}>Clear all</Button>}
           </div>
         )}
 
         {/* ── CARDS ── */}
         {paginated.length === 0 ? (
-          <div className="ss-empty">
-            <MapPin size={28} style={{ opacity:0.35 }} />
-            {showHidden && viewSites.length === 0 ? (<>
-              <span>No hidden sites</span>
-              <button className="ss-empty-btn" onClick={() => setParam({ hidden:'' })}>Back to sites</button>
-            </>) : sites.length === 0 ? (<>
-              <span>No sites yet</span>
-              <button className="ss-empty-btn" onClick={openAdd}><Plus size={14} /> Add your first site</button>
-            </>) : (<>
-              <span>No sites match{search ? <> “<b>{search}</b>”</> : ''} with these filters</span>
-              <button className="ss-empty-btn" onClick={clearFilters}>Clear filters</button>
-            </>)}
-          </div>
+          showHidden && viewSites.length === 0
+            ? <EmptyState icon={EyeOff} title="No hidden sites" actions={<Button size="sm" onClick={() => setParam({ hidden:'' })}>Back to sites</Button>}>Sites you hide from this page show up here.</EmptyState>
+            : sites.length === 0
+              ? <EmptyState icon={MapPin} title="No sites yet" actions={<Button variant="primary" size="sm" icon={Plus} onClick={openAdd}>Add your first site</Button>}>Add a site to start scheduling crew.</EmptyState>
+              : <EmptyState icon={Search} title="No sites match" actions={<Button size="sm" onClick={clearFilters}>Clear filters</Button>}>
+                  {search ? <>Nothing matches “{search}” with these filters.</> : 'Nothing matches these filters.'}
+                </EmptyState>
         ) : groupedPage.map(({ group, sites: groupSites }, gi) => (
           <section key={group || gi}>
             {group && <h2 className={`ss-group g-${GROUP_ORDER.indexOf(group)}`}>{group}<i>{groupSites.length}</i></h2>}
@@ -819,8 +731,7 @@ export default function Sites() {
               const crew      = Array.from(
                 new Map(siteCrew(site).map(a => [a.team_members?.id, a])).values()
               )
-              const typeMeta  = TYPE_META[site.site_type] || TYPE_META.site_scanning
-              const statusTone = STATUS_TONE[site.site_status] || STATUS_TONE.upcoming
+              const typeLabel = TYPE_LABEL[site.site_type] || TYPE_LABEL.site_scanning
               const isExpanded = expandedCard === site.id
               // Per-day rosters travel with the WhatsApp brief so everyone sees the rotation
               const dayRoster = dayRosterOf(site)
@@ -850,7 +761,8 @@ export default function Sites() {
               const moreOpen = moreMenu === site.id
               const { labels: stepLabels, cur: stepCur } = trackStage(site)
               const halted = site.site_status === 'cancelled' || site.site_status === 'postponed'
-              const stepColor = overdue > 0 ? '#dc2626' : stale ? '#d97706' : site.site_status === 'completed' ? '#2563eb' : statusTone.text
+              const stepColor = overdue > 0 ? 'var(--x-danger)' : stale ? 'var(--x-warning)' : 'var(--x-orange)'
+              const repTone = statusInfo(REPORT_STATUS, site.report_status).tone
               // PIC first (ringed), then crew — each person once
               const team = [pic, ...crew].filter(a => a?.team_members)
               const picShort = pic?.team_members?.full_name?.split(' ').slice(0, 2).join(' ')
@@ -862,54 +774,25 @@ export default function Sites() {
                   role="link" tabIndex={0} aria-label={`Open ${getSiteTitle(site)}`}
                   onClick={e => {
                     if (selectMode) { toggleSelected(site.id); return }
-                    if (e.target.closest('button, a, .ss-wa-menu')) return
+                    if (e.target.closest('button, a, .ss-menu')) return
                     navigate(`/sites/${site.id}`)
                   }}
                   onKeyDown={e => { if (e.key === 'Enter' && e.target === e.currentTarget) navigate(`/sites/${site.id}`) }}
-                  style={{ '--tg':CARD_GRADIENTS[site.site_type] || CARD_GRADIENTS.site_scanning, '--glow':CARD_GLOW[site.site_type] || CARD_GLOW.site_scanning, '--tc':typeMeta.color, '--sc2':stepColor }}>
+                  style={{ '--sc2': stepColor }}>
 
-                  {/* ── Full-bleed photo ── */}
+                  {/* ── Photo ── */}
                   <div className="ss-photo">
                     <img src={site.site_photo_url || getSiteHeaderImage(site.site_type)} alt="" loading="lazy" />
-                  </div>
-
-                  <div className="ss-top-row">
-                    {selectMode && <span className="ss-check">{isSel ? <CheckSquare size={18} /> : <Square size={18} />}</span>}
-                    <span className="ss-glass" title={site.location}><MapPin size={11} strokeWidth={2.4} /><span>{shortLocation(site.location)}</span></span>
-                    <span className={`ss-status${site.site_status === 'ongoing' ? ' live' : ''}`} style={{ '--sc':statusTone.text }}>{site.site_status}</span>
-                  </div>
-                  {!selectMode && <span className="ss-open"><ArrowUpRight size={13} strokeWidth={2.4} /> Open</span>}
-                  <div className="ss-spacer" />
-
-                  {/* ── Progress tracker (dark glass on the photo) ── */}
-                  <div className={`ss-track${halted ? ' halt' : ''}`}>
-                    <div className="ss-steps">
-                      {stepLabels.map((label, i) => (
-                        <div key={label} className={`ss-step${i < stepCur ? ' done' : i === stepCur ? ` cur${site.site_status === 'ongoing' ? ' live' : ''}` : ''}`}>
-                          <i>{i < stepCur && <Check size={11} strokeWidth={3.2} />}</i>
-                          <span>{label}</span>
-                        </div>
-                      ))}
+                    <div className="ss-ov">
+                      {selectMode && <span className="ss-check">{isSel ? <CheckSquare size={18} /> : <Square size={18} />}</span>}
+                      <StatusBadge map={SITE_STATUS} value={site.site_status} />
+                      {!selectMode && <span className="ss-open"><ArrowUpRight size={13} /> Open</span>}
                     </div>
-                    <div className="ss-cap">
-                      {overdue > 0 ? (
-                        <button className="late" onClick={stopFix}><FileWarning size={13} /> Report overdue · {overdue}d <b>Fix →</b></button>
-                      ) : stale ? (
-                        <button className="stl" onClick={stopFix} title={stale}><AlertTriangle size={13} /> {stale.split(' — ')[0]} <b>Fix →</b></button>
-                      ) : halted ? (
-                        <span>{site.site_status === 'cancelled' ? 'Cancelled' : 'Postponed'}</span>
-                      ) : site.report_status === 'not_applicable' ? (
-                        <span>{site.site_status === 'completed' ? 'Done' : site.site_status === 'ongoing' ? `On site · ${rel?.text || ''}` : 'No report needed'}</span>
-                      ) : (
-                        <span><i className="dot" style={{ background:REPORT_TONE[site.report_status]?.dot }} />Report {site.report_status?.replace(/_/g, ' ')}</span>
-                      )}
-                      <span className={`do${doNo ? '' : ' na'}`}>{doNo ? `DO ${doNo}` : 'No DO yet'}</span>
-                    </div>
+                    {site.location && <span className="ss-loc" title={site.location}><MapPin size={11} /><span>{shortLocation(site.location)}</span></span>}
                   </div>
 
-                  {/* ── Glass panel ── */}
-                  <div className="ss-panel-g">
-                    <div className="ss-eb">{typeMeta.label}</div>
+                  <div className="ss-body">
+                    <div className="ss-eb">{typeLabel}</div>
                     <h3 className="ss-name" title={getSiteTitle(site)}>{site.site_name}</h3>
                     {site.client_company_name && <p className="ss-client">{site.client_company_name}</p>}
                     <div className="ss-meta">
@@ -919,33 +802,57 @@ export default function Sites() {
                       {rel && <><i>·</i><span className={`r ${rel.tone}`}>{rel.text}</span></>}
                     </div>
 
+                    {/* ── Progress tracker ── */}
+                    <div className={`ss-track${halted ? ' halt' : ''}`}>
+                      <div className="ss-steps">
+                        {stepLabels.map((label, i) => (
+                          <div key={label} className={`ss-step${i < stepCur ? ' done' : i === stepCur ? ` cur${site.site_status === 'ongoing' ? ' live' : ''}` : ''}`}>
+                            <i>{i < stepCur && <Check size={10} strokeWidth={3.2} />}</i>
+                            <span>{label}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="ss-cap">
+                        {overdue > 0 ? (
+                          <button className="late" onClick={stopFix}><FileWarning size={13} /> Report overdue · {overdue}d <b>Fix</b></button>
+                        ) : stale ? (
+                          <button className="stl" onClick={stopFix} title={stale}><AlertTriangle size={13} /> {stale.split(' — ')[0]} <b>Fix</b></button>
+                        ) : halted ? (
+                          <span>{site.site_status === 'cancelled' ? 'Cancelled' : 'Postponed'}</span>
+                        ) : site.report_status === 'not_applicable' ? (
+                          <span>{site.site_status === 'completed' ? 'Done' : site.site_status === 'ongoing' ? `On site · ${rel?.text || ''}` : 'No report needed'}</span>
+                        ) : (
+                          <span><i className="dot" style={{ background:`var(--x-${repTone})` }} />Report {site.report_status?.replace(/_/g, ' ')}</span>
+                        )}
+                        <span className={`do${doNo ? '' : ' na'}`}>{doNo ? `DO ${doNo}` : 'No DO yet'}</span>
+                      </div>
+                    </div>
+
                     <div className="ss-foot">
                       <div className="ss-team" title={pic ? `${site.site_type === 'meeting' ? 'Organizer' : 'PIC'}: ${pic.team_members?.full_name}${perDay ? ' (daily crew)' : ''}${crew.length ? ` · Crew: ${crew.map(c => c.team_members?.full_name).join(', ')}` : ''}` : 'No PIC assigned'}>
                         {team.length > 0 ? (<>
                           <div className="ss-stack">
                             {team.slice(0, 3).map((a, ti) => (
-                              <MemberAvatar key={a.team_members.id || ti} member={a.team_members}
-                                index={Math.max(0, members.findIndex(m => m.id === a.team_members.id))}
-                                className={a === pic ? 'pic' : ''} />
+                              <MemberAvatar key={a.team_members.id || ti} member={a.team_members} className={a === pic ? 'pic' : ''} />
                             ))}
                             {team.length > 3 && <span className="more">+{team.length - 3}</span>}
                           </div>
                           <b className={pic ? '' : 'na'}>{pic ? picShort : 'No PIC'}</b>
                           {crew.length > 0 && <small>+{crew.length}</small>}
-                        </>) : (<>
-                          <span className="ss-av none" />
+                        </>) : (
                           <b className="na">No team yet</b>
-                        </>)}
+                        )}
                       </div>
 
-                      <button className={`ss-ib up${isExpanded ? ' open' : ''}`} title="Update status"
+                      <button className={`ss-ib${isExpanded ? ' open' : ''}`} title="Update status" aria-label="Update status"
                         onClick={e => { e.stopPropagation(); if (isExpanded) closePanel(); else openUpdate(site) }}>
                         <Pencil size={14} />
                       </button>
                       {waTargets.length > 0 && (
-                        <div className="ss-wa">
+                        <div className="ss-pop">
                           <button className={`ss-ib wa${waOpen ? ' open' : ''}`}
                             title={waTargets.length === 1 ? `WhatsApp ${waTargets[0].member.full_name}` : 'WhatsApp the team'}
+                            aria-label="WhatsApp"
                             onClick={e => {
                               e.stopPropagation()
                               if (waTargets.length === 1) { sendBrief(waTargets[0]); return }
@@ -955,27 +862,27 @@ export default function Sites() {
                             <MessageCircle size={14} />
                           </button>
                           {waOpen && (
-                            <div className="ss-wa-menu">
-                              <p>SEND BRIEF TO</p>
+                            <div className="ss-menu">
+                              <p>Send brief to</p>
                               {waTargets.map(target => (
                                 <button key={target.member.id}
                                   onClick={e => { e.stopPropagation(); sendBrief(target); setWaMenu(null) }}>
-                                  <MemberAvatar member={target.member} index={members.findIndex(m => m.id === target.member.id)} />
+                                  <MemberAvatar member={target.member} />
                                   <span>{target.member.full_name}</span>
-                                  <em className={target.role === 'PIC' ? 'pic' : ''}>{target.role === 'PIC' ? 'PIC' : 'CREW'}</em>
+                                  <em className={target.role === 'PIC' ? 'pic' : ''}>{target.role === 'PIC' ? 'PIC' : 'Crew'}</em>
                                 </button>
                               ))}
                             </div>
                           )}
                         </div>
                       )}
-                      <div className="ss-wa">
-                        <button className={`ss-ib more${moreOpen ? ' open' : ''}`} title="More actions"
+                      <div className="ss-pop">
+                        <button className={`ss-ib${moreOpen ? ' open' : ''}`} title="More actions" aria-label="More actions"
                           onClick={e => { e.stopPropagation(); setWaMenu(null); setMoreMenu(moreOpen ? null : site.id) }}>
                           <MoreHorizontal size={15} />
                         </button>
                         {moreOpen && (
-                          <div className="ss-wa-menu ss-more-menu" onClick={e => e.stopPropagation()}>
+                          <div className="ss-menu" onClick={e => e.stopPropagation()}>
                             <button onClick={() => { setMoreMenu(null); navigate(`/sites/${site.id}`) }}><ArrowUpRight size={14} /><span>Open site</span></button>
                             <button onClick={() => { setMoreMenu(null); openEdit(site) }}><SlidersHorizontal size={14} /><span>Edit site</span></button>
                             <button onClick={() => { setMoreMenu(null); openDuplicate(site) }}><Copy size={14} /><span>Duplicate</span></button>
@@ -997,22 +904,12 @@ export default function Sites() {
         ))}
 
         {/* ── PAGINATION ── */}
-        {totalPages > 1 && (
-          <div className="ss-pager">
-            <span>Showing <b>{(page-1)*perPage+1}–{Math.min(page*perPage, filtered.length)}</b> of <b>{filtered.length}</b> sites</span>
-            <div className="ss-pages">
-              <button onClick={() => setPage(p => Math.max(1,p-1))} disabled={page===1}>‹</button>
-              {getPageNumbers(page, totalPages).map((p, i) => (
-                p === '…'
-                  ? <span key={`gap-${i}`}>…</span>
-                  : <button key={p} className={page===p ? 'on' : ''} onClick={() => setPage(p)}>{p}</button>
-              ))}
-              <button onClick={() => setPage(p => Math.min(totalPages,p+1))} disabled={page===totalPages}>›</button>
-            </div>
-          </div>
-        )}
-
-      </main>
+        <Pagination
+          page={page} pages={totalPages} total={filtered.length} noun="sites"
+          from={(page-1)*perPage+1} to={Math.min(page*perPage, filtered.length)}
+          onChange={p => setPage(Math.max(1, Math.min(totalPages, p)))}
+        />
+      </div>
 
       {/* ── BULK UPDATE BAR ── */}
       {selectMode && (
@@ -1025,15 +922,14 @@ export default function Sites() {
           <div className="acts">
             <span>Set status</span>
             {BULK_STATUSES.map(s => (
-              <button key={s} disabled={!selected.size || bulkSaving}
-                style={{ '--oc':STATUS_TONE[s].dot, '--ot':STATUS_TONE[s].text, '--ob':STATUS_TONE[s].bg }}
-                onClick={() => handleBulkStatus(s)}>{s}</button>
+              <button key={s} className={`x-badge x-tone-${statusInfo(SITE_STATUS, s).tone}`} disabled={!selected.size || bulkSaving}
+                onClick={() => handleBulkStatus(s)}>{statusInfo(SITE_STATUS, s).label}</button>
             ))}
           </div>
           <button className="wa" disabled={!selected.size} onClick={openBrief} title="One WhatsApp message with every selected site">
             <MessageCircle size={14} /> WhatsApp
           </button>
-          <button className="x" title="Done" onClick={() => { setSelectMode(false); setSelected(new Set()) }}><X size={16} /></button>
+          <button className="x" title="Done" aria-label="Done" onClick={() => { setSelectMode(false); setSelected(new Set()) }}><X size={16} /></button>
         </div>
       )}
 
@@ -1044,139 +940,112 @@ export default function Sites() {
             {t.tone === 'err' || t.tone === 'warn' ? <AlertTriangle size={15} /> : <CheckCircle size={15} />}
             <span>{t.msg}</span>
             {t.action && <button className="act" onClick={t.action.fn}>{t.action.label}</button>}
-            <button className="x" onClick={() => dismissToast(t.id)}><X size={13} /></button>
+            <button className="x" onClick={() => dismissToast(t.id)} aria-label="Dismiss"><X size={13} /></button>
           </div>
         ))}
       </div>
 
-      {/* ── QUICK UPDATE PANEL ── */}
+      {/* ── QUICK UPDATE ── */}
       {expandedCard && draftStatus && panelAnchor && (() => {
         const site = paginated.find(s => s.id === expandedCard)
         if (!site) return null
         return (
-          <>
-            <div className="ss-scrim" onClick={closePanel} />
-            <div className="ss-panel" style={{ '--tg':CARD_GRADIENTS[site.site_type] || CARD_GRADIENTS.site_scanning }}>
-              <div className="ss-p-head">
-                <img className="thumb" src={site.site_photo_url || getSiteHeaderImage(site.site_type)} alt="" />
-                <div>
-                  <b title={getSiteTitle(site)}>{getSiteTitle(site)}</b>
-                  <small>Update status</small>
-                </div>
-                <button className="x" onClick={closePanel}><X size={15} /></button>
+          <Modal title="Update status" onClose={closePanel}
+            footer={<>
+              <Button onClick={closePanel}>Cancel</Button>
+              <Button variant="primary" onClick={() => handleQuickSave(site)} disabled={!!quickSaving}>
+                {quickSaving === site.id ? 'Saving…' : 'Save changes'}
+              </Button>
+            </>}>
+            <div className="ss-upd">
+              <div className="ss-upd-site">
+                <img src={site.site_photo_url || getSiteHeaderImage(site.site_type)} alt="" />
+                <div><b title={getSiteTitle(site)}>{getSiteTitle(site)}</b><small>{formatRange(siteStart(site), siteEnd(site))}</small></div>
               </div>
 
-              <div className="ss-p-body">
-                <div>
-                  <label>Site status</label>
+              <Field label="Site status">
+                <div className="ss-chips">
+                  {['upcoming','ongoing','completed','cancelled','postponed'].map(s => {
+                    const info = statusInfo(SITE_STATUS, s)
+                    return (
+                      <button key={s} className={`x-badge x-tone-${info.tone}${draftStatus.site_status === s ? ' on' : ''}`}
+                        aria-pressed={draftStatus.site_status === s}
+                        onClick={() => setDraftStatus(d => ({...d, site_status:s}))}>
+                        {info.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </Field>
+
+              {(site.site_type === 'site_scanning' || site.site_type === 'site_visit') && (
+                <Field label="Report status">
                   <div className="ss-chips">
-                    {['upcoming','ongoing','completed','cancelled','postponed'].map(s => {
-                      const c = STATUS_TONE[s]
+                    {['pending','in_progress','submitted','approved','not_applicable'].map(s => {
+                      const info = statusInfo(REPORT_STATUS, s)
+                      const locked = s === 'approved' && !isZairul
                       return (
-                        <button key={s} className={draftStatus.site_status === s ? 'on' : ''}
-                          style={{ '--oc':c.dot, '--ot':c.text, '--ob':c.bg }}
-                          onClick={() => setDraftStatus(d => ({...d, site_status:s}))}>
-                          {s}
+                        <button key={s} disabled={locked} title={locked ? 'Only Zairul can approve' : undefined}
+                          className={`x-badge x-tone-${info.tone}${draftStatus.report_status === s ? ' on' : ''}`}
+                          aria-pressed={draftStatus.report_status === s}
+                          onClick={() => !locked && setDraftStatus(d => ({...d, report_status:s}))}>
+                          {info.label}
                         </button>
                       )
                     })}
                   </div>
-                </div>
+                </Field>
+              )}
 
-                {(site.site_type === 'site_scanning' || site.site_type === 'site_visit') && (
-                  <div>
-                    <label>Report status</label>
-                    <div className="ss-chips">
-                      {['pending','in_progress','submitted','approved','not_applicable'].map(s => {
-                        const c = REPORT_TONE[s]
-                        const locked = s === 'approved' && !isZairul
-                        return (
-                          <button key={s} disabled={locked} title={locked ? 'Only Zairul can approve' : undefined}
-                            className={draftStatus.report_status === s ? 'on' : ''}
-                            style={{ '--oc':c.dot, '--ot':c.text, '--ob':c.bg }}
-                            onClick={() => !locked && setDraftStatus(d => ({...d, report_status:s}))}>
-                            {s.replace(/_/g,' ')}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {draftStatus.site_status === 'completed' && (<>
-                  <div>
-                    <label>Delivery order number</label>
-                    <input
-                      value={draftStatus.delivery_order_number || ''}
-                      onChange={event => setDraftStatus(current => ({ ...current, delivery_order_number: event.target.value }))}
-                      placeholder="Key in DO number"
-                    />
-                  </div>
-                  <div>
-                    <label>Reason if no DO</label>
-                    <textarea
-                      value={draftStatus.completion_reason || ''}
-                      onChange={event => setDraftStatus(current => ({ ...current, completion_reason: event.target.value }))}
-                      placeholder="State the reason if there is no delivery order number"
-                      rows={3}
-                    />
-                  </div>
-                  <p className="hint">Completed status requires either a delivery order number or a stated reason.</p>
-                </>)}
-              </div>
-
-              <div className="ss-p-foot">
-                <button className="save" onClick={() => handleQuickSave(site)} disabled={!!quickSaving}>
-                  {quickSaving === site.id ? 'Saving…' : 'Save Changes'}
-                </button>
-                <button className="cancel" onClick={closePanel}>Cancel</button>
-              </div>
+              {draftStatus.site_status === 'completed' && (<>
+                <Field label="Delivery order number">
+                  <input className="x-control"
+                    value={draftStatus.delivery_order_number || ''}
+                    onChange={event => setDraftStatus(current => ({ ...current, delivery_order_number: event.target.value }))}
+                    placeholder="Key in DO number"
+                  />
+                </Field>
+                <Field label="Reason if no DO" hint="Completed status needs either a delivery order number or a stated reason.">
+                  <textarea className="x-control"
+                    value={draftStatus.completion_reason || ''}
+                    onChange={event => setDraftStatus(current => ({ ...current, completion_reason: event.target.value }))}
+                    placeholder="State the reason if there is no delivery order number"
+                    rows={3}
+                  />
+                </Field>
+              </>)}
             </div>
-          </>
+          </Modal>
         )
       })()}
 
       {/* ── WHATSAPP BRIEF ── */}
       {brief && (
-        <div style={{ position:'fixed', inset:0, display:'flex', alignItems:'center', justifyContent:'center', zIndex:3200, padding:'16px', background:'rgba(0,0,0,0.4)' }}
-          onClick={e => e.target===e.currentTarget && setBrief(null)}>
-          <div style={{ width:'100%', maxWidth:'560px', maxHeight:'92vh', borderRadius:'20px', background:'white', boxShadow:'0 24px 64px rgba(15,23,42,.18)', display:'flex', flexDirection:'column', overflow:'hidden' }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:isMobile ? '16px 18px' : '20px 28px', borderBottom:'1px solid #f1f5f9', flexShrink:0 }}>
-              <h3 style={{ margin:0, fontSize:'17px', fontWeight:'800', color:'#0f172a' }}>WhatsApp brief</h3>
-              <button onClick={() => setBrief(null)} style={{ background:'none', border:'none', cursor:'pointer', color:'#94a3b8' }}><X size={18} /></button>
+        <Modal title="WhatsApp brief" onClose={() => setBrief(null)}>
+          <div className="ss-upd">
+            <Field label="Message — edit anything before sending">
+              <textarea className="x-control" style={{ minHeight: isMobile ? '220px' : '260px', resize:'vertical', lineHeight:1.5 }}
+                value={brief.text} onChange={e => setBrief(b => ({ ...b, text:e.target.value }))} />
+            </Field>
+            <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
+              <button className="x-btn ss-wa-send" onClick={() => openWhatsAppShare(brief.text)}>
+                <MessageCircle /> Send to a chat or group
+              </button>
+              <Button icon={Copy} onClick={copyBrief}>Copy</Button>
             </div>
-            <div style={{ overflowY:'auto', padding:isMobile ? '16px 18px' : '20px 28px', display:'flex', flexDirection:'column', gap:'16px' }}>
-              <div>
-                <label style={lLabel}>Message. Edit anything before sending</label>
-                <textarea style={{ ...lightInput, minHeight:'260px', resize:'vertical', lineHeight:1.5, fontFamily:'inherit' }}
-                  value={brief.text} onChange={e => setBrief(b => ({ ...b, text:e.target.value }))} />
-              </div>
-              <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
-                <button onClick={() => openWhatsAppShare(brief.text)}
-                  style={{ display:'inline-flex', alignItems:'center', gap:'6px', padding:'9px 16px', borderRadius:'10px', border:'none', background:'#16a34a', color:'white', fontSize:'13px', fontWeight:'700', cursor:'pointer' }}>
-                  <MessageCircle size={14} /> Send to a chat or group
-                </button>
-                <button onClick={copyBrief}
-                  style={{ display:'inline-flex', alignItems:'center', gap:'6px', padding:'9px 16px', borderRadius:'10px', border:'1px solid #e2e8f0', background:'white', color:'#0f172a', fontSize:'13px', fontWeight:'700', cursor:'pointer' }}>
-                  <Copy size={14} /> Copy
-                </button>
-              </div>
-              {brief.people.length > 0 && (
-                <div>
-                  <label style={lLabel}>Or send straight to someone on these sites</label>
-                  <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
-                    {brief.people.map(({ member, pic }) => (
-                      <button key={member.id} onClick={() => openWhatsApp(member.phone, brief.text)}
-                        style={{ display:'inline-flex', alignItems:'center', gap:'6px', padding:'6px 12px', borderRadius:'999px', border:'1px solid #bbf7d0', background:'#f0fdf4', color:'#166534', fontSize:'12px', fontWeight:'650', cursor:'pointer' }}>
-                        {shortNameOf(member)}{pic && <em style={{ fontStyle:'normal', fontSize:'9px', fontWeight:'800', color:'#92400e' }}>PIC</em>}
-                      </button>
-                    ))}
-                  </div>
+            {brief.people.length > 0 && (
+              <Field label="Or send straight to someone on these sites">
+                <div className="ss-chips">
+                  {brief.people.map(({ member, pic }) => (
+                    <button key={member.id} className="x-badge nodot x-tone-success" onClick={() => openWhatsApp(member.phone, brief.text)}>
+                      {shortNameOf(member)}{pic && <em className="ss-pic-tag">PIC</em>}
+                    </button>
+                  ))}
                 </div>
-              )}
-            </div>
+              </Field>
+            )}
           </div>
-        </div>
+        </Modal>
       )}
 
       {showForm && (
@@ -1195,6 +1064,6 @@ export default function Sites() {
         />
       )}
 
-    </div>
+    </Page>
   )
 }

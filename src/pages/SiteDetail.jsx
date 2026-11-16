@@ -1,35 +1,19 @@
 import { useEffect, useState, useRef } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { ChevronLeft, ChevronRight, Pencil, MapPin, Upload, X, Users, FileText, LayoutGrid, Grid3x3 } from 'lucide-react'
 import SiteLayouts from './layout/SiteLayouts'
 import { getSiteHeaderImage } from '../utils/siteHeader'
 import { parseCompletionMeta } from '../utils/completionMeta'
-import { useViewport } from '../utils/useViewport'
 import { SiteFeedPosts } from '../components/FeedWidgets'
 import { shrinkPhoto } from '../utils/photo'
 import {
   crewForDate, formatDayLabel, getSiteDates, hasDailyCrew, isPic,
   memberDatesOnSite, picForDate, uniqueAssignments,
 } from '../utils/siteDays'
-
-const STATUS_COLORS = {
-  upcoming:  { bg: '#fef9c3', text: '#854d0e', border: '#fde047' },
-  ongoing:   { bg: '#ffedd5', text: '#9a3412', border: '#fb923c' },
-  completed: { bg: '#dcfce7', text: '#166534', border: '#4ade80' },
-  cancelled: { bg: '#fee2e2', text: '#991b1b', border: '#f87171' },
-  postponed: { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' },
-}
-
-const REPORT_COLORS = {
-  pending:     { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' },
-  in_progress: { bg: '#eff6ff', text: '#1d4ed8', border: '#93c5fd' },
-  submitted:   { bg: '#faf5ff', text: '#6d28d9', border: '#c4b5fd' },
-  approved:    { bg: '#dcfce7', text: '#166534', border: '#4ade80' },
-  not_applicable: { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' },
-}
-
-const AVATAR_COLORS = ['#2563eb', '#7c3aed', '#db2777', '#059669', '#d97706', '#dc2626']
+import { Avatar, Button, Card, EmptyState, LoadingState, Page, PageHeader, StatusBadge, Tabs } from '../components/ui'
+import { REPORT_STATUS, SITE_STATUS } from '../components/ui/status'
+import './SiteDetail.css'
 
 const TYPE_LABELS = {
   site_scanning: 'Site Scanning',
@@ -37,34 +21,7 @@ const TYPE_LABELS = {
   meeting:       'Meeting',
 }
 
-function Avatar({ name, size = 36, index = 0, avatarUrl = null }) {
-  const initials = name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?'
-  return (
-    <div style={{
-      width: size, height: size, borderRadius: '50%', flexShrink: 0, overflow: 'hidden',
-      background: avatarUrl ? '#0f172a' : AVATAR_COLORS[index % AVATAR_COLORS.length],
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: 'white', fontWeight: '700', fontSize: size * 0.35,
-      border: '2px solid white',
-    }}>
-      {avatarUrl ? <img src={avatarUrl} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initials}
-    </div>
-  )
-}
-
-function StatusPill({ status, colors }) {
-  const c = colors[status] || colors[Object.keys(colors)[0]]
-  return (
-    <span style={{
-      background: c.bg, color: c.text, border: `1px solid ${c.border}`,
-      padding: '4px 12px', borderRadius: '99px', fontSize: '12px',
-      fontWeight: '600', textTransform: 'capitalize', whiteSpace: 'nowrap',
-    }}>{status?.replace(/_/g, ' ')}</span>
-  )
-}
-
 export default function SiteDetail() {
-  const { isMobile, isTablet } = useViewport()
   const { id } = useParams()
   const navigate = useNavigate()
   const fileInputRef = useRef(null)
@@ -148,15 +105,17 @@ export default function SiteDetail() {
   const nextId = currentIndex < allIds.length - 1 ? allIds[currentIndex + 1] : null
 
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '80vh' }}>
-      <div style={{ color: '#64748b' }}>Loading...</div>
-    </div>
+    <Page className="sd">
+      <PageHeader crumbs={[{ label: 'Sites', to: '/sites' }]} title="Loading site…" />
+      <Card><LoadingState rows={6} /></Card>
+    </Page>
   )
 
   if (!site) return (
-    <div style={{ padding: '28px' }}>
-      <p style={{ color: '#64748b' }}>Site not found.</p>
-    </div>
+    <Page className="sd">
+      <PageHeader crumbs={[{ label: 'Sites', to: '/sites' }]} title="Site not found" />
+      <Card><EmptyState icon={MapPin} title="This site doesn't exist" actions={<Button to="/sites">Back to sites</Button>}>It may have been deleted, or the link is wrong.</EmptyState></Card>
+    </Page>
   )
 
   // Everyone who works the site, listed once — the crew may rotate day by day
@@ -167,158 +126,96 @@ export default function SiteDetail() {
   const perDayCrew = hasDailyCrew(assignments)
   const siteDates = getSiteDates(site)
   const completionMeta = parseCompletionMeta(site.notes || '')
+  const dateLong = site.scheduled_date ? new Date(site.scheduled_date).toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Not set'
+  const dateShort = site.scheduled_date ? new Date(site.scheduled_date).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not set'
+  const showReport = site.site_type === 'site_scanning' || site.site_type === 'site_visit'
 
   return (
-    <div style={{ background: '#f1f5f9', minHeight: '100vh' }}>
+    <Page className="sd">
+      <PageHeader
+        crumbs={[{ label: 'Sites', to: '/sites' }, { label: site.site_name }]}
+        title={<span className="sd-title">{site.site_name}<StatusBadge map={SITE_STATUS} value={site.site_status} /></span>}
+        subtitle={site.location && <span className="sd-loc"><MapPin size={13} /> {site.location}</span>}
+        actions={<>
+          <Button iconOnly icon={ChevronLeft} onClick={() => prevId && navigate(`/sites/${prevId}`)} disabled={!prevId} aria-label="Previous site" title="Previous site" />
+          <Button iconOnly icon={ChevronRight} onClick={() => nextId && navigate(`/sites/${nextId}`)} disabled={!nextId} aria-label="Next site" title="Next site" />
+          <Button variant="primary" icon={Pencil} to="/sites">Edit</Button>
+        </>}
+      />
 
-      {/* Dark header */}
-      <div style={{ background: '#0f172a', padding: isMobile ? '18px 14px' : '24px 28px', position: 'relative', overflow: 'hidden' }}>
-        <img
-          src={site.site_photo_url || getSiteHeaderImage(site.site_type)}
-          alt=""
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-        />
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,0.35), rgba(15,23,42,0.82))' }} />
-        <div style={{ position: 'relative', zIndex: 1 }}>
-        {/* Breadcrumb */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '16px' }}>
-          <Link to="/sites" style={{ color: '#64748b', fontSize: '13px', textDecoration: 'none' }}>Sites</Link>
-          <ChevronRight size={13} color="#475569" />
-          <span style={{ color: '#94a3b8', fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{site.site_name}</span>
-        </div>
-
-        {/* Title row */}
-        <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'space-between', gap: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0, flexWrap: 'wrap' }}>
-            <h1 style={{ fontSize: isMobile ? '20px' : '24px', fontWeight: '700', color: 'white', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: isMobile ? 'normal' : 'nowrap' }}>{site.site_name}</h1>
-            <StatusPill status={site.site_status} colors={STATUS_COLORS} />
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, flexWrap: 'wrap' }}>
-            <button
-              onClick={() => prevId && navigate(`/sites/${prevId}`)}
-              disabled={!prevId}
-              style={{ width: '34px', height: '34px', borderRadius: '8px', border: '1px solid #1e293b', background: '#1e293b', color: prevId ? '#94a3b8' : '#334155', cursor: prevId ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            ><ChevronLeft size={16} /></button>
-            <button
-              onClick={() => nextId && navigate(`/sites/${nextId}`)}
-              disabled={!nextId}
-              style={{ width: '34px', height: '34px', borderRadius: '8px', border: '1px solid #1e293b', background: '#1e293b', color: nextId ? '#94a3b8' : '#334155', cursor: nextId ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            ><ChevronRight size={16} /></button>
-            <Link
-              to="/sites"
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#2563eb', color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: '500' }}
-            ><Pencil size={13} /> Edit</Link>
-          </div>
-        </div>
-
-        <p style={{ color: '#475569', fontSize: '13px', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <MapPin size={12} color="#475569" /> {site.location}
-        </p>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div style={{ padding: isMobile ? '16px 14px 24px' : '24px 28px', display: 'flex', flexDirection: isTablet ? 'column' : 'row', gap: '24px', alignItems: 'flex-start' }}>
-
+      <div className="sd-cols">
         {/* Left */}
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div className="sd-main">
+          <div className="sd-cover">
+            <img src={site.site_photo_url || getSiteHeaderImage(site.site_type)} alt="" />
+            <div className="sd-cover-facts">
+              <span><b>{TYPE_LABELS[site.site_type] || 'Site Scanning'}</b></span>
+              <span>{dateShort}</span>
+              {site.client_company_name && <span>{site.client_company_name}</span>}
+            </div>
+          </div>
 
           {/* Photo gallery */}
-          <div style={{ background: 'white', borderRadius: '14px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <p style={{ fontSize: '14px', fontWeight: '600', color: '#0f172a' }}>Site Photos</p>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#475569', padding: '6px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: '500', cursor: uploading ? 'not-allowed' : 'pointer', opacity: uploading ? 0.7 : 1 }}
-              >
-                <Upload size={12} /> {uploading ? 'Uploading...' : 'Upload Photos'}
-              </button>
+          <Card title="Site photos" action={
+            <>
+              <Button size="sm" icon={Upload} onClick={() => fileInputRef.current?.click()} disabled={uploading}>{uploading ? 'Uploading…' : 'Upload photos'}</Button>
               <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleUpload} />
-            </div>
-
+            </>
+          }>
             {photos.length === 0 ? (
-              <div onClick={() => fileInputRef.current?.click()} style={{ padding: '48px', textAlign: 'center', cursor: 'pointer' }}>
-                <div style={{ width: '48px', height: '48px', background: '#f1f5f9', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' }}>
-                  <Upload size={20} color="#94a3b8" />
-                </div>
-                <p style={{ fontSize: '13px', color: '#94a3b8' }}>No photos yet. Click to upload site photos.</p>
-              </div>
+              <button type="button" className="sd-drop" onClick={() => fileInputRef.current?.click()}>
+                <EmptyState icon={Upload} title="No photos yet">Click to upload site photos.</EmptyState>
+              </button>
             ) : (
-              <div style={{ padding: '16px', display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : isTablet ? 'repeat(3, 1fr)' : 'repeat(4, 1fr)', gap: '10px' }}>
+              <div className="sd-photos">
                 {photos.map(photo => (
-                  <div key={photo.name} style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', aspectRatio: '4/3', background: '#f1f5f9' }}>
-                    <img src={photo.url} alt="" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                    <button
-                      onClick={() => handleDeletePhoto(photo.name)}
-                      style={{ position: 'absolute', top: '6px', right: '6px', width: '22px', height: '22px', borderRadius: '50%', background: 'rgba(0,0,0,0.6)', border: 'none', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                    ><X size={11} /></button>
+                  <div key={photo.name} className="sd-ph">
+                    <img src={photo.url} alt="" loading="lazy" decoding="async" />
+                    <button onClick={() => handleDeletePhoto(photo.name)} aria-label="Delete photo" title="Delete photo"><X size={12} /></button>
                   </div>
                 ))}
-                <div onClick={() => fileInputRef.current?.click()} style={{ borderRadius: '8px', border: '2px dashed #e2e8f0', aspectRatio: '4/3', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: '#f8fafc' }}>
-                  <Upload size={18} color="#94a3b8" />
-                </div>
+                <button type="button" className="sd-ph add" onClick={() => fileInputRef.current?.click()} aria-label="Upload more photos"><Upload size={18} /></button>
               </div>
             )}
-          </div>
+          </Card>
 
           {/* Tabs */}
-          <div style={{ background: 'white', borderRadius: '14px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', borderBottom: '1px solid #f1f5f9', padding: '0 4px' }}>
-              {[
-                { key: 'overview', label: 'Overview', icon: LayoutGrid },
-                { key: 'team',     label: 'Team',     icon: Users      },
-                { key: 'notes',    label: 'Notes',    icon: FileText   },
-                { key: 'layouts',  label: 'Layouts',  icon: Grid3x3    },
-              ].map(({ key, label, icon: Icon }) => (
-                <button key={key} onClick={() => setTab(key)} style={{
-                  display: 'flex', alignItems: 'center', gap: '6px',
-                  padding: '14px 16px', border: 'none', background: 'none', cursor: 'pointer',
-                  fontSize: '13px', fontWeight: tab === key ? '600' : '400',
-                  color: tab === key ? '#0f172a' : '#64748b',
-                  borderBottom: `2px solid ${tab === key ? '#2563eb' : 'transparent'}`,
-                  marginBottom: '-1px',
-                }}>
-                  <Icon size={14} /> {label}
-                </button>
-              ))}
-            </div>
+          <Card>
+            <Tabs className="sd-tabs" active={tab} onChange={setTab} tabs={[
+              { key: 'overview', label: 'Overview', icon: LayoutGrid },
+              { key: 'team',     label: 'Team',     icon: Users, count: roster.length || undefined },
+              { key: 'notes',    label: 'Notes',    icon: FileText },
+              { key: 'layouts',  label: 'Layouts',  icon: Grid3x3 },
+            ]} />
 
-            <div style={{ padding: '20px' }}>
-
+            <div className="sd-tab">
               {tab === 'overview' && (
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : isTablet ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: '12px' }}>
+                <dl className="sd-facts">
                   {[
-                    { label: 'Site Type',       value: TYPE_LABELS[site.site_type] || 'Site Scanning' },
-                    { label: 'Scheduled Date',  value: new Date(site.scheduled_date).toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' }) },
-                    { label: 'Site Duration',   value: `${site.site_duration_days} day(s)` },
-                  { label: 'Report Duration', value: site.report_duration_days > 0 ? `${site.report_duration_days} day(s)` : 'N/A' },
-                  { label: 'Client Company',  value: site.client_company_name || 'Not set' },
-                  { label: 'Location',        value: site.location },
-                  { label: 'Coordinates',     value: site.latitude && site.longitude ? `${Number(site.latitude).toFixed(4)}, ${Number(site.longitude).toFixed(4)}` : 'Not set' },
-                  { label: 'Delivery Order',  value: completionMeta.deliveryOrderNumber || 'N/A' },
-                ].map(({ label, value }) => (
-                  <div key={label} style={{ background: '#f8fafc', borderRadius: '10px', padding: '14px', border: '1px solid #e2e8f0' }}>
-                    <p style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '600', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</p>
-                      <p style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a' }}>{value}</p>
-                    </div>
+                    { label: 'Site type',       value: TYPE_LABELS[site.site_type] || 'Site Scanning' },
+                    { label: 'Scheduled date',  value: dateLong },
+                    { label: 'Site duration',   value: `${site.site_duration_days} day(s)` },
+                    { label: 'Report duration', value: site.report_duration_days > 0 ? `${site.report_duration_days} day(s)` : 'N/A' },
+                    { label: 'Client company',  value: site.client_company_name || 'Not set' },
+                    { label: 'Location',        value: site.location },
+                    { label: 'Coordinates',     value: site.latitude && site.longitude ? `${Number(site.latitude).toFixed(4)}, ${Number(site.longitude).toFixed(4)}` : 'Not set' },
+                    { label: 'Delivery order',  value: completionMeta.deliveryOrderNumber || 'N/A' },
+                  ].map(({ label, value }) => (
+                    <div key={label}><dt>{label}</dt><dd>{value}</dd></div>
                   ))}
-                </div>
+                </dl>
               )}
 
               {tab === 'team' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div className="sd-team">
                   {!pic && crew.length === 0 && (
-                    <p style={{ textAlign: 'center', color: '#94a3b8', padding: '24px', fontSize: '13px' }}>No team assigned to this site.</p>
+                    <EmptyState icon={Users} title="No team yet">No one is assigned to this site.</EmptyState>
                   )}
 
                   {/* Day-by-day rota */}
                   {perDayCrew && (
-                    <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden', marginBottom: '4px' }}>
-                      <div style={{ padding: '9px 14px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: '11px', fontWeight: '800', color: '#475569', letterSpacing: '0.05em' }}>
-                        CREW SCHEDULE · {siteDates.length} DAYS
-                      </div>
+                    <div className="sd-rota">
+                      <div className="sd-rota-h">Crew schedule · {siteDates.length} days</div>
                       {siteDates.map((date, index) => {
                         const dayPic = picForDate(assignments, date)
                         const names = [
@@ -326,12 +223,10 @@ export default function SiteDetail() {
                           ...crewForDate(assignments, date).map(c => c.team_members?.full_name).filter(Boolean),
                         ]
                         return (
-                          <div key={date} style={{ display: 'flex', gap: '12px', padding: '10px 14px', borderTop: index ? '1px solid #f1f5f9' : 'none' }}>
-                            <span style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', width: '52px', flexShrink: 0 }}>Day {index + 1}</span>
-                            <span style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', width: '92px', flexShrink: 0 }}>{formatDayLabel(date)}</span>
-                            <span style={{ fontSize: '12px', color: names.length ? '#0f172a' : '#cbd5e1', fontWeight: '600' }}>
-                              {names.length ? names.join(', ') : 'Nobody assigned'}
-                            </span>
+                          <div key={date} className="sd-rota-r">
+                            <span className="d">Day {index + 1}</span>
+                            <span className="w">{formatDayLabel(date)}</span>
+                            <span className={names.length ? 'n' : 'n none'}>{names.length ? names.join(', ') : 'Nobody assigned'}</span>
                           </div>
                         )
                       })}
@@ -339,29 +234,17 @@ export default function SiteDetail() {
                   )}
 
                   {pic && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px', background: '#eff6ff', borderRadius: '12px', border: '1px solid #bfdbfe' }}>
-                      <Avatar name={pic.team_members?.full_name} size={48} index={0} avatarUrl={pic.team_members?.avatar_url} />
-                      <div style={{ flex: 1 }}>
-                        <p style={{ fontWeight: '600', fontSize: '14px', color: '#0f172a' }}>{pic.team_members?.full_name}</p>
-                        <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                          {pic.team_members?.role}
-                          {perDayCrew && ` · ${memberDatesOnSite(site, pic.member_id).length} day(s)`}
-                        </p>
-                      </div>
-                      <span style={{ background: '#2563eb', color: 'white', padding: '4px 12px', borderRadius: '99px', fontSize: '11px', fontWeight: '700' }}>PIC</span>
+                    <div className="sd-person pic">
+                      <Avatar member={pic.team_members} size={44} />
+                      <div><b>{pic.team_members?.full_name}</b><small>{pic.team_members?.role}{perDayCrew && ` · ${memberDatesOnSite(site, pic.member_id).length} day(s)`}</small></div>
+                      <StatusBadge tone="orange" dot={false}>PIC</StatusBadge>
                     </div>
                   )}
-                  {crew.map((c, i) => (
-                    <div key={c.member_id} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                      <Avatar name={c.team_members?.full_name} size={48} index={i + 1} avatarUrl={c.team_members?.avatar_url} />
-                      <div style={{ flex: 1 }}>
-                        <p style={{ fontWeight: '600', fontSize: '14px', color: '#0f172a' }}>{c.team_members?.full_name}</p>
-                        <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                          {c.team_members?.role}
-                          {perDayCrew && ` · ${memberDatesOnSite(site, c.member_id).length} day(s)`}
-                        </p>
-                      </div>
-                      <span style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0', padding: '4px 12px', borderRadius: '99px', fontSize: '11px', fontWeight: '600' }}>Crew</span>
+                  {crew.map(c => (
+                    <div key={c.member_id} className="sd-person">
+                      <Avatar member={c.team_members} size={44} />
+                      <div><b>{c.team_members?.full_name}</b><small>{c.team_members?.role}{perDayCrew && ` · ${memberDatesOnSite(site, c.member_id).length} day(s)`}</small></div>
+                      <StatusBadge tone="neutral" dot={false}>Crew</StatusBadge>
                     </div>
                   ))}
                 </div>
@@ -371,84 +254,50 @@ export default function SiteDetail() {
 
               {tab === 'notes' && (
                 <div>
-                  <textarea
-                    value={notes}
-                    onChange={e => setNotes(e.target.value)}
-                    placeholder="Add notes about this site..."
-                    style={{ width: '100%', minHeight: '180px', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '13px', color: '#0f172a', resize: 'vertical', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', lineHeight: '1.6' }}
-                  />
+                  <textarea className="x-control" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Add notes about this site…"
+                    style={{ minHeight: '180px', resize: 'vertical', lineHeight: 1.6 }} />
                   <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px' }}>
-                    <button onClick={handleSaveNotes} disabled={savingNotes} style={{ background: '#2563eb', color: 'white', border: 'none', padding: '9px 22px', borderRadius: '8px', fontSize: '13px', fontWeight: '500', cursor: savingNotes ? 'not-allowed' : 'pointer', opacity: savingNotes ? 0.7 : 1 }}>
-                      {savingNotes ? 'Saving...' : 'Save Notes'}
-                    </button>
+                    <Button variant="primary" onClick={handleSaveNotes} disabled={savingNotes}>{savingNotes ? 'Saving…' : 'Save notes'}</Button>
                   </div>
                 </div>
               )}
             </div>
-          </div>
+          </Card>
         </div>
 
-        {/* Right sidebar */}
-        <div style={{ width: isTablet ? '100%' : '300px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
-
-          {/* Info card */}
-          <div style={{ background: 'white', borderRadius: '14px', border: '1px solid #e2e8f0', padding: '20px' }}>
-            <p style={{ fontSize: '14px', fontWeight: '600', color: '#0f172a', marginBottom: '16px' }}>Site Info</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              {[
-                { label: 'Scheduled Date', value: new Date(site.scheduled_date).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' }) },
-                { label: 'Site Duration',  value: `${site.site_duration_days} day(s)` },
-                { label: 'Site Type',      value: TYPE_LABELS[site.site_type] || 'Site Scanning' },
-                { label: 'Delivery Order', value: completionMeta.deliveryOrderNumber || 'N/A' },
-              ].map(({ label, value }) => (
-                <div key={label}>
-                  <p style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '3px' }}>{label}</p>
-                  <p style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a' }}>{value}</p>
-                </div>
-              ))}
-              <div>
-                <p style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '6px' }}>Report Status</p>
-                <StatusPill status={site.report_status} colors={REPORT_COLORS} />
-              </div>
-              <div>
-                <p style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '6px' }}>Reason If No DO</p>
-                <p style={{ fontSize: '13px', fontWeight: '600', color: completionMeta.completionReason ? '#0f172a' : '#94a3b8', lineHeight: 1.6 }}>
-                  {completionMeta.completionReason || 'N/A'}
-                </p>
-              </div>
-            </div>
-          </div>
+        {/* Right */}
+        <aside className="sd-side">
+          <Card title="Site info" padded>
+            <dl className="sd-info">
+              <div><dt>Scheduled date</dt><dd>{dateShort}</dd></div>
+              <div><dt>Site duration</dt><dd>{site.site_duration_days} day(s)</dd></div>
+              <div><dt>Site type</dt><dd>{TYPE_LABELS[site.site_type] || 'Site Scanning'}</dd></div>
+              <div><dt>Delivery order</dt><dd>{completionMeta.deliveryOrderNumber || 'N/A'}</dd></div>
+              <div><dt>Report status</dt><dd><StatusBadge map={REPORT_STATUS} value={site.report_status} /></dd></div>
+              <div><dt>Reason if no DO</dt><dd className={completionMeta.completionReason ? '' : 'na'}>{completionMeta.completionReason || 'N/A'}</dd></div>
+            </dl>
+          </Card>
 
           <SiteFeedPosts siteId={site.id} />
 
-          {/* Site History */}
-          <div style={{ background: 'white', borderRadius: '14px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9' }}>
-              <p style={{ fontSize: '14px', fontWeight: '600', color: '#0f172a' }}>Site History</p>
-            </div>
-            <div style={{ padding: '16px 20px' }}>
+          <Card title="Site history" padded>
+            <ol className="sd-hist">
               {[
-                { label: 'Site Status',  value: site.site_status?.replace(/_/g, ' '), color: '#2563eb', time: new Date(site.scheduled_date).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' }) },
-                ...(site.site_type === 'site_scanning' ? [{ label: 'Report Status', value: site.report_status?.replace(/_/g, ' '), color: '#7c3aed', time: '—' }] : []),
-                { label: 'PIC Assigned', value: pic?.team_members?.full_name || 'None', color: '#059669', time: '—' },
-                { label: 'Crew',         value: crew.length > 0 ? `${crew.length} member(s)` : 'None', color: '#d97706', time: '—' },
-              ].map((item, i, arr) => (
-                <div key={i} style={{ display: 'flex', gap: '12px', paddingBottom: i < arr.length - 1 ? '16px' : 0 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: item.color, flexShrink: 0, marginTop: '3px' }} />
-                    {i < arr.length - 1 && <div style={{ width: '1px', flex: 1, background: '#e2e8f0', marginTop: '4px' }} />}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ fontSize: '12px', fontWeight: '600', color: '#0f172a' }}>{item.label}</p>
-                    <p style={{ fontSize: '11px', color: '#64748b', marginTop: '1px', textTransform: 'capitalize' }}>{item.value}</p>
-                    <p style={{ fontSize: '10px', color: '#cbd5e1', marginTop: '1px' }}>{item.time}</p>
-                  </div>
-                </div>
+                { label: 'Site status',  value: <StatusBadge map={SITE_STATUS} value={site.site_status} />, time: dateShort },
+                ...(showReport && site.site_type === 'site_scanning' ? [{ label: 'Report status', value: <StatusBadge map={REPORT_STATUS} value={site.report_status} /> }] : []),
+                { label: 'PIC assigned', value: pic?.team_members?.full_name || 'None' },
+                { label: 'Crew',         value: crew.length > 0 ? `${crew.length} member(s)` : 'None' },
+              ].map((item, i) => (
+                <li key={i}>
+                  <b>{item.label}</b>
+                  <span>{item.value}</span>
+                  {item.time && <small>{item.time}</small>}
+                </li>
               ))}
-            </div>
-          </div>
-        </div>
+            </ol>
+          </Card>
+        </aside>
       </div>
-    </div>
+    </Page>
   )
 }
