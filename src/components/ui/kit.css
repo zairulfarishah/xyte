@@ -173,3 +173,6 @@ button.x-stat:hover, a.x-stat:hover { box-shadow: 0 8px 22px rgba(23,35,53,.09);
   .x-dt.x-stack td { border: 0; padding: 2px 0; }
   .x-dt.x-stack td.x-hide-m { display: none; }
 }
+
+/* Same for every kit button and card-like control across the app */
+.x-btn, .x-stat, .x-tabs button, .x-seg button { user-select: none; -webkit-user-select: none; -webkit-user-drag: none; }

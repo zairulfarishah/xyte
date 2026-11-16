@@ -270,3 +270,4 @@
 .ss-navy .ss-foot { margin-top: 12px; padding-top: 0; border-top: 0; }
 .ss-navy .ss-av { border-color: #1a2a40; }
 .ss-navy .ss-ib { background: rgba(255,255,255,.07); border-color: rgba(255,255,255,.14); color: #e2e8f0; }
+.ss-card img, .ss-tool, .ss-ib { -webkit-user-drag: none; user-select: none; -webkit-user-select: none; }
