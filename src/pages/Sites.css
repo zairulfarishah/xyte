@@ -44,9 +44,9 @@
 
 /* card */
 .ss-card { position: relative; display: flex; flex-direction: column; background: #fff; border: 1px solid var(--x-border); border-radius: var(--x-r-md); cursor: pointer;
-  box-shadow: 0 1px 2px rgba(23,35,53,.06), 0 6px 16px -4px rgba(23,35,53,.12);
+  box-shadow: 0 1px 2px rgba(23,35,53,.11), 0 6px 16px -4px rgba(23,35,53,.22);
   transition: box-shadow .15s, border-color .15s, transform .15s; outline: none; min-width: 0; }
-.ss-card:hover { box-shadow: 0 2px 4px rgba(23,35,53,.06), 0 14px 30px -6px rgba(23,35,53,.20); border-color: #d5dce6; transform: translateY(-2px); }
+.ss-card:hover { box-shadow: 0 2px 4px rgba(23,35,53,.11), 0 14px 30px -6px rgba(23,35,53,.36); border-color: #d5dce6; transform: translateY(-2px); }
 .ss-card:focus-visible { box-shadow: var(--x-ring); }
 .ss-card.on { border-color: var(--x-orange); }
 .ss-card.selecting:hover { border-color: var(--x-orange); }
