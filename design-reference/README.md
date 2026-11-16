@@ -1,4 +1,14 @@
-# Xyte design reference — "Board" style
+# Xyte design reference
+
+> **16 Nov 2026 — new app look.** The dashboard and app frame moved to a light "orange-accent" style from a
+> user-supplied inspiration image: dark sidebar `#141c2e` with an orange `#f07c1e` active pill and a drawn
+> crane card, light top bar (search pill, orange Add Site, bell, name + role), page `#f3f5f9`, white cards
+> (radius 16), sunset-skyline greeting banner, tinted-circle stat cards with sparklines, satellite map.
+> Live example: `src/pages/DashboardHome.jsx` + `.css` (prefix `dh-`), shell in `src/App.jsx` / `components/ui.css`.
+> Preview: `preview-dashboard-skyline-v2.html`. The navy "Board" notes below describe the previous dashboard
+> (`DashboardBoard.jsx`, no longer used) and still apply to pages not yet moved over.
+
+## Previous: "Board" style
 
 Current style, approved 15 Nov 2026. Inspiration: a personal-finance dashboard concept (navy frame,
 white bento cards, teal accents). Live example: `src/pages/DashboardBoard.jsx` + `DashboardBoard.css`.

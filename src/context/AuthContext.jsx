@@ -46,7 +46,7 @@ export function AuthProvider({ children }) {
     if (inflight.current.email === normalizedEmail && inflight.current.promise) return inflight.current.promise
     const promise = supabase
       .from('team_members')
-      .select('id, short_name, full_name, avatar_url')
+      .select('id, short_name, full_name, avatar_url, role')
       .ilike('email', normalizedEmail)
       .single()
       .then(({ data }) => {
@@ -84,10 +84,11 @@ export function AuthProvider({ children }) {
   const firstName = member?.short_name || fullName.split(' ')[0]
   const avatarUrl = member?.avatar_url || null
   const memberId  = member?.id || null
+  const role      = member?.role || ''
   const isZairul = user?.email === ADMIN_EMAIL
 
   return (
-    <AuthContext.Provider value={{ user, loading, fullName, firstName, avatarUrl, memberId, isZairul }}>
+    <AuthContext.Provider value={{ user, loading, fullName, firstName, avatarUrl, memberId, isZairul, role }}>
       {children}
     </AuthContext.Provider>
   )

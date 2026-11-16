@@ -6,12 +6,11 @@ import { useAuth } from '../context/AuthContext'
 import SiteForm from '../components/siteForm/SiteForm'
 import { EMPTY_SITE_FORM } from '../components/siteForm/siteFormModel'
 import { mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../utils/completionMeta'
-import { useViewport } from '../utils/useViewport'
 import { fetchTeamLeaves, getLeaveSessionLabel, getLeaveSummary, getMemberLeaveOnDate } from '../utils/teamLeaves'
 import {
   assignmentMemberId, crewForDate, getSiteDates, isMissingPic, memberRoleOnSite, picForDate, representativeDate,
 } from '../utils/siteDays'
-import DashboardBoard from './DashboardBoard'
+import DashboardHome from './DashboardHome'
 import { activeMembers } from '../utils/members'
 import { cachedPage, rememberPage } from '../utils/pageCache'
 
@@ -46,7 +45,6 @@ function formatShortDate(date) {
 
 export default function Dashboard() {
   const { fullName, firstName, isZairul, memberId } = useAuth()
-  const { isMobile } = useViewport()
   const [members, setMembers] = useState(() => cachedPage('dashboard')?.members || [])
   const [sites, setSites] = useState(() => cachedPage('dashboard')?.sites || [])
   const [upcoming, setUpcoming] = useState(() => cachedPage('dashboard')?.upcoming || [])
@@ -306,41 +304,18 @@ export default function Dashboard() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#121c33', color: '#0b1220' }}>
-      <div>
-        <DashboardBoard
-          sites={sites}
-          members={members}
-          leaves={leaves}
-          firstName={firstName}
-          memberId={memberId}
-          isZairul={isZairul}
-          onAssign={openQuickAssign}
-          onUpdate={openStatusUpdate}
-        />
-
-        <button
-          onClick={() => {
-            setShowAdd(true)
-          }}
-          style={{
-            position: 'fixed',
-            right: isMobile ? '14px' : '28px',
-            bottom: isMobile ? '14px' : '28px',
-            background: '#2563eb',
-            color: 'white',
-            border: 0,
-            borderRadius: '15px',
-            padding: '14px 18px',
-            fontWeight: '850',
-            boxShadow: '0 18px 35px rgba(37,99,235,.35)',
-            cursor: 'pointer',
-            zIndex: 10,
-          }}
-        >
-          + Add Site
-        </button>
-      </div>
+    <div style={{ minHeight: '100vh', color: '#0b1220' }}>
+      <DashboardHome
+        sites={sites}
+        members={members}
+        leaves={leaves}
+        firstName={firstName}
+        memberId={memberId}
+        isZairul={isZairul}
+        onAssign={openQuickAssign}
+        onUpdate={openStatusUpdate}
+        onAdd={() => setShowAdd(true)}
+      />
 
       {showAdd && (
         <SiteForm

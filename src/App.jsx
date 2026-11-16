@@ -2,9 +2,10 @@ import { lazy, Suspense, useState, useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import {
   Search, Bell, X, MapPin, Users, Plus, LogOut, Home, Clock, MessageSquare,
-  FileText, Receipt, CheckSquare, FolderOpen, BarChart3, Settings, LayoutGrid, Coffee, Sparkles, Cable, Crosshair, LayoutTemplate, LayoutDashboard,
+  FileText, Receipt, CheckSquare, FolderOpen, BarChart3, Settings, LayoutGrid, Coffee, Sparkles, Cable, Crosshair, LayoutTemplate, LayoutDashboard, ChevronDown,
 } from 'lucide-react'
 import { supabase } from './supabase'
+import { CraneScene } from './components/SceneArt'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { useViewport } from './utils/useViewport'
 import { PushToggle, PushPrompt } from './components/PushControls'
@@ -63,9 +64,13 @@ function usePrefetchPages(user) {
 // Hidden for now — routes still work by direct URL: /report-builder (Xport), /tools
 // Calendar and Map are views of Sites (switch at the top of each), so "Sites" covers all three.
 const SITE_VIEWS = ['/sites', '/calendar', '/map']
+// Photo home (/) and 3D office (/office) are hidden for now. Set to true to bring them back;
+// while false, the Dashboard is the home page at / and /office, /dashboard redirect to it.
+const SHOW_OFFICE_HOME = false
 const NAV = [
-  { to: '/', label: 'Home', Icon: Home, end: true },
-  { to: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard },
+  ...(SHOW_OFFICE_HOME
+    ? [{ to: '/', label: 'Home', Icon: Home, end: true }, { to: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard }]
+    : [{ to: '/', label: 'Dashboard', Icon: Home, end: true }]),
   { to: '/sites', label: 'Sites', Icon: MapPin, match: SITE_VIEWS },
   { to: '/timecard', label: 'Timecard', Icon: Clock },
   { to: '/team', label: 'Team', Icon: Users },
@@ -168,7 +173,7 @@ function SideNav({ nav, badges }) {
   const { pathname } = useLocation()
   const link = item => (
     <NavLink key={item.to} to={item.to} end={item.end} className={isOn(item, pathname) ? 'on' : ''}>
-      <item.Icon size={16} />
+      <item.Icon size={19} />
       <span>{item.label}</span>
       <UnreadBadge count={badges[item.to]} />
     </NavLink>
@@ -176,15 +181,10 @@ function SideNav({ nav, badges }) {
   return (
     <aside className="xt-side">
       <NavLink to="/" className="logo">
-        <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1 }}>
-          <span style={{ fontSize: '20px', fontWeight: '900', color: '#22c55e', letterSpacing: '-0.03em', lineHeight: 1, textShadow: '0 0 12px rgba(34,197,94,0.5), 0 0 32px rgba(34,197,94,0.15)' }}>X</span>
-          <span style={{ fontSize: '20px', fontWeight: '200', color: 'rgba(255,255,255,0.88)', letterSpacing: '0.02em', lineHeight: 1 }}>yte</span>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginTop: '4px' }}>
-          <div style={{ height: '1.5px', width: '44px', borderRadius: '99px', background: 'linear-gradient(90deg,#22c55e,rgba(34,197,94,0))', opacity: 0.95 }} />
-          <div style={{ height: '1.5px', width: '28px', borderRadius: '99px', background: 'linear-gradient(90deg,#22c55e,rgba(34,197,94,0))', opacity: 0.55 }} />
-          <div style={{ height: '1.5px', width: '14px', borderRadius: '99px', background: 'linear-gradient(90deg,#22c55e,rgba(34,197,94,0))', opacity: 0.28 }} />
-        </div>
+        <svg viewBox="0 0 32 32" width="32" height="32" fill="none" stroke="#22c55e" strokeWidth="3.4" strokeLinecap="round" aria-hidden="true">
+          <path d="M5 19a8 8 0 0 1 8 8M5 11a16 16 0 0 1 16 16M5 3a24 24 0 0 1 24 24" />
+        </svg>
+        <span><b>Xyte</b><small>XRADAR OFFICE</small></span>
       </NavLink>
       <nav aria-label="Main">
         {nav.filter(i => !i.items).map(link)}
@@ -195,6 +195,10 @@ function SideNav({ nav, badges }) {
           </div>
         ))}
       </nav>
+      <div className="promo">
+        <CraneScene />
+        <p>Building a smarter<br />tomorrow together</p>
+      </div>
     </aside>
   )
 }
@@ -414,7 +418,7 @@ function PageLoader() {
 function AppShell() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { user, loading: authLoading, fullName, avatarUrl, memberId, isZairul } = useAuth()
+  const { user, loading: authLoading, fullName, avatarUrl, memberId, isZairul, role } = useAuth()
   const [searchOpen, setSearchOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
   const [notifs, setNotifs] = useState([])
@@ -441,6 +445,15 @@ function AppShell() {
     setHomeNav(false)
   }, [location.pathname])
 
+  // Ctrl+K / Cmd+K opens search
+  useEffect(() => {
+    const onKey = e => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setSearchOpen(true) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   useEffect(() => {
     if (!homeNav) return undefined
     const onKey = e => { if (e.key === 'Escape') setHomeNav(false) }
@@ -462,7 +475,7 @@ function AppShell() {
   }
 
   function handleOpenAddSite() {
-    if (location.pathname === '/dashboard' || location.pathname === '/sites') {
+    if (location.pathname === '/' || location.pathname === '/dashboard' || location.pathname === '/sites') {
       window.dispatchEvent(new CustomEvent('xyte:open-add-site'))
       return
     }
@@ -538,7 +551,7 @@ function AppShell() {
   )
 
   // Home (photo office, /) and the live 3D office (/office) take the whole screen: no sidebar, top bar or bottom bar
-  if (location.pathname === '/' || location.pathname === '/office') return (
+  if (SHOW_OFFICE_HOME && (location.pathname === '/' || location.pathname === '/office')) return (
     <div style={{ minHeight: '100vh', background: '#1b1c1e' }}>
       <Suspense fallback={<PageLoader />}>
         {location.pathname === '/office'
@@ -555,21 +568,22 @@ function AppShell() {
   )
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#f1f5f9' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#f3f5f9' }}>
       {!isMobile && <SideNav nav={nav} badges={badges} />}
 
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
       <nav style={{
-        background: '#0f172a',
+        background: isMobile ? '#0f172a' : 'rgba(243,245,249,.92)',
+        backdropFilter: isMobile ? undefined : 'blur(8px)',
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
         gap: isMobile ? '8px' : '0',
-        padding: isMobile ? '8px 12px' : isTablet ? '8px 18px' : '8px 28px',
+        padding: isMobile ? '8px 12px' : isTablet ? '14px 18px' : '14px 24px',
         position: 'sticky',
         top: 0,
         zIndex: 3000,
-        borderBottom: '1px solid #1e293b',
+        borderBottom: isMobile ? '1px solid #1e293b' : 'none',
       }}>
         {isMobile && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', minHeight: '40px' }}>
@@ -624,66 +638,48 @@ function AppShell() {
         )}
 
         {!isMobile && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', minHeight: '40px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
-              <button
-                onClick={handleOpenAddSite}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#2563eb', border: 'none', cursor: 'pointer', color: 'white', padding: '8px 13px', borderRadius: '10px', fontSize: '12px', fontWeight: '700', transition: 'background 0.15s, transform 0.15s', boxShadow: '0 6px 16px rgba(37,99,235,0.25)' }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.background = '#1d4ed8'
-                  e.currentTarget.style.transform = 'translateY(-1px)'
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.background = '#2563eb'
-                  e.currentTarget.style.transform = 'translateY(0)'
-                }}
-              >
-                <Plus size={13} /> Add Site
+          <div className="xt-top">
+            <button className="xt-search" onClick={() => setSearchOpen(true)}>
+              <Search size={19} />
+              <span>Search sites, people or modules…</span>
+              <kbd>Ctrl + K</kbd>
+            </button>
+            <div style={{ flex: 1 }} />
+            <button className="xt-add" onClick={handleOpenAddSite}><Plus size={15} /> Add Site</button>
+
+            <div ref={notifRef} style={{ position: 'relative' }}>
+              <button className="xt-bell" onClick={handleBell} aria-label="Notifications">
+                <Bell size={22} />
+                {unread > 0 && <span>{unread > 9 ? '9+' : unread}</span>}
               </button>
+              {notifOpen && <NotifDropdown notifs={notifs} lastSeen={lastSeen} onClose={() => setNotifOpen(false)} />}
+            </div>
 
-              <button onClick={() => setSearchOpen(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center', padding: 0, transition: 'color 0.15s' }}
-                onMouseEnter={e => e.currentTarget.style.color = 'white'}
-                onMouseLeave={e => e.currentTarget.style.color = '#64748b'}>
-                <Search size={17} />
-              </button>
-
-              <div ref={notifRef} style={{ position: 'relative' }}>
-                <button onClick={handleBell} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center', padding: 0, position: 'relative', transition: 'color 0.15s' }}
-                  onMouseEnter={e => e.currentTarget.style.color = 'white'}
-                  onMouseLeave={e => e.currentTarget.style.color = '#64748b'}>
-                  <Bell size={17} />
-                  {unread > 0 && (
-                    <span style={{ position: 'absolute', top: '-5px', right: '-5px', width: '16px', height: '16px', borderRadius: '50%', background: '#ef4444', color: 'white', fontSize: '9px', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #0f172a' }}>
-                      {unread > 9 ? '9+' : unread}
-                    </span>
-                  )}
-                </button>
-                {notifOpen && <NotifDropdown notifs={notifs} lastSeen={lastSeen} onClose={() => setNotifOpen(false)} />}
-              </div>
-
-              <div ref={avatarRef} style={{ position: 'relative' }}>
-                <button onClick={() => setAvatarOpen(o => !o)} style={{ width: '34px', height: '34px', borderRadius: '50%', background: '#1d4ed8', border: '1px solid rgba(255,255,255,0.12)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '700', fontSize: '11px', cursor: 'pointer', boxShadow: '0 8px 18px rgba(15,23,42,0.3)' }}>
+            <div ref={avatarRef} style={{ position: 'relative' }}>
+              <button className="xt-me" onClick={() => setAvatarOpen(o => !o)}>
+                <span className="av">
                   {avatarUrl
-                    ? <img src={avatarUrl} alt={fullName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    : fullName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
-                  }
-                </button>
-                {avatarOpen && (
-                  <div style={{ position: 'absolute', right: 0, top: '42px', width: '200px', background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 12px 40px rgba(0,0,0,0.18)', zIndex: 1100, overflow: 'hidden' }}>
-                    <div style={{ padding: '12px 14px', borderBottom: '1px solid #f1f5f9' }}>
-                      <p style={{ fontWeight: '600', fontSize: '13px', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fullName}</p>
-                      <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</p>
-                    </div>
-                    <PushToggle onNavigate={() => setAvatarOpen(false)} />
-                    <button onClick={handleSignOut} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: '#ef4444', fontSize: '13px', fontWeight: '500' }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#fff1f2'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                    >
-                      <LogOut size={14} /> Sign Out
-                    </button>
+                    ? <img src={avatarUrl} alt="" />
+                    : fullName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                </span>
+                <span className="who"><b>{fullName}</b>{role && <small>{role}</small>}</span>
+                <ChevronDown size={16} />
+              </button>
+              {avatarOpen && (
+                <div style={{ position: 'absolute', right: 0, top: '50px', width: '220px', background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 12px 40px rgba(0,0,0,0.18)', zIndex: 1100, overflow: 'hidden' }}>
+                  <div style={{ padding: '12px 14px', borderBottom: '1px solid #f1f5f9' }}>
+                    <p style={{ fontWeight: '600', fontSize: '13px', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fullName}</p>
+                    <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</p>
                   </div>
-                )}
-              </div>
+                  <PushToggle onNavigate={() => setAvatarOpen(false)} />
+                  <button onClick={handleSignOut} style={{ width: '100%', padding: '11px 14px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: '#ef4444', fontSize: '13px', fontWeight: '500' }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#fff1f2'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                  >
+                    <LogOut size={14} /> Sign Out
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -692,9 +688,9 @@ function AppShell() {
       <main className="xt-main" style={{ flex: 1, minWidth: 0 }}>
         <Suspense fallback={<PageLoader />}>
           <Routes>
-            <Route path="/" element={<Office />} />
-            <Route path="/office" element={<Office />} />
-            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/" element={SHOW_OFFICE_HOME ? <Office /> : <Dashboard />} />
+            <Route path="/office" element={SHOW_OFFICE_HOME ? <Office /> : <Navigate to="/" replace />} />
+            <Route path="/dashboard" element={SHOW_OFFICE_HOME ? <Dashboard /> : <Navigate to="/" replace />} />
             <Route path="/feed" element={<Feed />} />
             <Route path="/break-room" element={<BreakRoom />} />
             <Route path="/makan" element={<Navigate to={`/break-room${location.search}`} replace />} />
