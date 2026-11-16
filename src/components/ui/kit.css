@@ -4,10 +4,10 @@
 .x-page { padding: 4px 24px 40px; max-width: 1560px; margin: 0 auto; font-family: var(--x-font); color: var(--x-ink); font-size: var(--x-fs-md); }
 .x-page :where(h1, h2, h3, h4, p) { margin: 0; }
 .x-ph { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin: 6px 0 18px; }
-.x-ph .x-crumbs { display: flex; align-items: center; gap: 6px; font-size: var(--x-fs-xs); color: var(--x-ink-2); margin-bottom: 4px; }
-.x-ph .x-crumbs a { color: var(--x-ink-2); text-decoration: none; } .x-ph .x-crumbs a:hover { color: var(--x-ink); }
+.x-ph .x-crumbs { display: flex; align-items: center; gap: 6px; font-size: var(--x-fs-xs); color: var(--x-ink-3); margin-bottom: 4px; }
+.x-ph .x-crumbs a { color: var(--x-ink-3); text-decoration: none; } .x-ph .x-crumbs a:hover { color: var(--x-ink); }
 .x-ph h1 { font-size: var(--x-fs-2xl); font-weight: 600; letter-spacing: -.3px; line-height: 1.2; color: var(--x-ink); }
-.x-ph .x-sub { color: var(--x-ink-2); font-size: 13.5px; margin-top: 2px; }
+.x-ph .x-sub { color: var(--x-ink-3); font-size: 13.5px; margin-top: 2px; }
 .x-ph .x-acts { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 /* buttons */
@@ -61,10 +61,10 @@ button.x-stat:hover, a.x-stat:hover { box-shadow: 0 8px 22px rgba(23,35,53,.09);
 .x-tone-orange  { background: var(--x-orange-soft); color: var(--x-orange-d); }
 
 /* tabs (underline) + segmented */
-.x-tabs { display: flex; gap: 2px; border-bottom: 1px solid rgba(23,35,53,.18); margin-bottom: 16px; overflow-x: auto; scrollbar-width: none; }
+.x-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--x-border); margin-bottom: 16px; overflow-x: auto; scrollbar-width: none; }
 .x-tabs::-webkit-scrollbar { display: none; }
 .x-tabs button { border: 0; background: none; padding: 10px 14px; font: inherit; font-weight: 500; color: var(--x-ink-3); cursor: pointer; border-bottom: 2px solid transparent;
-  margin-bottom: -1px; white-space: nowrap; display: flex; gap: 7px; align-items: center; color: var(--x-ink-2); }
+  margin-bottom: -1px; white-space: nowrap; display: flex; gap: 7px; align-items: center; }
 .x-tabs button svg { width: 16px; height: 16px; }
 .x-tabs button:hover { color: var(--x-ink); }
 .x-tabs button .x-n { background: var(--x-neutral-bg); color: var(--x-ink-2); border-radius: 99px; font-size: 11.5px; padding: 0 7px; line-height: 18px; }
