@@ -5,7 +5,7 @@ import {
   FileText, Receipt, CheckSquare, FolderOpen, BarChart3, Settings, LayoutGrid, Coffee, Sparkles, Cable, Crosshair, LayoutTemplate, LayoutDashboard, ChevronDown,
 } from 'lucide-react'
 import { supabase } from './supabase'
-import { CraneScene } from './components/SceneArt'
+import DailyCard from './components/DailyCard'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { useViewport } from './utils/useViewport'
 import { PushToggle, PushPrompt } from './components/PushControls'
@@ -195,10 +195,7 @@ function SideNav({ nav, badges }) {
           </div>
         ))}
       </nav>
-      <div className="promo">
-        <CraneScene />
-        <p>Building a smarter<br />tomorrow together</p>
-      </div>
+      <DailyCard />
     </aside>
   )
 }

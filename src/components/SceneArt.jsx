@@ -58,12 +58,12 @@ export function Skyline({ className }) {
 }
 
 // Building under construction with two tower cranes, for the sidebar card
-export function CraneScene({ className }) {
+export function CraneScene({ className, sky = ["#3a4f78", "#c98a5c", "#f2b26b"] }) {
   return (
     <svg className={className} viewBox="0 0 208 200" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
       <defs>
         <linearGradient id="sa-psky" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#3a4f78" /><stop offset=".55" stopColor="#c98a5c" /><stop offset="1" stopColor="#f2b26b" />
+          <stop offset="0" stopColor={sky[0]} /><stop offset=".55" stopColor={sky[1]} /><stop offset="1" stopColor={sky[2]} />
         </linearGradient>
         <linearGradient id="sa-pfade" x1="0" y1="0" x2="0" y2="1">
           <stop offset=".45" stopColor="#0b1220" stopOpacity="0" /><stop offset="1" stopColor="#0b1220" stopOpacity=".85" />
