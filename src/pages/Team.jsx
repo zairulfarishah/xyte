@@ -12,8 +12,8 @@ import { activeMembers } from '../utils/members'
 import './Team.css'
 
 const VIEWS = [
-  { key: 'roster',  label: 'Roster' },
   { key: 'week',    label: 'Week Board' },
+  { key: 'roster',  label: 'Roster' },
   { key: 'where',   label: "Where's Everyone" },
   { key: 'ranking', label: 'Leaderboard' },
 ]
@@ -54,8 +54,8 @@ function Tags({ m }) {
 export default function Team() {
   const { isZairul } = useAuth()
   const [params, setParams] = useSearchParams()
-  const view = VIEWS.some(v => v.key === params.get('view')) ? params.get('view') : 'roster'
-  const setView = key => setParams(key === 'roster' ? {} : { view: key }, { replace: true })
+  const view = VIEWS.some(v => v.key === params.get('view')) ? params.get('view') : 'week'
+  const setView = key => setParams(key === 'week' ? {} : { view: key }, { replace: true })
 
   const [rawMembers, setRawMembers] = useState(() => cachedPage('team')?.members || [])
   const [sites, setSites]           = useState(() => cachedPage('team')?.sites || [])
