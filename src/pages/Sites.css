@@ -36,16 +36,17 @@
 .ss-group::after { content: ''; flex: 1; height: 1px; background: var(--x-border-2); }
 
 /* grid — column counts match the perPage maths in Sites.jsx */
-.ss-grid { display: grid; grid-template-columns: 1fr; gap: 14px; padding: 16px; }
+.ss-grid { display: grid; grid-template-columns: 1fr; gap: 16px; padding: 18px; background: var(--x-surface-2); }
 @media (min-width: 640px)  { .ss-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (min-width: 1024px) { .ss-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (min-width: 1280px) { .ss-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (min-width: 1600px) { .ss-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
 
 /* card */
-.ss-card { position: relative; display: flex; flex-direction: column; background: #fff; border: 1px solid var(--x-border-2); border-radius: var(--x-r-md); cursor: pointer;
+.ss-card { position: relative; display: flex; flex-direction: column; background: #fff; border: 1px solid var(--x-border); border-radius: var(--x-r-md); cursor: pointer;
+  box-shadow: 0 1px 2px rgba(23,35,53,.06), 0 6px 16px -4px rgba(23,35,53,.12);
   transition: box-shadow .15s, border-color .15s, transform .15s; outline: none; min-width: 0; }
-.ss-card:hover { box-shadow: var(--x-sh-1); border-color: var(--x-border); }
+.ss-card:hover { box-shadow: 0 2px 4px rgba(23,35,53,.06), 0 14px 30px -6px rgba(23,35,53,.20); border-color: #d5dce6; transform: translateY(-2px); }
 .ss-card:focus-visible { box-shadow: var(--x-ring); }
 .ss-card.on { border-color: var(--x-orange); }
 .ss-card.selecting:hover { border-color: var(--x-orange); }
