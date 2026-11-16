@@ -1,9 +1,9 @@
 /* Bell dropdown — classes prefixed nm-. Tokens from styles/tokens.css. */
-.nm { position: absolute; right: 0; top: 48px; z-index: 3250; width: 440px; max-height: min(620px, calc(100vh - 90px)); display: flex; flex-direction: column;
+.nm-panel { position: absolute; right: 0; top: 48px; z-index: 3250; width: 440px; max-height: min(620px, calc(100vh - 90px)); display: flex; flex-direction: column;
   background: #fff; border: 1px solid var(--x-border); border-radius: var(--x-r-lg); box-shadow: 0 24px 60px -12px rgba(20,33,49,.35);
   font-family: var(--x-font); color: var(--x-ink); text-align: left; overflow: hidden; animation: nm-in .16s ease; }
 @keyframes nm-in { from { opacity: 0; transform: translateY(-6px); } }
-.nm button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+.nm-panel button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
 
 .nm-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 18px 20px 12px; }
 .nm-head h3 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
@@ -44,7 +44,7 @@
 
 /* phone: full-width sheet under the top bar */
 @media (max-width: 640px) {
-  .nm { position: fixed; top: 60px; left: 10px; right: 10px; width: auto; max-height: calc(100vh - 140px); }
+  .nm-panel { position: fixed; top: 60px; left: 10px; right: 10px; width: auto; max-height: calc(100vh - 140px); }
   .nm-head { padding: 16px 16px 10px; }
   .nm-tabs { margin: 0 16px; }
   .nm-list { padding: 6px 16px 12px; }

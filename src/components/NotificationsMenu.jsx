@@ -97,7 +97,7 @@ export default function NotificationsMenu({ notifs, seenBefore, onMarkAllRead, o
   }
 
   return (
-    <div className="nm" role="dialog" aria-label="Notifications">
+    <div className="nm-panel" role="dialog" aria-label="Notifications">
       <div className="nm-head">
         <h3>Your notifications</h3>
         <div className="nm-tools">
