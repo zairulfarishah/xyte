@@ -541,8 +541,7 @@ function AppShell() {
 
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
       <nav style={{
-        background: isMobile ? 'var(--x-navy)' : 'rgba(244,246,250,.92)',
-        backdropFilter: isMobile ? undefined : 'blur(8px)',
+        background: isMobile ? 'var(--x-navy)' : 'var(--x-bg)',
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
