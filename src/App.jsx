@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { supabase } from './supabase'
 import DailyCard from './components/DailyCard'
+import NotificationsMenu from './components/NotificationsMenu'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { useViewport } from './utils/useViewport'
 import { PushToggle, PushPrompt } from './components/PushControls'
@@ -200,16 +201,6 @@ function SideNav({ nav, badges }) {
   )
 }
 
-function timeAgo(dateStr) {
-  const diff = Date.now() - new Date(dateStr)
-  const m = Math.floor(diff / 60000)
-  if (m < 1) return 'just now'
-  if (m < 60) return `${m}m ago`
-  const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h ago`
-  return `${Math.floor(h / 24)}d ago`
-}
-
 function SearchOverlay({ onClose }) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState({ sites: [], members: [] })
@@ -362,36 +353,6 @@ function SeeAllInSites({ query, go }) {
   )
 }
 
-function NotifDropdown({ notifs, lastSeen, onClose }) {
-  return (
-    <div style={{ position: 'absolute', right: 0, top: '46px', width: '320px', background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 12px 40px rgba(0,0,0,0.18)', zIndex: 1100, overflow: 'hidden' }}>
-      <div style={{ padding: '14px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <p style={{ fontWeight: '600', fontSize: '14px', color: '#0f172a' }}>Notifications</p>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', padding: 0 }}>
-          <X size={14} />
-        </button>
-      </div>
-      <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-        {notifs.length === 0 ? (
-          <p style={{ padding: '28px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>No activity yet.</p>
-        ) : notifs.map(n => {
-          const isNew = new Date(n.created_at) > new Date(lastSeen)
-          return (
-            <div key={n.id} style={{ padding: '12px 16px', borderBottom: '1px solid #f8fafc', background: isNew ? '#f0f9ff' : 'white', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isNew ? '#2563eb' : '#e2e8f0', flexShrink: 0, marginTop: '4px' }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: '12px', fontWeight: '600', color: '#0f172a' }}>{n.actor}</p>
-                <p style={{ fontSize: '12px', color: '#475569', marginTop: '2px', lineHeight: 1.4 }}>{n.message}</p>
-                <p style={{ fontSize: '10px', color: '#94a3b8', marginTop: '4px' }}>{timeAgo(n.created_at)}</p>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
 function PageLoader() {
   return (
     <div style={{ minHeight: 'calc(100vh - 54px)', display: 'grid', placeItems: 'center', padding: '32px' }}>
@@ -420,6 +381,8 @@ function AppShell() {
   const [notifOpen, setNotifOpen] = useState(false)
   const [notifs, setNotifs] = useState([])
   const [lastSeen, setLastSeen] = useState(() => localStorage.getItem('xyte_notif_seen') || '1970-01-01')
+  // What counted as "seen" when the bell was opened, so the panel can still mark the new ones
+  const [seenBefore, setSeenBefore] = useState(lastSeen)
   const [avatarOpen, setAvatarOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [homeNav, setHomeNav] = useState(false)
@@ -527,10 +490,18 @@ function AppShell() {
     const wasOpen = notifOpen
     setNotifOpen(o => !o)
     if (!wasOpen) {
+      setSeenBefore(lastSeen)
       const now = new Date().toISOString()
       setLastSeen(now)
       localStorage.setItem('xyte_notif_seen', now)
     }
+  }
+
+  function markAllRead() {
+    const now = new Date().toISOString()
+    setSeenBefore(now)
+    setLastSeen(now)
+    localStorage.setItem('xyte_notif_seen', now)
   }
 
   const unread = notifs.filter(n => new Date(n.created_at) > new Date(lastSeen)).length
@@ -607,7 +578,7 @@ function AppShell() {
                     </span>
                   )}
                 </button>
-                {notifOpen && <NotifDropdown notifs={notifs} lastSeen={lastSeen} onClose={() => setNotifOpen(false)} />}
+                {notifOpen && <NotificationsMenu notifs={notifs} seenBefore={seenBefore} onMarkAllRead={markAllRead} onClose={() => setNotifOpen(false)} />}
               </div>
 
               <div ref={avatarRef} style={{ position: 'relative' }}>
@@ -649,7 +620,7 @@ function AppShell() {
                 <Bell size={22} />
                 {unread > 0 && <span>{unread > 9 ? '9+' : unread}</span>}
               </button>
-              {notifOpen && <NotifDropdown notifs={notifs} lastSeen={lastSeen} onClose={() => setNotifOpen(false)} />}
+              {notifOpen && <NotificationsMenu notifs={notifs} seenBefore={seenBefore} onMarkAllRead={markAllRead} onClose={() => setNotifOpen(false)} />}
             </div>
 
             <div ref={avatarRef} style={{ position: 'relative' }}>

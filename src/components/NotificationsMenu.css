@@ -1,0 +1,51 @@
+/* Bell dropdown — classes prefixed nm-. Tokens from styles/tokens.css. */
+.nm { position: absolute; right: 0; top: 48px; z-index: 3250; width: 440px; max-height: min(620px, calc(100vh - 90px)); display: flex; flex-direction: column;
+  background: #fff; border: 1px solid var(--x-border); border-radius: var(--x-r-lg); box-shadow: 0 24px 60px -12px rgba(20,33,49,.35);
+  font-family: var(--x-font); color: var(--x-ink); text-align: left; overflow: hidden; animation: nm-in .16s ease; }
+@keyframes nm-in { from { opacity: 0; transform: translateY(-6px); } }
+.nm button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+
+.nm-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 18px 20px 12px; }
+.nm-head h3 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.nm-tools { display: flex; gap: 2px; }
+.nm-tools button { width: 32px; height: 32px; border-radius: var(--x-r-sm); display: grid; place-items: center; color: var(--x-ink-3); }
+.nm-tools button:hover:not(:disabled) { background: var(--x-neutral-bg); color: var(--x-ink); }
+.nm-tools button:disabled { opacity: .4; cursor: default; }
+
+.nm-tabs { display: flex; gap: 2px; margin: 0 20px; padding: 3px; background: var(--x-neutral-bg); border-radius: 10px; }
+.nm-tabs button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 8px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--x-ink-3); white-space: nowrap; }
+.nm-tabs button:hover { color: var(--x-ink); }
+.nm-tabs button.on { background: #fff; color: var(--x-ink); box-shadow: 0 1px 2px rgba(23,35,53,.1); }
+.nm-tabs button span { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 99px; display: inline-grid; place-items: center; font-size: 11px; font-weight: 600;
+  background: rgba(100,116,139,.18); color: var(--x-ink-2); }
+.nm-tabs button span.hot { background: var(--x-orange); color: #fff; }
+
+.nm-list { overflow-y: auto; padding: 8px 20px 14px; margin-top: 8px; }
+.nm-item { width: 100%; display: flex; gap: 12px; padding: 14px 8px; margin: 0 -8px; border-radius: 10px; text-align: left; position: relative; }
+.nm-item + .nm-item::before { content: ''; position: absolute; left: 8px; right: 8px; top: 0; border-top: 1px dashed var(--x-border); }
+.nm-item:hover { background: var(--x-surface-2); }
+.nm-item:hover + .nm-item::before, .nm-item:hover::before { border-color: transparent; }
+.nm-av { width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0; display: grid; place-items: center; overflow: hidden; background: var(--x-navy); color: #fff;
+  font-size: 13px; font-weight: 600; box-shadow: 0 0 0 1px var(--x-border); }
+.nm-av img { width: 100%; height: 100%; object-fit: cover; }
+.nm-av.sys { background: var(--x-orange-soft); color: var(--x-orange-d); }
+.nm-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.nm-line { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.nm-text { font-size: 13.5px; line-height: 1.45; color: var(--x-ink-2); }
+.nm-text b { font-weight: 600; color: var(--x-ink); }
+.nm-item.unread .nm-text span { color: var(--x-ink); }
+.nm-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--x-orange); flex-shrink: 0; margin-top: 6px; box-shadow: 0 0 0 3px rgba(240,124,30,.18); }
+.nm-time { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--x-ink-3); }
+.nm-quote { margin-top: 5px; padding: 9px 11px; border-radius: 9px; background: var(--x-neutral-bg); font-size: 13px; line-height: 1.45; color: var(--x-ink); }
+
+.nm-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 44px 0; color: var(--x-ink-3); font-size: 13.5px; font-weight: 500; }
+.nm-empty span { width: 54px; height: 54px; border-radius: 50%; background: var(--x-neutral-bg); display: grid; place-items: center; }
+.nm-empty p { margin: 0; }
+
+/* phone: full-width sheet under the top bar */
+@media (max-width: 640px) {
+  .nm { position: fixed; top: 60px; left: 10px; right: 10px; width: auto; max-height: calc(100vh - 140px); }
+  .nm-head { padding: 16px 16px 10px; }
+  .nm-tabs { margin: 0 16px; }
+  .nm-list { padding: 6px 16px 12px; }
+}

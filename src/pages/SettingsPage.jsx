@@ -112,7 +112,7 @@ function Drawer({ title, subtitle, onClose, children, footer }) {
 
 export default function SettingsPage() {
   const { isZairul } = useAuth()
-  const [tab, setTab] = useState('members')
+  const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') === 'notifications' ? 'notifications' : 'members')
   const [rawMembers, setRawMembers] = useState([])
   const [sites, setSites] = useState([])
   const [docCount, setDocCount] = useState(0)
