@@ -4,7 +4,7 @@ import { supabase } from '../supabase'
 import {
   Pencil, Trash2, Search, ArrowUpRight, MapPin, MessageCircle, X,
   Calendar, Check, CheckCircle, SlidersHorizontal, MoreHorizontal, Copy,
-  AlertTriangle, FileWarning, Filter, Plus, CheckSquare, Square, Layers, EyeOff, Eye,
+  AlertTriangle, FileWarning, Filter, Plus, CheckSquare, Square, Layers, EyeOff, Eye, UserRound, ArrowUpDown,
 } from 'lucide-react'
 import { notifyMany, siteRoleIds } from '../utils/notify'
 import { useAuth } from '../context/AuthContext'
@@ -567,14 +567,14 @@ export default function Sites() {
   const tabItems = TABS.map(t => ({ key: t, label: t, count: counts[t] }))
   const extraFilters = filterCount - (mine ? 1 : 0)
   const headerActions = <>
-    <SitesViewSwitch variant="light" />
+    <SitesViewSwitch />
     <Button variant="primary" icon={Plus} onClick={openAdd}>Add site</Button>
   </>
 
   // Skeleton cards in the real grid, so nothing jumps when the data lands
   if (loading) return (
     <Page className="ss">
-      <PageHeader title="Sites" subtitle="Loading sites…" actions={headerActions} />
+      <section className="ss-hero"><PageHeader title="Sites" subtitle="Loading sites…" actions={headerActions} /></section>
       <div className="x-card ss-board">
         <div className="ss-grid">
           {Array.from({ length: perPage }, (_, i) => (
@@ -620,6 +620,8 @@ export default function Sites() {
 
   return (
     <Page className="ss">
+      {/* ── Dark header: title, summary, views, status tabs ── */}
+      <section className="ss-hero">
       <PageHeader
         title={showHidden ? 'Hidden sites' : 'Sites'}
         subtitle={<>
@@ -634,6 +636,7 @@ export default function Sites() {
       />
 
       <Tabs tabs={tabItems} active={tab} onChange={t => setParam({ tab: t })} />
+      </section>
 
       <div className="x-card ss-board">
         {/* ── SEARCH + TOOLS ── */}
@@ -650,20 +653,29 @@ export default function Sites() {
               ? <button className="x-clear" title="Clear search" onClick={() => setParam({ q:'' })}><X size={14} /></button>
               : <kbd>/</kbd>}
           </label>
+          <div className="ss-cmp" role="group" aria-label="Show">
+          <span className="ss-cmp-l">Show</span>
           {memberId && (
             <button className={`ss-tool${mine ? ' on' : ''}`} onClick={() => setParam({ mine: !mine })} title="Only sites where you are PIC or crew">
-              My sites<i>{myCount}</i>
+              <UserRound size={14} /> My sites<i>{myCount}</i>
             </button>
           )}
           <button className={`ss-tool${showFilters || extraFilters > 0 ? ' on' : ''}`} onClick={() => setShowFilters(v => !v)} aria-expanded={showFilters}>
             <Filter size={14} /> Filters{extraFilters > 0 && <i>{extraFilters}</i>}
           </button>
-          <select className="x-select" value={sort} onChange={e => setParam({ sort: e.target.value })} title="Sort" aria-label="Sort">
+          </div>
+          <div className="ss-cmp" role="group" aria-label="Arrange">
+          <span className="ss-cmp-l">Arrange</span>
+          <label className="ss-tool ss-sort"><ArrowUpDown size={14} />
+          <select value={sort} onChange={e => setParam({ sort: e.target.value })} title="Sort" aria-label="Sort">
             {SORTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+          </select></label>
           <button className={`ss-tool${grouped ? ' on' : ''}`} onClick={() => setParam({ group: !grouped }, { replace:true })} title="Group by Today / This week / Later / Past">
             <Layers size={14} /> Group
           </button>
+          </div>
+          <div className="ss-cmp" role="group" aria-label="Manage">
+          <span className="ss-cmp-l">Manage</span>
           <button className={`ss-tool${selectMode ? ' on' : ''}`} onClick={() => { setSelectMode(v => !v); setSelected(new Set()) }} title="Select several sites to update at once">
             <CheckSquare size={14} /> Select
           </button>
@@ -672,6 +684,7 @@ export default function Sites() {
               <EyeOff size={14} /> Hidden<i>{hiddenCount}</i>
             </button>
           )}
+          </div>
         </FilterBar>
 
         {/* ── MORE FILTERS ── */}

@@ -200,3 +200,40 @@
   .ss-bulk .acts { order: 3; flex-basis: 100%; }
   .ss-bulk .acts span { flex-basis: 100%; }
 }
+
+/* ── Dark header (Sites only): title, summary, view switch, status tabs ── */
+.ss-hero { background: linear-gradient(135deg, var(--x-navy) 0%, #1d2f47 100%); border-radius: var(--x-r-lg); padding: 18px 20px 0; margin: 4px 0 14px;
+  box-shadow: 0 10px 28px -12px rgba(20,33,49,.55); color: #fff; }
+.ss-hero .x-ph { margin: 0 0 14px; }
+.ss-hero .x-ph h1 { color: #fff; }
+.ss-hero .x-ph .x-sub { color: #aab6c8; }
+.ss-hero .x-sub b { color: #fff; }
+.ss-hero .ss-attn { background: rgba(233,162,59,.18); color: #f9c97a; }
+.ss-hero .ss-attn:hover, .ss-hero .ss-attn.on { background: var(--x-warning); color: var(--x-navy); }
+.ss-hero .x-tabs { margin: 0 -20px; padding: 0 12px; border-bottom: 0; border-top: 1px solid rgba(255,255,255,.1); }
+.ss-hero .x-tabs button { color: #9aa6bd; padding: 12px 14px; border-bottom-width: 3px; }
+.ss-hero .x-tabs button:hover { color: #fff; }
+.ss-hero .x-tabs button.on { color: #fff; font-weight: 600; border-bottom-color: var(--x-orange); }
+.ss-hero .x-tabs button .x-n { background: rgba(255,255,255,.1); color: #cbd5e1; }
+.ss-hero .x-tabs button.on .x-n { background: var(--x-orange); color: #fff; }
+
+/* ── Toolbar compartments: Show · Arrange · Manage ── */
+.ss-board .x-filters { gap: 10px; padding: 12px; background: #fff; border-radius: var(--x-r-lg) var(--x-r-lg) 0 0; }
+.ss-cmp { display: flex; align-items: center; gap: 6px; padding: 4px; background: #eef2f7; border: 1px solid var(--x-border); border-radius: 10px; }
+.ss-cmp-l { font-size: 10.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--x-ink-3); padding: 0 4px 0 6px; }
+.ss-cmp .ss-tool { height: 32px; background: #fff; border-color: #d9e0ea; box-shadow: 0 1px 2px rgba(23,35,53,.08); }
+.ss-cmp .ss-tool:hover { border-color: #b8c3d3; }
+.ss-cmp .ss-tool.on { background: var(--x-orange); border-color: var(--x-orange); color: #fff; box-shadow: 0 2px 6px rgba(240,124,30,.35); }
+.ss-cmp .ss-tool.on svg { color: #fff; }
+.ss-cmp .ss-tool.on i { background: rgba(255,255,255,.25); color: #fff; }
+.ss-tool svg { color: var(--x-ink-3); }
+.ss-sort { position: relative; cursor: pointer; padding-right: 8px; }
+.ss-sort select { border: 0; background: transparent; font: inherit; font-size: 13px; font-weight: 500; color: var(--x-ink-2); cursor: pointer; outline: none; padding-right: 2px; }
+.ss-sort:focus-within { box-shadow: var(--x-ring); }
+
+@media (max-width: 639px) {
+  .ss-hero { padding: 14px 14px 0; border-radius: var(--x-r-md); }
+  .ss-hero .x-tabs { margin: 0 -14px; padding: 0 6px; }
+  .ss-cmp { flex: 1 1 100%; flex-wrap: wrap; }
+  .ss-cmp .ss-tool { flex: 1 1 auto; }
+}
