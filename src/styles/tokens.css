@@ -1,0 +1,46 @@
+/* Xyte design tokens — the one place colours, type, spacing, radius and shadows are defined.
+   Approved 16 Nov 2026: Inter, navy #142131, orange #F07C1E, violet "review" for awaiting approval.
+   Pages use these via var(--x-…) and the shared kit in components/ui/. */
+:root {
+  /* brand */
+  --x-navy: #142131;
+  --x-navy-2: #1d2d42;
+  --x-orange: #f07c1e;
+  --x-orange-d: #d9650c;
+  --x-orange-soft: #fff1e5;
+
+  /* surfaces + text */
+  --x-bg: #f4f6fa;
+  --x-surface: #ffffff;
+  --x-surface-2: #fafbfd;
+  --x-ink: #172335;
+  --x-ink-2: #3d4a5f;
+  --x-ink-3: #64748b;
+  --x-border: #e2e8f0;
+  --x-border-2: #eef2f6;
+
+  /* status: solid colour + soft background + text on the soft background */
+  --x-success: #16a36a; --x-success-bg: #e6f6ee; --x-success-ink: #0f7a4e;
+  --x-warning: #e9a23b; --x-warning-bg: #fdf3e1; --x-warning-ink: #93600f;
+  --x-danger:  #dc4545; --x-danger-bg:  #fdecec; --x-danger-ink:  #b42c2c;
+  --x-info:    #3478d4; --x-info-bg:    #e8f1fc; --x-info-ink:    #245ea9;
+  --x-review:  #6d5bd0; --x-review-bg:  #efedfb; --x-review-ink:  #5443ad;
+  --x-neutral: #94a3b8; --x-neutral-bg: #f1f4f8; --x-neutral-ink: #526178;
+
+  /* type */
+  --x-font: 'Inter', system-ui, -apple-system, sans-serif;
+  --x-fs-xs: 12px; --x-fs-sm: 13px; --x-fs-md: 14px; --x-fs-lg: 16px; --x-fs-xl: 20px; --x-fs-2xl: 24px;
+
+  /* spacing (4px scale) */
+  --x-s1: 4px; --x-s2: 8px; --x-s3: 12px; --x-s4: 16px; --x-s5: 20px; --x-s6: 24px; --x-s8: 32px;
+
+  /* radius + shadow */
+  --x-r-sm: 8px; --x-r-md: 12px; --x-r-lg: 16px; --x-r-pill: 999px;
+  --x-sh-1: 0 1px 2px rgba(23,35,53,.05), 0 4px 14px rgba(23,35,53,.05);
+  --x-sh-2: 0 10px 30px rgba(23,35,53,.14);
+  --x-ring: 0 0 0 3px rgba(52,120,212,.18);
+
+  /* layers (sidebar 3001, top bar 3000) */
+  --x-z-modal: 3200;
+  --x-z-tip: 3300;
+}

@@ -3,8 +3,8 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  background: #f1f5f9;
-  color: #0f172a;
+  background: var(--x-bg);
+  color: var(--x-ink);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   font-size: 14px;
 }

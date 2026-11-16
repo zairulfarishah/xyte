@@ -568,12 +568,12 @@ function AppShell() {
   )
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#f3f5f9' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--x-bg)' }}>
       {!isMobile && <SideNav nav={nav} badges={badges} />}
 
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
       <nav style={{
-        background: isMobile ? '#0f172a' : 'rgba(243,245,249,.92)',
+        background: isMobile ? 'var(--x-navy)' : 'rgba(244,246,250,.92)',
         backdropFilter: isMobile ? undefined : 'blur(8px)',
         flexShrink: 0,
         display: 'flex',
@@ -583,7 +583,7 @@ function AppShell() {
         position: 'sticky',
         top: 0,
         zIndex: 3000,
-        borderBottom: isMobile ? '1px solid #1e293b' : 'none',
+        borderBottom: isMobile ? '1px solid var(--x-navy-2)' : 'none',
       }}>
         {isMobile && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', minHeight: '40px' }}>

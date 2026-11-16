@@ -1,9 +1,9 @@
 /* Dashboard — light page, white cards, orange accent. Classes prefixed dh-. */
 .dh {
-  --ink: #14213a; --ink-2: #3d4a63; --ink-3: #5f6c84; --line: #e8ecf2;
-  --blue: #2a6fdb; --green: #16a34a; --orange: #f07c1e; --red: #d4372c; --navy: #1b2f57;
-  --shadow: 0 1px 2px rgba(20,33,58,.04), 0 6px 18px rgba(20,33,58,.05);
-  font-family: Poppins, Inter, system-ui, sans-serif; font-size: 14px; color: var(--ink);
+  --ink: var(--x-ink); --ink-2: var(--x-ink-2); --ink-3: var(--x-ink-3); --line: var(--x-border);
+  --blue: var(--x-info); --green: var(--x-success); --orange: var(--x-orange); --red: var(--x-danger); --navy: var(--x-navy);
+  --shadow: var(--x-sh-1);
+  font-family: var(--x-font); font-size: 14px; color: var(--ink);
   padding: 4px 24px 32px; max-width: 1560px; margin: 0 auto;
 }
 :where(.dh) button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; padding: 0; text-align: left; }
