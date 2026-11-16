@@ -793,27 +793,33 @@ export default function Sites() {
                   onKeyDown={e => { if (e.key === 'Enter' && e.target === e.currentTarget) navigate(`/sites/${site.id}`) }}
                   style={{ '--sc2': stepColor }}>
 
-                  {/* ── Photo ── */}
-                  <div className="ss-photo">
-                    <img src={site.site_photo_url || getSiteHeaderImage(site.site_type)} alt="" loading="lazy" />
-                    <div className="ss-ov">
-                      {selectMode && <span className="ss-check">{isSel ? <CheckSquare size={18} /> : <Square size={18} />}</span>}
-                      <StatusBadge map={SITE_STATUS} value={site.site_status} />
-                      {!selectMode && <span className="ss-open"><ArrowUpRight size={13} /> Open</span>}
-                    </div>
-                    {site.location && <span className="ss-loc" title={site.location}><MapPin size={11} /><span>{shortLocation(site.location)}</span></span>}
+                  {/* ── Photo fills the card ── */}
+                  <div className={`ss-bg${site.site_photo_url ? "" : " nophoto"}`}><img src={site.site_photo_url || getSiteHeaderImage(site.site_type)} alt="" loading="lazy" /></div>
+                  <div className="ss-top">
+                    {selectMode && <span className="ss-check">{isSel ? <CheckSquare size={18} /> : <Square size={18} />}</span>}
+                    <StatusBadge map={SITE_STATUS} value={site.site_status} />
+                    {rel && <span className={`ss-when ${rel.tone}`}>{rel.text}</span>}
                   </div>
 
                   <div className="ss-body">
-                    <div className="ss-eb">{typeLabel}</div>
-                    <h3 className="ss-name" title={getSiteTitle(site)}>{site.site_name}</h3>
-                    {site.client_company_name && <p className="ss-client">{site.client_company_name}</p>}
-                    <div className="ss-meta">
-                      <Calendar size={13} />
-                      <span title={formatRange(siteStart(site), siteEnd(site))}>{formatRange(siteStart(site), siteEnd(site))}</span>
-                      <i>·</i><span>{durationLabel(site)}</span>
-                      {rel && <><i>·</i><span className={`r ${rel.tone}`}>{rel.text}</span></>}
+                    {/* ── Name on the photo ── */}
+                    <div className="ss-head">
+                      <div className="ss-eb">{typeLabel}</div>
+                      <h3 className="ss-name" title={getSiteTitle(site)}>{site.site_name}</h3>
+                      <p className="ss-sub" title={site.location || ''}>
+                        {site.location && <><MapPin size={12} /><span>{shortLocation(site.location)}</span></>}
+                        {site.location && site.client_company_name && <i>·</i>}
+                        {site.client_company_name && <span>{site.client_company_name}</span>}
+                      </p>
+                      <div className="ss-meta">
+                        <Calendar size={12} />
+                        <span title={formatRange(siteStart(site), siteEnd(site))}>{formatRange(siteStart(site), siteEnd(site))}</span>
+                        <i>·</i><span>{durationLabel(site)}</span>
+                      </div>
                     </div>
+
+                    {/* ── Frosted panel: progress, report, team, actions ── */}
+                    <div className="ss-glass">
 
                     {/* ── Progress tracker ── */}
                     <div className={`ss-track${halted ? ' halt' : ''}`}>
@@ -907,6 +913,7 @@ export default function Sites() {
                           </div>
                         )}
                       </div>
+                    </div>
                     </div>
                   </div>
                 </div>
