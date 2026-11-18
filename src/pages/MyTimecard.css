@@ -1,0 +1,93 @@
+/* Timecard quick entry — Normal day, quick time picker, Fill missing days, Today card */
+
+.tc-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tc-btn { height: 36px; padding: 0 14px; border-radius: 10px; display: inline-flex; align-items: center; gap: 7px; font: inherit; font-size: 13px; font-weight: 600;
+  background: #fff; border: 1px solid #e2e8f0; color: #3d4a5f; cursor: pointer; }
+.tc-btn:hover { border-color: #cbd5e1; }
+.tc-btn.pri { background: #f07c1e; border-color: #f07c1e; color: #fff; box-shadow: 0 4px 12px -4px rgba(240, 124, 30, .6); }
+.tc-btn.pri:hover { background: #d9650c; }
+.tc-btn.pri:disabled { background: #e2e8f0; border-color: #e2e8f0; color: #64748b; box-shadow: none; cursor: default; }
+.tc-btn .n { background: rgba(255, 255, 255, .25); padding: 1px 7px; border-radius: 99px; font-size: 11.5px; }
+
+.tc-toggle { display: inline-flex; align-items: center; gap: 8px; font: inherit; font-size: 13px; font-weight: 500; color: #3d4a5f; background: none; border: 0; cursor: pointer; padding: 0; }
+.tc-toggle .sw { width: 34px; height: 20px; border-radius: 99px; background: #cbd5e1; position: relative; transition: background .15s; }
+.tc-toggle .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left .15s; box-shadow: 0 1px 3px rgba(0, 0, 0, .2); }
+.tc-toggle.on .sw { background: #f07c1e; }
+.tc-toggle.on .sw::after { left: 16px; }
+
+.tc-times { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.tc-arrow { color: #94a3b8; font-size: 12px; }
+.tc-muted { color: #94a3b8; font-size: 12.5px; }
+.tc-chip { height: 32px; padding: 0 11px; border-radius: 9px; border: 1px solid #e2e8f0; background: #fff; font: inherit; font-size: 13px; font-weight: 600; color: #172335;
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; cursor: pointer; user-select: none; }
+.tc-chip:hover { border-color: #f07c1e; }
+.tc-chip.empty { color: #94a3b8; font-weight: 500; border-style: dashed; }
+.tc-chip.act { border-color: #f07c1e; box-shadow: 0 0 0 3px rgba(240, 124, 30, .18); }
+.tc-chip.ro { cursor: default; background: transparent; border-color: transparent; padding: 0 4px; }
+.tc-quick { height: 32px; padding: 0 12px; border-radius: 9px; border: 0; background: #fff1e5; color: #d9650c; font: inherit; font-size: 12.5px; font-weight: 700;
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; cursor: pointer; user-select: none; }
+.tc-quick:hover { background: #ffe3cb; }
+.tc-quick small { font-weight: 500; font-size: 11.5px; color: #b5651d; }
+.tc-quick.wide { width: 100%; height: 40px; justify-content: center; margin-top: 8px; font-size: 13.5px; }
+.tc-link { font: inherit; font-size: 12.5px; font-weight: 500; color: #64748b; background: none; border: 0; padding: 0; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 3px; text-decoration-color: #cbd5e1; white-space: nowrap; }
+.tc-link:hover { color: #172335; }
+
+.tc-fold { width: 100%; padding: 12px 18px; display: flex; align-items: center; justify-content: center; gap: 6px; border: 0; background: #fafbfd;
+  font: inherit; font-size: 13px; font-weight: 500; color: #64748b; cursor: pointer; }
+.tc-fold:hover { color: #172335; }
+
+/* time picker */
+.tc-tp { position: fixed; z-index: 1250; background: #fff; border-radius: 14px; border: 1px solid #e2e8f0; box-shadow: 0 18px 50px rgba(20, 33, 49, .28); padding: 12px; }
+.tc-tp-h { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.tc-tp-h span { font-size: 11.5px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .06em; }
+.tc-tp-h b { font-size: 14px; color: #172335; }
+.tc-tp-type { width: 100%; height: 36px; border: 1px solid #e2e8f0; border-radius: 9px; padding: 0 10px; font: inherit; font-size: 13.5px; color: #172335; margin-bottom: 8px; }
+.tc-tp-type:focus { outline: none; border-color: #f07c1e; box-shadow: 0 0 0 3px rgba(240, 124, 30, .15); }
+.tc-tp-type.bad { border-color: #dc4545; box-shadow: 0 0 0 3px rgba(220, 69, 69, .15); }
+.tc-tp-grp { font-size: 10.5px; font-weight: 700; color: #94a3b8; letter-spacing: .06em; margin: 4px 2px; }
+.tc-tp-hrs { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+.tc-tp-hrs button { height: 32px; border-radius: 8px; border: 0; background: #f4f6fa; font: inherit; font-size: 13px; font-weight: 600; color: #172335; cursor: pointer; }
+.tc-tp-hrs button:hover { background: #e9edf3; }
+.tc-tp-hrs button.office { box-shadow: inset 0 0 0 1.5px #f8c79c; }
+.tc-tp-hrs button.on { background: #142131; color: #fff; box-shadow: none; }
+.tc-tp-mins { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
+.tc-tp-mins button { height: 36px; border-radius: 9px; border: 0; background: #f4f6fa; font: inherit; font-size: 14px; font-weight: 700; color: #172335; cursor: pointer; }
+.tc-tp-mins button.on { background: #f07c1e; color: #fff; }
+.tc-tp-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+.tc-tp-set { height: 34px; padding: 0 16px; border-radius: 9px; border: 0; background: #142131; color: #fff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+/* fill missing days dialog */
+.tc-scrim { position: fixed; inset: 0; z-index: 1300; background: rgba(15, 23, 42, .45); display: grid; place-items: center; padding: 16px; }
+.tc-modal { background: #fff; border-radius: 16px; width: min(460px, 100%); padding: 20px; box-shadow: 0 24px 60px rgba(15, 23, 42, .35); }
+.tc-modal h3 { margin: 0; font-size: 17px; color: #172335; }
+.tc-modal > p { margin: 6px 0 14px; color: #64748b; font-size: 13px; line-height: 1.5; }
+.tc-modal > p.skip { margin: 10px 0 0; font-size: 12px; }
+.tc-ml { border: 1px solid #eef2f6; border-radius: 12px; max-height: 300px; overflow: auto; }
+.tc-ml label { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid #eef2f6; font-size: 13px; cursor: pointer; }
+.tc-ml label:last-child { border-bottom: 0; }
+.tc-ml label b { min-width: 58px; color: #172335; }
+.tc-ml label span { flex: 1; color: #64748b; }
+.tc-ml label em { font-style: normal; color: #b45309; font-weight: 600; }
+.tc-ml input { accent-color: #f07c1e; width: 16px; height: 16px; flex-shrink: 0; }
+.tc-mf { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+/* phone: Today card */
+.tc-today { background: #fff; border-radius: 18px; padding: 14px; border: 1px solid #f0e4d8; box-shadow: 0 6px 20px -8px rgba(20, 33, 49, .25); }
+.tc-today .h { display: flex; flex-direction: column; gap: 3px; }
+.tc-today .h b { font-size: 15px; color: #172335; }
+.tc-site-line { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #64748b; min-width: 0; }
+.tc-site-line i { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.tc-today .done { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.tc-today .done div { display: grid; grid-template-columns: auto 1fr auto 1fr; align-items: baseline; gap: 6px; background: #f4f6fa; border-radius: 12px; padding: 8px 12px; }
+.tc-today .done small { font-size: 11.5px; color: #64748b; }
+.tc-today .done b { font-size: 15px; color: #172335; }
+.tc-big { width: 100%; height: 56px; margin-top: 12px; border-radius: 14px; border: 0; font: inherit; font-size: 16px; font-weight: 700; color: #fff;
+  display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; }
+.tc-big small { font-weight: 500; opacity: .85; font-size: 12.5px; }
+.tc-big.in { background: #16a36a; box-shadow: 0 6px 16px -6px rgba(22, 163, 106, .7); }
+.tc-big.out { background: #142131; box-shadow: 0 6px 16px -6px rgba(20, 33, 49, .7); }
+.tc-today .tot { display: flex; align-items: center; gap: 12px; margin-top: 10px; font-size: 13px; color: #3d4a5f; }
+.tc-today .tot b.ot { color: #ea580c; }
+.tc-today .tot .tc-link { margin-left: auto; }
+.tc-today .hint { margin: 10px 0 0; font-size: 11.5px; color: #94a3b8; }
