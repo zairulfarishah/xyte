@@ -1,404 +1,333 @@
-import { activeMembers } from '../utils/members'
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Check, Plus, Trash2, X } from 'lucide-react'
 import { supabase } from '../supabase'
+import { activeMembers } from '../utils/members'
 import { cachedPage, rememberPage } from '../utils/pageCache'
 import { useAuth } from '../context/AuthContext'
 import { createTask, setTaskDone } from '../utils/tasks'
-import { useViewport } from '../utils/useViewport'
-import { Plus, Trash2, Check, X, Calendar } from 'lucide-react'
+import { LANES, PRIORITY_WEIGHT, assigneesOf, byUrgency, dueText, isDone, isLate, parseQuickTask, todayIso } from './tasks/taskUtils'
+import './tasks/MissionControl.css'
 
-const MEMBER_COLORS = [
-  { bg: '#eff6ff', border: '#93c5fd', text: '#1d4ed8', header: '#2563eb' },
-  { bg: '#fff7ed', border: '#fed7aa', text: '#c2410c', header: '#ea580c' },
-  { bg: '#f0fdf4', border: '#86efac', text: '#166534', header: '#16a34a' },
-  { bg: '#faf5ff', border: '#c4b5fd', text: '#6d28d9', header: '#7c3aed' },
-  { bg: '#fdf2f8', border: '#f9a8d4', text: '#9d174d', header: '#db2777' },
-]
+// Tasks — "Mission Control": open tasks laid out by when they're due, a quick-add bar
+// (type "Check DO @Izni !high fri"), team workload, and the full New task form.
 
-const PRIORITY = {
-  low:    { bg: '#f0fdf4', text: '#166534', border: '#86efac', label: 'Low' },
-  medium: { bg: '#fef9c3', text: '#854d0e', border: '#fde047', label: 'Medium' },
-  high:   { bg: '#fee2e2', text: '#991b1b', border: '#f87171', label: 'High' },
+const COLORS = ['#ff7a1a', '#22d3ee', '#a78bfa', '#2ee6a6', '#f472b6', '#facc15']
+const PRIO_COLOR = { high: 'var(--mc-hi)', medium: 'var(--mc-med)', low: 'var(--mc-low)' }
+const LANE_LIMIT = 8
+const EMPTY_FORM = { title: '', description: '', priority: 'medium', due_date: '', assignees: [] }
+
+const firstName = m => m ? (m.short_name || m.full_name.split(' ')[0]) : 'Someone'
+const initials = m => m ? m.full_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : '?'
+
+function Avatar({ member, color }) {
+  if (member?.avatar_url) return <img className="mc-av" src={member.avatar_url} alt="" title={member.full_name} />
+  return <span className="mc-av" title={member?.full_name} style={{ background: color }}>{initials(member)}</span>
 }
 
-const lLabel = { display: 'block', fontSize: '12px', fontWeight: '600', color: '#374151', marginBottom: '6px' }
-const input  = { width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none', color: '#0f172a', boxSizing: 'border-box', fontFamily: 'inherit' }
+function Ring({ value, total, color }) {
+  const r = 22, C = 2 * Math.PI * r, f = total ? Math.min(1, value / total) : 0
+  return (
+    <div className="mc-ring" style={{ '--c': color }}>
+      <svg viewBox="0 0 52 52" aria-hidden="true">
+        <circle className="bg" cx="26" cy="26" r={r} />
+        <circle className="fg" cx="26" cy="26" r={r} strokeDasharray={C} strokeDashoffset={C * (1 - f)} />
+      </svg>
+      <b>{value}</b>
+    </div>
+  )
+}
 
 export default function TaskPage() {
   const { memberId, fullName } = useAuth()
-  const { isMobile } = useViewport()
   const [members, setMembers] = useState(() => cachedPage('tasks')?.members || [])
   const [tasks, setTasks]     = useState(() => cachedPage('tasks')?.tasks || [])
   const [loading, setLoading] = useState(() => !cachedPage('tasks'))
-  const [showModal, setShowModal] = useState(false)
-  const [form, setForm] = useState({ title: '', description: '', priority: 'medium', due_date: '', assignees: [] })
+  const [scope, setScope]       = useState('all')     // all | mine | gave
+  const [person, setPerson]     = useState(null)      // filter to one member's tasks
+  const [showDone, setShowDone] = useState(false)
+  const [expanded, setExpanded] = useState({})        // lane key -> show all
+  const [busy, setBusy]         = useState(null)      // task id being ticked
+  const [quick, setQuick]       = useState('')
+  const [quickBusy, setQuickBusy] = useState(false)
+  const [quickError, setQuickError] = useState(null)
+  const [modal, setModal]       = useState(null)      // form state while the dialog is open
   const [saving, setSaving]     = useState(false)
   const [formError, setFormError] = useState(null)
-  const [cardFilter, setCardFilter] = useState({}) // memberId -> 'all' | 'active' | 'done'
+  const quickRef = useRef(null)
+  const today = todayIso()
 
-  useEffect(() => { fetchAll() }, [])
-
-  async function fetchAll() {
-    const [{ data: m }, { data: t }] = await Promise.all([
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([
       supabase.from('team_members').select('id, full_name, short_name, avatar_url, is_hidden').order('full_name'),
-      supabase.from('tasks')
-        .select('*, task_assignments(member_id)')
-        .order('created_at', { ascending: false }),
-    ])
-    setMembers(activeMembers(m))
-    setTasks(t || [])
-    setLoading(false)
-    rememberPage('tasks', { members: activeMembers(m), tasks: t || [] })
-  }
-
-  function toggleAssignee(id) {
-    setForm(f => ({
-      ...f,
-      assignees: f.assignees.includes(id) ? f.assignees.filter(x => x !== id) : [...f.assignees, id],
-    }))
-  }
-
-  function openModal(preAssign = []) {
-    setForm({ title: '', description: '', priority: 'medium', due_date: '', assignees: preAssign })
-    setFormError(null)
-    setShowModal(true)
-  }
-
-  async function handleAdd() {
-    if (!form.title.trim())         { setFormError('Task title is required.'); return }
-    if (form.assignees.length === 0) { setFormError('Assign to at least one person.'); return }
-    setSaving(true); setFormError(null)
-
-    // creates the task + assignments and notifies the people it was given to
-    const { error } = await createTask(form, { memberId, fullName })
-    if (error) { setFormError(error.message); setSaving(false); return }
-
-    setSaving(false)
-    setShowModal(false)
-    fetchAll()
-  }
-
-  async function toggleDone(task) {
-    const next = task.status === 'done' ? 'todo' : 'done'
-    const { error } = await setTaskDone(task, next === 'done', { memberId, fullName })
-    if (error) return
-    setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: next } : t))
-  }
-
-  async function handleDelete(task) {
-    if (!confirm('Delete this task?')) return
-    await supabase.from('tasks').delete().eq('id', task.id)
-    setTasks(prev => prev.filter(t => t.id !== task.id))
-  }
-
-  const tasksByMember = useMemo(() => {
-    const map = {}
-    members.forEach(m => { map[m.id] = [] })
-    tasks.forEach(t => {
-      t.task_assignments?.forEach(a => {
-        if (map[a.member_id]) map[a.member_id].push(t)
-      })
+      supabase.from('tasks').select('*, task_assignments(member_id)').order('created_at', { ascending: false }),
+    ]).then(([{ data: m }, { data: t }]) => {
+      if (cancelled) return
+      const list = activeMembers(m)
+      setMembers(list)
+      setTasks(t || [])
+      setLoading(false)
+      rememberPage('tasks', { members: list, tasks: t || [] })
     })
-    return map
+    return () => { cancelled = true }
+  }, [])
+
+  // Ctrl/⌘ K jumps to the quick-add bar
+  useEffect(() => {
+    const onKey = e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); quickRef.current?.focus() } }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  const memberById = useMemo(() => new Map(members.map(m => [m.id, m])), [members])
+  const colorOf = id => COLORS[Math.max(0, members.findIndex(m => m.id === id)) % COLORS.length]
+
+  // ── what's on the board ──
+  const inView = t =>
+    (scope === 'all' || (scope === 'mine' ? assigneesOf(t).includes(memberId) : t.created_by === memberId))
+    && (!person || assigneesOf(t).includes(person))
+  const visible = tasks.filter(inView)
+  const open = visible.filter(t => !isDone(t))
+  const done = visible.filter(isDone)
+  const sortUrgent = byUrgency(today)
+  const lanes = LANES.map(l => ({ ...l, items: open.filter(t => l.test(t, today)).sort(sortUrgent) }))
+  if (showDone) lanes.push({ key: 'done', label: 'Done', color: 'var(--mc-low)', empty: 'Nothing done yet', items: done })
+
+  const stats = [
+    { label: 'Open',      value: open.length, of: visible.length, color: 'var(--mc-acc2)', sub: `of ${visible.length} total` },
+    { label: 'Due today', value: open.filter(t => t.due_date === today).length, of: open.length, color: 'var(--mc-acc)', sub: 'need doing today' },
+    { label: 'Overdue',   value: open.filter(t => isLate(t, today)).length, of: open.length, color: 'var(--mc-hi)', sub: 'past their date' },
+    { label: 'Done',      value: done.length, of: visible.length, color: 'var(--mc-low)', sub: `${visible.length ? Math.round(done.length / visible.length * 100) : 0}% complete` },
+  ]
+
+  // workload across the whole team (high priority counts more)
+  const loads = useMemo(() => {
+    const openAll = tasks.filter(t => !isDone(t))
+    return members.map(m => {
+      const mine = openAll.filter(t => assigneesOf(t).includes(m.id))
+      return { m, count: mine.length, weight: mine.reduce((s, t) => s + (PRIORITY_WEIGHT[t.priority] || 2), 0) }
+    }).sort((a, b) => b.weight - a.weight)
   }, [tasks, members])
+  const maxLoad = Math.max(6, ...loads.map(l => l.weight))
 
-  if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
-      <div style={{ color: '#64748b', fontSize: '14px' }}>Loading tasks…</div>
-    </div>
-  )
+  // ── actions ──
+  async function toggleDone(task) {
+    setBusy(task.id)
+    const next = !isDone(task)
+    const { error } = await setTaskDone(task, next, { memberId, fullName })
+    setBusy(null)
+    if (!error) setTasks(list => list.map(t => t.id === task.id ? { ...t, status: next ? 'done' : 'todo' } : t))
+  }
 
+  async function removeTask(task) {
+    if (!confirm(`Delete "${task.title}"?`)) return
+    const { error } = await supabase.from('tasks').delete().eq('id', task.id)
+    if (error) { alert(`Could not delete: ${error.message}`); return }
+    setTasks(list => list.filter(t => t.id !== task.id))
+  }
+
+  const parsed = quick.trim() ? parseQuickTask(quick, members, today) : null
+
+  async function addQuick() {
+    if (!parsed) return
+    if (!parsed.title) { setQuickError('Add a few words saying what needs doing.'); return }
+    const assignees = parsed.assignees.length ? parsed.assignees : memberId ? [memberId] : []
+    if (!assignees.length) { openModal({ ...EMPTY_FORM, title: parsed.title, priority: parsed.priority, due_date: parsed.due_date || '' }); return }
+    setQuickBusy(true); setQuickError(null)
+    const { task, error } = await createTask({ ...parsed, due_date: parsed.due_date || '', description: '', assignees }, { memberId, fullName })
+    setQuickBusy(false)
+    if (error) { setQuickError(error.message); return }
+    setTasks(list => [task, ...list])
+    setQuick('')
+  }
+
+  function openModal(form = EMPTY_FORM) { setFormError(null); setModal(form) }
+
+  async function saveModal() {
+    if (!modal.title.trim())       { setFormError('Task title is required.'); return }
+    if (!modal.assignees.length)   { setFormError('Assign to at least one person.'); return }
+    setSaving(true); setFormError(null)
+    const { task, error } = await createTask(modal, { memberId, fullName })
+    setSaving(false)
+    if (error) { setFormError(error.message); return }
+    setTasks(list => [task, ...list])
+    setModal(null)
+  }
+
+  if (loading) return <div className="mc"><div className="mc-loading"><i />Loading tasks…</div></div>
+
+  const late = stats[2].value
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg,#071226 0 88px,#dde4ed 88px 100%)' }}>
+    <div className="mc">
+      <div className="mc-wrap">
+        <header className="mc-head">
+          <div>
+            <div className="mc-kicker">Task control · live</div>
+            <h1>Tasks <span>Mission Control</span></h1>
+            <p>{open.length} open · {late} overdue · {stats[1].value} due today</p>
+          </div>
+          <button type="button" className="mc-btn" onClick={() => openModal({ ...EMPTY_FORM, assignees: person ? [person] : [] })}><Plus /> New task</button>
+        </header>
 
-      {/* Header */}
-      <div style={{ padding: isMobile ? '18px 14px 0' : '24px 32px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-        <div>
-          <h1 style={{ fontSize: '22px', fontWeight: '700', color: 'white' }}>Tasks</h1>
-          <p style={{ color: '#94a3b8', fontSize: '13px', marginTop: '2px' }}>
-            {tasks.length} task{tasks.length !== 1 ? 's' : ''} · {tasks.filter(t => t.status === 'done').length} done
-          </p>
+        <div className="mc-hud">
+          {stats.map(s => (
+            <div key={s.label} className="mc-stat mc-glass" style={{ '--c': s.color }}>
+              <Ring value={s.value} total={s.of} color={s.color} />
+              <div><div className="lbl">{s.label}</div><div className="sub">{s.sub}</div></div>
+            </div>
+          ))}
         </div>
-        <button
-          onClick={() => openModal()}
-          style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#2563eb', color: 'white', border: 'none', padding: '9px 18px', borderRadius: '10px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', boxShadow: '0 8px 20px rgba(37,99,235,0.3)' }}
-        >
-          <Plus size={14} /> New Task
-        </button>
-      </div>
 
-      {/* Cards grid */}
-      <div style={{ padding: isMobile ? '16px 14px 48px' : '24px 32px 48px' }}>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: isMobile ? '1fr' : members.length <= 3 ? `repeat(${members.length}, 1fr)` : 'repeat(3, 1fr)',
-          gap: '14px',
-          alignItems: 'start',
-        }}>
-          {members.map((member, idx) => {
-            const c = MEMBER_COLORS[idx % MEMBER_COLORS.length]
-            const memberTasks = tasksByMember[member.id] || []
-            const fKey = member.id
-            const cur  = cardFilter[fKey] || 'all'
-            const shown = memberTasks.filter(t =>
-              cur === 'active' ? t.status !== 'done' :
-              cur === 'done'   ? t.status === 'done' : true
-            )
-            const doneCount   = memberTasks.filter(t => t.status === 'done').length
-            const activeCount = memberTasks.length - doneCount
-            const initials = member.full_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
-            const name = member.short_name || member.full_name.split(' ')[0]
-
-            return (
-              <div key={member.id} style={{ background: 'white', borderRadius: '18px', border: `1px solid ${c.border}`, overflow: 'hidden', boxShadow: '0 4px 16px rgba(0,0,0,0.07)' }}>
-
-                {/* Card header */}
-                <div style={{ background: c.header, padding: '16px 16px 14px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'rgba(255,255,255,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: '800', color: 'white', flexShrink: 0, border: '2px solid rgba(255,255,255,0.3)', overflow: 'hidden' }}>
-                    {member.avatar_url
-                      ? <img src={member.avatar_url} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      : initials}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontWeight: '800', fontSize: '16px', color: 'white' }}>{name}</p>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
-                      <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.8)' }}>{activeCount} active</span>
-                      <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>·</span>
-                      <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.8)' }}>{doneCount} done</span>
-                    </div>
-                  </div>
-                  {/* Progress ring */}
-                  {memberTasks.length > 0 && (
-                    <div style={{ position: 'relative', width: '34px', height: '34px', flexShrink: 0 }}>
-                      <svg width="34" height="34" style={{ transform: 'rotate(-90deg)' }}>
-                        <circle cx="17" cy="17" r="13" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="3" />
-                        <circle
-                          cx="17" cy="17" r="13" fill="none"
-                          stroke="rgba(255,255,255,0.9)" strokeWidth="3"
-                          strokeDasharray={`${2 * Math.PI * 13}`}
-                          strokeDashoffset={`${2 * Math.PI * 13 * (1 - doneCount / memberTasks.length)}`}
-                          strokeLinecap="round"
-                          style={{ transition: 'stroke-dashoffset 0.4s ease' }}
-                        />
-                      </svg>
-                      <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '8px', fontWeight: '800', color: 'white' }}>
-                        {Math.round((doneCount / memberTasks.length) * 100)}%
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Filter tabs */}
-                <div style={{ display: 'flex', borderBottom: '1px solid #f1f5f9', background: '#fafafa' }}>
-                  {[['all', 'All'], ['active', 'Active'], ['done', 'Done']].map(([val, lbl]) => (
-                    <button
-                      key={val}
-                      onClick={() => setCardFilter(prev => ({ ...prev, [fKey]: val }))}
-                      style={{ flex: 1, padding: '8px 4px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: cur === val ? '700' : '500', color: cur === val ? c.header : '#94a3b8', borderBottom: `2px solid ${cur === val ? c.header : 'transparent'}`, transition: 'all 0.15s' }}
-                    >
-                      {lbl}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Task list */}
-                <div style={{ padding: '8px', minHeight: '60px', maxHeight: '380px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                  {shown.length === 0 ? (
-                    <p style={{ textAlign: 'center', color: '#cbd5e1', fontSize: '12px', padding: '28px 8px' }}>
-                      {cur === 'done' ? 'No completed tasks' : cur === 'active' ? 'No active tasks' : 'No tasks yet'}
-                    </p>
-                  ) : shown.map(task => {
-                    const isDone    = task.status === 'done'
-                    const pc        = PRIORITY[task.priority] || PRIORITY.medium
-                    const isOverdue = task.due_date && !isDone && new Date(task.due_date) < new Date()
-                    return (
-                      <div
-                        key={task.id}
-                        style={{ background: isDone ? '#fafafa' : 'white', border: `1px solid ${isDone ? '#f1f5f9' : '#e8edf3'}`, borderRadius: '10px', padding: '10px', display: 'flex', gap: '8px', alignItems: 'flex-start', transition: 'all 0.15s' }}
-                      >
-                        {/* Complete toggle */}
-                        <button
-                          onClick={() => toggleDone(task)}
-                          title={isDone ? 'Mark as active' : 'Mark as done'}
-                          style={{ width: '20px', height: '20px', borderRadius: '50%', border: `2px solid ${isDone ? c.header : '#d1d5db'}`, background: isDone ? c.header : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, marginTop: '1px', transition: 'all 0.2s' }}
-                        >
-                          {isDone && <Check size={11} color="white" strokeWidth={3} />}
-                        </button>
-
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ fontSize: '13px', fontWeight: '600', color: isDone ? '#94a3b8' : '#0f172a', textDecoration: isDone ? 'line-through' : 'none', lineHeight: 1.4, wordBreak: 'break-word' }}>
-                            {task.title}
-                          </p>
-                          {task.description && !isDone && (
-                            <p style={{ fontSize: '11px', color: '#64748b', marginTop: '3px', lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                              {task.description}
-                            </p>
-                          )}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
-                            <span style={{ background: pc.bg, color: pc.text, border: `1px solid ${pc.border}`, padding: '1px 7px', borderRadius: '99px', fontSize: '9px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                              {pc.label}
-                            </span>
-                            {task.due_date && (
-                              <span style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '10px', color: isOverdue ? '#ef4444' : '#94a3b8', fontWeight: isOverdue ? '700' : '400' }}>
-                                <Calendar size={9} />
-                                {new Date(task.due_date + 'T00:00:00').toLocaleDateString('en-MY', { day: 'numeric', month: 'short' })}
-                                {isOverdue && ' · Overdue'}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        <button
-                          onClick={() => handleDelete(task)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e2e8f0', display: 'flex', padding: '2px', flexShrink: 0, borderRadius: '4px', transition: 'color 0.15s' }}
-                          onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
-                          onMouseLeave={e => e.currentTarget.style.color = '#e2e8f0'}
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-
-                {/* Quick add button */}
-                <div style={{ padding: '8px', borderTop: '1px solid #f1f5f9' }}>
-                  <button
-                    onClick={() => openModal([member.id])}
-                    style={{ width: '100%', padding: '8px', borderRadius: '10px', border: `1.5px dashed ${c.border}`, background: 'transparent', color: c.text, fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', transition: 'background 0.15s' }}
-                    onMouseEnter={e => e.currentTarget.style.background = c.bg}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                  >
-                    <Plus size={12} /> Add task for {name}
-                  </button>
-                </div>
+        <div className="mc-toolbar">
+          <div className="mc-cmd-wrap">
+            <label className="mc-cmd mc-glass">
+              <span className="k" aria-hidden="true">›_</span>
+              <input ref={quickRef} value={quick} disabled={quickBusy} autoComplete="off"
+                aria-label="Quick add a task. Use @name for who, !high, !med or !low for priority, and a day like fri or 12 dec."
+                placeholder="Type a task… e.g.  Check DO for KLIA @Izni !high fri"
+                onChange={e => { setQuick(e.target.value); setQuickError(null) }}
+                onKeyDown={e => { if (e.key === 'Enter') addQuick(); if (e.key === 'Escape') setQuick('') }} />
+              <span className="mc-kbd">Ctrl K</span>
+              <button type="button" className="mc-btn" onClick={addQuick} disabled={!parsed || quickBusy}>{quickBusy ? 'Adding…' : 'Add'}</button>
+            </label>
+            {parsed && (
+              <div className="mc-parse" aria-live="polite">
+                <span className="mc-chip">“{parsed.title || '…'}”</span>
+                {(parsed.assignees.length ? parsed.assignees : memberId ? [memberId] : []).map(id => (
+                  <span key={id} className="mc-chip"><Avatar member={memberById.get(id)} color={colorOf(id)} /> {firstName(memberById.get(id))}</span>
+                ))}
+                <span className={`mc-chip p-${parsed.priority}`}>{parsed.priority}</span>
+                <span className="mc-chip mono">{parsed.due_date ? dueText(parsed.due_date, today) : 'no date'}</span>
+                {!parsed.assignees.length && <span className="warn">for you — add @name to give it to someone</span>}
               </div>
+            )}
+            {quickError && <p className="mc-err">{quickError}</p>}
+          </div>
+          <div className="mc-scope" role="group" aria-label="Show tasks">
+            {[['all', 'Everyone'], ['mine', 'Mine'], ['gave', 'I gave']].map(([k, l]) => (
+              <button key={k} type="button" className={scope === k ? 'on' : ''} aria-pressed={scope === k} onClick={() => setScope(k)}>{l}</button>
+            ))}
+            <span className="sep" />
+            <button type="button" className={showDone ? 'on' : ''} aria-pressed={showDone} onClick={() => setShowDone(v => !v)}>Done <i>{done.length}</i></button>
+          </div>
+        </div>
+
+        {person && (
+          <div className="mc-filter">Showing {firstName(memberById.get(person))}'s tasks <button type="button" onClick={() => setPerson(null)}>Show everyone</button></div>
+        )}
+
+        <div className="mc-lanes" style={{ '--n': lanes.length }}>
+          {lanes.map(lane => {
+            const all = lane.items
+            const shown = expanded[lane.key] ? all : all.slice(0, LANE_LIMIT)
+            return (
+              <section key={lane.key} className="mc-lane mc-glass" style={{ '--c': lane.color }} aria-label={lane.label}>
+                <h3><span>{lane.label}</span><i>{all.length}</i></h3>
+                {!all.length && <div className="mc-empty">{lane.empty}</div>}
+                {shown.map(task => {
+                  const who = assigneesOf(task)
+                  const giver = task.created_by && task.created_by !== memberId && !who.includes(task.created_by) ? memberById.get(task.created_by) : null
+                  const late = isLate(task, today)
+                  return (
+                    <article key={task.id} className={`mc-tk${late ? ' late' : ''}${isDone(task) ? ' done' : ''}`} style={{ '--pc': PRIO_COLOR[task.priority] || PRIO_COLOR.medium }}>
+                      <button type="button" className={`mc-chk${isDone(task) ? ' on' : ''}`} disabled={busy === task.id}
+                        onClick={() => toggleDone(task)} aria-label={isDone(task) ? `Mark "${task.title}" not done` : `Mark "${task.title}" done`}>
+                        <Check strokeWidth={3.5} />
+                      </button>
+                      <div className="body">
+                        <div className="tt">{task.title}</div>
+                        {task.description && !isDone(task) && <div className="td">{task.description}</div>}
+                        <div className="meta">
+                          <span className={`mc-chip p-${task.priority || 'medium'}`}>{task.priority || 'medium'}</span>
+                          <span className={`mc-chip mono${late ? ' late' : ''}`}>{dueText(task.due_date, today)}</span>
+                          <span className="mc-avs">{who.map(id => <Avatar key={id} member={memberById.get(id)} color={colorOf(id)} />)}</span>
+                        </div>
+                        {giver && <div className="from">From {firstName(giver)}</div>}
+                      </div>
+                      <button type="button" className="mc-del" onClick={() => removeTask(task)} aria-label={`Delete "${task.title}"`} title="Delete"><Trash2 /></button>
+                    </article>
+                  )
+                })}
+                {all.length > LANE_LIMIT && (
+                  <button type="button" className="mc-more" onClick={() => setExpanded(x => ({ ...x, [lane.key]: !x[lane.key] }))}>
+                    {expanded[lane.key] ? 'Show less' : `Show ${all.length - LANE_LIMIT} more`}
+                  </button>
+                )}
+              </section>
             )
           })}
         </div>
+
+        <section className="mc-sec" aria-label="Team load">
+          <h4>Team load · click a person to see only their tasks</h4>
+          <div className="mc-loads">
+            {loads.map(({ m, count, weight }) => (
+              <div key={m.id} role="button" tabIndex={0} className={`mc-load mc-glass${person === m.id ? ' on' : ''}`} aria-pressed={person === m.id}
+                onClick={() => setPerson(p => p === m.id ? null : m.id)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPerson(p => p === m.id ? null : m.id) } }}>
+                <Avatar member={m} color={colorOf(m.id)} />
+                <div>
+                  <div className="nm">{firstName(m)}</div>
+                  <div className="mc-bar"><i style={{ width: `${weight / maxLoad * 100}%` }} /></div>
+                  <small>{count} open</small>
+                </div>
+                <button type="button" className="mc-give" title={`Give ${firstName(m)} a task`} aria-label={`Give ${firstName(m)} a task`}
+                  onClick={e => { e.stopPropagation(); openModal({ ...EMPTY_FORM, assignees: [m.id] }) }}><Plus /></button>
+              </div>
+            ))}
+          </div>
+        </section>
       </div>
 
-      {/* New Task Modal */}
-      {showModal && (
-        <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '16px' }}
-          onClick={e => e.target === e.currentTarget && setShowModal(false)}
-        >
-          <div style={{ background: 'white', borderRadius: '20px', width: '100%', maxWidth: '500px', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 28px 70px rgba(15,23,42,.22)' }}>
-
-            {/* Modal header */}
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <p style={{ fontWeight: '700', fontSize: '16px', color: '#0f172a' }}>New Task</p>
-                <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>Add a task and assign to team members</p>
-              </div>
-              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', padding: 0 }}><X size={18} /></button>
-            </div>
-
-            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', maxHeight: '70vh' }}>
-
-              {/* Title */}
-              <div>
-                <label style={lLabel}>What needs to be done? *</label>
-                <input
-                  autoFocus
-                  value={form.title}
-                  onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                  onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleAdd()}
-                  placeholder="e.g. Contact client about site access"
-                  style={input}
-                />
-              </div>
-
-              {/* Description */}
-              <div>
-                <label style={lLabel}>Description <span style={{ color: '#94a3b8', fontWeight: '400' }}>(optional)</span></label>
-                <textarea
-                  value={form.description}
-                  onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                  placeholder="Add any notes or details..."
-                  rows={2}
-                  style={{ ...input, resize: 'vertical' }}
-                />
-              </div>
-
-              {/* Priority + Due date */}
-              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                <div style={{ flex: 1, minWidth: '160px' }}>
-                  <label style={lLabel}>Priority</label>
-                  <div style={{ display: 'flex', gap: '4px', background: '#f8fafc', borderRadius: '8px', padding: '3px', border: '1px solid #e2e8f0' }}>
-                    {['low', 'medium', 'high'].map(p => {
-                      const pc = PRIORITY[p]
-                      const active = form.priority === p
-                      return (
-                        <button
-                          key={p}
-                          onClick={() => setForm(f => ({ ...f, priority: p }))}
-                          style={{ flex: 1, padding: '6px 4px', borderRadius: '6px', border: 'none', background: active ? pc.bg : 'transparent', color: active ? pc.text : '#94a3b8', fontSize: '11px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.15s', outline: active ? `1px solid ${pc.border}` : 'none' }}
-                        >
-                          {pc.label}
-                        </button>
-                      )
-                    })}
+      {modal && (
+        <div className="mc-modal-bg" onClick={e => e.target === e.currentTarget && setModal(null)}>
+          <div className="mc-modal" role="dialog" aria-modal="true" aria-labelledby="mc-new-title">
+            <header>
+              <div><b id="mc-new-title">New task</b><p>Add a task and give it to people</p></div>
+              <button type="button" className="mc-x" onClick={() => setModal(null)} aria-label="Close"><X size={18} /></button>
+            </header>
+            <div className="mc-form">
+              <label><span>What needs to be done? *</span>
+                <input className="mc-in" autoFocus value={modal.title} placeholder="e.g. Contact client about site access"
+                  onChange={e => setModal(f => ({ ...f, title: e.target.value }))}
+                  onKeyDown={e => e.key === 'Enter' && !e.shiftKey && saveModal()} />
+              </label>
+              <label><span>Description <em>(optional)</em></span>
+                <textarea className="mc-in" rows={2} value={modal.description} placeholder="Add any notes or details…"
+                  onChange={e => setModal(f => ({ ...f, description: e.target.value }))} />
+              </label>
+              <div className="mc-row">
+                <div className="mc-field">
+                  <label><span>Priority</span></label>
+                  <div className="mc-seg" role="group" aria-label="Priority">
+                    {['low', 'medium', 'high'].map(p => (
+                      <button key={p} type="button" className={`p-${p}${modal.priority === p ? ' on' : ''}`} aria-pressed={modal.priority === p}
+                        onClick={() => setModal(f => ({ ...f, priority: p }))}>{p}</button>
+                    ))}
                   </div>
                 </div>
-                <div style={{ flex: 1, minWidth: '140px' }}>
-                  <label style={lLabel}>Due Date <span style={{ color: '#94a3b8', fontWeight: '400' }}>(optional)</span></label>
-                  <input
-                    type="date"
-                    value={form.due_date}
-                    onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))}
-                    style={{ ...input, padding: '8px 10px' }}
-                  />
-                </div>
+                <label><span>Due date <em>(optional)</em></span>
+                  <input className="mc-in" type="date" value={modal.due_date} onChange={e => setModal(f => ({ ...f, due_date: e.target.value }))} />
+                </label>
               </div>
-
-              {/* Assign to */}
               <div>
-                <label style={lLabel}>Assign to *</label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  {members.map((m, idx) => {
-                    const c = MEMBER_COLORS[idx % MEMBER_COLORS.length]
-                    const selected = form.assignees.includes(m.id)
-                    const name = m.short_name || m.full_name.split(' ')[0]
-                    const initials = m.full_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+                <label><span>Give it to *</span></label>
+                <div className="mc-people">
+                  {members.map(m => {
+                    const on = modal.assignees.includes(m.id)
                     return (
-                      <button
-                        key={m.id}
-                        onClick={() => toggleAssignee(m.id)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '7px 13px 7px 8px', borderRadius: '99px', border: `1.5px solid ${selected ? c.header : '#e2e8f0'}`, background: selected ? c.bg : '#f8fafc', cursor: 'pointer', transition: 'all 0.15s' }}
-                      >
-                        <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: selected ? c.header : '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', fontWeight: '800', color: selected ? 'white' : '#94a3b8', flexShrink: 0, transition: 'all 0.15s', overflow: 'hidden' }}>
-                          {m.avatar_url
-                            ? <img src={m.avatar_url} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                            : initials}
-                        </div>
-                        <span style={{ fontSize: '13px', fontWeight: selected ? '700' : '500', color: selected ? c.text : '#64748b' }}>{name}</span>
-                        {selected && <Check size={12} color={c.header} strokeWidth={3} />}
+                      <button key={m.id} type="button" className={`mc-person${on ? ' on' : ''}`} aria-pressed={on}
+                        onClick={() => setModal(f => ({ ...f, assignees: on ? f.assignees.filter(x => x !== m.id) : [...f.assignees, m.id] }))}>
+                        <Avatar member={m} color={colorOf(m.id)} /> {firstName(m)} {on && <Check strokeWidth={3} />}
                       </button>
                     )
                   })}
                 </div>
               </div>
-
-              {formError && (
-                <p style={{ fontSize: '12px', color: '#ef4444', background: '#fee2e2', padding: '9px 12px', borderRadius: '8px' }}>{formError}</p>
-              )}
-
-              <div style={{ display: 'flex', gap: '10px', paddingTop: '2px' }}>
-                <button
-                  onClick={handleAdd}
-                  disabled={saving}
-                  style={{ flex: 2, padding: '12px', borderRadius: '10px', fontSize: '14px', fontWeight: '700', color: 'white', border: 'none', cursor: saving ? 'not-allowed' : 'pointer', background: '#2563eb', opacity: saving ? 0.6 : 1, boxShadow: '0 4px 12px rgba(37,99,235,0.3)' }}
-                >
-                  {saving ? 'Adding…' : 'Add Task'}
-                </button>
-                <button
-                  onClick={() => setShowModal(false)}
-                  style={{ flex: 1, padding: '12px', borderRadius: '10px', fontSize: '14px', fontWeight: '600', color: '#475569', cursor: 'pointer', background: '#f1f5f9', border: '1px solid #e2e8f0' }}
-                >
-                  Cancel
-                </button>
+              {formError && <p className="mc-err">{formError}</p>}
+              <div className="mc-actions">
+                <button type="button" className="mc-btn" onClick={saveModal} disabled={saving}>{saving ? 'Adding…' : 'Add task'}</button>
+                <button type="button" className="mc-ghost" onClick={() => setModal(null)}>Cancel</button>
               </div>
             </div>
           </div>
