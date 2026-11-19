@@ -7,6 +7,7 @@ import { Check, ChevronDown, ChevronLeft, ChevronRight, Loader2, Play, Plus, Sea
 import { fetchTeamLeaves, getMemberLeaveOnDate, getLeaveSessionLabel, isOffDay } from '../utils/teamLeaves'
 import { normalizeDate, getSiteDates, assignmentsForDate, assignmentMemberId } from '../utils/siteDays'
 import { calcTimecard, hasOverlap, dayInfo, formatMinutes, formatTime12, monthDates, isMissingDay, toMinutes, HIGHLIGHTS, highlightHex, leaveHighlight } from '../utils/timecard'
+import { OUTSTATION_HIGHLIGHT } from '../utils/outstation'
 import './MyTimecard.css'
 
 const EMPTY_SLOT = { time_in: '', time_out: '', site_id: '' }
@@ -69,6 +70,28 @@ function savedSlots(row) {
 
 const slotHasTime = s => s.time_in || s.time_out
 
+// Teammates who logged the same site on the same day with a different time in / out.
+// Only compares times both sides have keyed in (someone still on site has no time out yet).
+// Returns [{ slot, siteId, mine, others: [{ memberId, time_in, time_out }] }]
+function teamTimeMismatches(segments, teamRows) {
+  const out = []
+  segments.forEach((mine, slot) => {
+    if (!mine.site_id || !slotHasTime(mine)) return
+    const others = []
+    for (const row of teamRows) {
+      const theirs = savedSlots(row).filter(t => t.site_id === mine.site_id && slotHasTime(t))
+      if (!theirs.length) continue
+      // Two visits to the same site in a day: compare with the closest one
+      const t = theirs.reduce((best, x) => Math.abs((toMinutes(x.time_in) ?? 0) - (toMinutes(mine.time_in) ?? 0)) < Math.abs((toMinutes(best.time_in) ?? 0) - (toMinutes(mine.time_in) ?? 0)) ? x : best)
+      const inDiff = mine.time_in && t.time_in && mine.time_in !== t.time_in
+      const outDiff = mine.time_out && t.time_out && mine.time_out !== t.time_out
+      if (inDiff || outDiff) others.push({ memberId: row.member_id, time_in: t.time_in, time_out: t.time_out })
+    }
+    if (others.length) out.push({ slot, siteId: mine.site_id, mine, others })
+  })
+  return out
+}
+
 const isFullLeave = leave => leave?.leave_session === 'FULL_DAY'
 
 function saveErrorText(err) {
@@ -96,6 +119,9 @@ export default function MyTimecard({ month, setMonth, viewId, setViewId }) {
   const [leaves, setLeaves]   = useState([])
   const [sites, setSites]     = useState([])
   const [loadedKey, setLoadedKey] = useState(null)    // member|month the cards belong to
+  const [teamCards, setTeamCards] = useState([])      // teammates' rows this month, for the same-site time check
+  const [timePrompt, setTimePrompt] = useState(null)  // { date, items } — your time differs from the team
+  const promptedRef = useRef(new Set())               // mismatches already shown, so they don't pop up again
   const [error, setError]     = useState('')
   const [saving, setSaving]   = useState(null)        // work_date being saved, or 'fill'
   const [missingOnly, setMissingOnly] = useState(false)
@@ -111,7 +137,7 @@ export default function MyTimecard({ month, setMonth, viewId, setViewId }) {
   useEffect(() => {
     Promise.all([
       supabase.from('team_members').select('id, full_name, short_name, is_hidden').order('full_name'),
-      supabase.from('sites').select('id, site_name, site_status, is_hidden, scheduled_date, end_date, site_assignments(member_id, work_date, assignment_role)'),
+      supabase.from('sites').select('*, site_assignments(member_id, work_date, assignment_role)'),
       fetchTeamLeaves().catch(() => []),
     ]).then(([m, s, l]) => {
       setMembers(m.data || [])
@@ -146,6 +172,46 @@ export default function MyTimecard({ month, setMonth, viewId, setViewId }) {
       })
     return () => { cancelled = true }
   }, [viewId, dates])
+
+  // Teammates' timecards for the month — used to spot a different time at the same site
+  useEffect(() => {
+    if (!viewId) return
+    let cancelled = false
+    supabase
+      .from('timecards')
+      .select('member_id, work_date, segments, time_in, time_out, site_id')
+      .neq('member_id', viewId)
+      .gte('work_date', dates[0])
+      .lte('work_date', dates[dates.length - 1])
+      .then(({ data }) => { if (!cancelled) setTeamCards(data || []) })
+    return () => { cancelled = true }
+  }, [viewId, dates])
+
+  const teamByDate = useMemo(() => {
+    const map = {}
+    for (const r of teamCards) (map[r.work_date] ||= []).push(r)
+    return map
+  }, [teamCards])
+
+  const nameOf = id => { const m = members.find(x => x.id === id); return m?.short_name || m?.full_name?.split(' ')[0] || 'a teammate' }
+
+  // After a save: if a finished slot differs from a teammate at the same site, ask once
+  function checkTeamTimes(date, segments) {
+    const items = teamTimeMismatches(segments.filter(s => s.time_in && s.time_out), teamByDate[date] || [])
+    if (!items.length) return
+    const key = `${date}|${JSON.stringify(items.map(i => [i.mine, i.others]))}`
+    if (promptedRef.current.has(key)) return
+    promptedRef.current.add(key)
+    setTimePrompt({ date, items })
+  }
+
+  // "Use their time" — copy a teammate's in / out into my slot
+  function applyTeamTime(date, slot, other) {
+    const values = dayValues(date)
+    const segments = values.segments.map((s, i) => i === slot ? { ...s, time_in: other.time_in || s.time_in, time_out: other.time_out || s.time_out } : s)
+    changeDay(date, { ...values, segments })
+    setTimePrompt(null)
+  }
 
   // Sites the member is assigned to on a date (not cancelled), used to pre-fill the site pick.
   // No assignment means the default: Store (site_id '').
@@ -217,6 +283,7 @@ export default function MyTimecard({ month, setMonth, viewId, setViewId }) {
     setCards(prev => blank ? without(prev, date) : { ...prev, [date]: result.data })
     // Keep any edit made while this save was in flight.
     setDrafts(prev => prev[date] === values ? without(prev, date) : prev)
+    if (!blank) checkTeamTimes(date, segments)
   }
 
   // Draft only, or draft + save. Picks that leave the day with no time and no
@@ -371,6 +438,8 @@ export default function MyTimecard({ month, setMonth, viewId, setViewId }) {
               missing={isMissingDay(date, today, cards[date], leave)}
               sites={sites}
               suggested={suggestedSiteIds(date)}
+              teamDiff={[...new Set(teamTimeMismatches(dayValues(date).segments, teamByDate[date] || []).flatMap(m => m.others.map(o => nameOf(o.memberId))))]}
+              onTeamDiff={() => setTimePrompt({ date, items: teamTimeMismatches(dayValues(date).segments, teamByDate[date] || []) })}
               canEdit={canEdit}
               isMobile={isMobile}
               onChange={(values, opts) => changeDay(date, values, opts)}
@@ -394,6 +463,10 @@ export default function MyTimecard({ month, setMonth, viewId, setViewId }) {
       </p>
 
       {fillOpen && <FillDialog days={fillList} onCancel={() => setFillOpen(false)} onFill={fillDays} />}
+      {timePrompt && (
+        <TeamTimeDialog prompt={timePrompt} sites={sites} nameOf={nameOf} canEdit={canEdit} own={viewId === memberId}
+          onUse={(slot, other) => applyTeamTime(timePrompt.date, slot, other)} onClose={() => setTimePrompt(null)} />
+      )}
     </div>
   )
 }
@@ -455,11 +528,12 @@ function TodayCard({ date, values, sites, onChange, onNormalDay }) {
   )
 }
 
-function DayRow({ date, isToday, values, leave, missing, sites, suggested, canEdit, isMobile, onChange, onSave, onNormalDay }) {
+function DayRow({ date, isToday, values, leave, missing, sites, suggested, teamDiff = [], onTeamDiff, canEdit, isMobile, onChange, onSave, onNormalDay }) {
   const info = dayInfo(date)
   const { segments, remarks, highlight } = values
   const { normal, ot } = calcTimecard(date, segments)
-  const mark = highlightHex(highlight) || leaveHighlight(leave)?.hex
+  const outstation = segments.some(s => s.site_id && sites.find(x => x.id === s.site_id)?.outstation)
+  const mark = highlightHex(highlight) || leaveHighlight(leave)?.hex || (outstation ? OUTSTATION_HIGHLIGHT.hex : null)
   const d = new Date(`${date}T00:00:00`)
   const offDay = info.kind === 'holiday' || info.kind === 'off'
   const fullLeave = isFullLeave(leave)
@@ -470,6 +544,7 @@ function DayRow({ date, isToday, values, leave, missing, sites, suggested, canEd
   const badges = []
   if (info.kind === 'holiday') badges.push({ text: info.label, color: '#b91c1c', bg: '#fee2e2' })
   if (info.kind === 'off') badges.push({ text: 'Off day', color: '#475569', bg: '#e2e8f0' })
+  if (outstation) badges.push({ text: 'Outstation', color: '#fff', bg: '#6366f1' })
   if (offDay && segments.some(s => s.site_id)) badges.push({ text: 'Site day', color: '#1d4ed8', bg: '#dbeafe' })
   if (leave) badges.push({ text: `${titleCase(leave.leave_type)} · ${getLeaveSessionLabel(leave.leave_session)}`, color: '#b45309', bg: '#fef3c7' })
   if (missing) badges.push({ text: 'No time keyed in', color: '#b91c1c', bg: '#fef2f2' })
@@ -512,6 +587,12 @@ function DayRow({ date, isToday, values, leave, missing, sites, suggested, canEd
       </span>
       {isToday && <Badge text="Today" color="white" bg="#f07c1e" />}
       {badges.map(b => <Badge key={b.text} {...b} />)}
+      {teamDiff.length > 0 && (
+        <button type="button" onClick={onTeamDiff} title="Your time is different from your teammate at the same site — tap to compare"
+          style={{ border: '1px solid #fcd34d', borderRadius: 999, padding: '2px 8px', background: '#fffbeb', color: '#b45309', fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          ⚠ Time differs from {teamDiff.slice(0, 2).join(', ')}{teamDiff.length > 2 ? ` +${teamDiff.length - 2}` : ''}
+        </button>
+      )}
     </div>
   )
   const addButton = canEdit && hasTime && (
@@ -715,6 +796,43 @@ function TimePanel({ title, value, fallback, win, rect, onApply, onClear, onClos
 }
 
 // Confirm before filling missing days with office hours; half-day leave days start unticked.
+// "Your time doesn't match your teammate's at the same site — please check with your team."
+function TeamTimeDialog({ prompt, sites, nameOf, canEdit, own, onUse, onClose }) {
+  useEffect(() => {
+    const onKey = e => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+  const d = new Date(`${prompt.date}T00:00:00`)
+  const range = s => `${s.time_in ? formatTime12(s.time_in) : '–'} – ${s.time_out ? formatTime12(s.time_out) : '…'}`
+  const people = [...new Set(prompt.items.flatMap(i => i.others.map(o => nameOf(o.memberId))))]
+  return (
+    <div className="tc-scrim" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="tc-modal" role="dialog" aria-modal="true" aria-label="Time differs from your team">
+        <h3>⚠ {own ? 'Your time' : 'This time'} doesn't match {people.join(', ')}</h3>
+        <p>Same site on {d.toLocaleDateString('en-MY', { weekday: 'short', day: 'numeric', month: 'short' })}, but different time in / out. Please check with your team.</p>
+        <div className="tc-tt">
+          {prompt.items.map(item => (
+            <div key={item.slot} className="tc-tt-site">
+              <b>{sites.find(s => s.id === item.siteId)?.site_name || 'Site'}</b>
+              <div className="row me"><span>{own ? 'You' : 'This timecard'}</span><em>{range(item.mine)}</em></div>
+              {item.others.map(o => (
+                <div key={o.memberId} className="row">
+                  <span>{nameOf(o.memberId)}</span><em>{range(o)}</em>
+                  {canEdit && <button type="button" className="tc-btn" onClick={() => onUse(item.slot, o)}>Use {nameOf(o.memberId)}'s time</button>}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+        <div className="tc-mf">
+          <button type="button" className="tc-btn pri" onClick={onClose}>{canEdit ? 'Keep mine' : 'OK'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function FillDialog({ days, onCancel, onFill }) {
   const [picked, setPicked] = useState(() => new Set(days.filter(d => !d.halfLeave).map(d => d.date)))
   const toggle = date => setPicked(prev => {

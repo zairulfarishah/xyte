@@ -1,4 +1,5 @@
 import { dayHighlightHex, dayInfo, formatTime12, isMissingDay, LEAVE_HIGHLIGHTS } from './timecard'
+import { OUTSTATION_HIGHLIGHT } from './outstation'
 import { leaveAbbr, getLeaveSessionLabel } from './teamLeaves'
 
 // Hours go in as decimal numbers so payroll can sum them in Excel.
@@ -52,7 +53,7 @@ const SUMMARY_COLS = [
 
 //   entries: [{ member, cardsByDate, leaveOn(date), summary }] — same shape as buildTimecardPdf.
 // A Summary sheet when there's more than one member, then one sheet per member.
-export async function buildTimecardXlsx({ entries, dates, from, to, today, siteName }) {
+export async function buildTimecardXlsx({ entries, dates, from, to, today, siteName, isOutstation = () => false }) {
   const { default: ExcelJS } = await import('exceljs')
   const wb = new ExcelJS.Workbook()
   wb.created = new Date()
@@ -82,13 +83,13 @@ export async function buildTimecardXlsx({ entries, dates, from, to, today, siteN
     SUMMARY_COLS.forEach((c, i) => { if (c.hours) ws.getColumn(i + 3).numFmt = HRS_FMT })
   }
 
-  for (const entry of entries) addMemberSheet(wb, entry, { dates, period, today, siteName, used })
+  for (const entry of entries) addMemberSheet(wb, entry, { dates, period, today, siteName, isOutstation, used })
 
   const buf = await wb.xlsx.writeBuffer()
   return new Uint8Array(buf)
 }
 
-function addMemberSheet(wb, { member, cardsByDate, leaveOn, summary }, { dates, period, today, siteName, used }) {
+function addMemberSheet(wb, { member, cardsByDate, leaveOn, summary }, { dates, period, today, siteName, isOutstation, used }) {
   const ws = wb.addWorksheet(sheetName(member.full_name, used), { views: [{ state: 'frozen', ySplit: 6 }] })
   ws.columns = [
     { width: 13 }, { width: 7 }, { width: 28 }, { width: 11 }, { width: 11 }, { width: 11 }, { width: 11 },
@@ -101,11 +102,12 @@ function addMemberSheet(wb, { member, cardsByDate, leaveOn, summary }, { dates, 
   ws.addRow(['Office hours: Mon-Fri 8:00 AM - 5:30 PM, Sat 8:00 AM - 1:00 PM. Lunch 1:00 PM - 2:30 PM is not counted. Time outside office hours, and any work on Sundays or public holidays, is OT.'])
     .font = { italic: true, size: 9, color: { argb: 'FF64748B' } }
   // Colour key for the automatic leave highlights
-  const key = ws.addRow(['Key:', LEAVE_HIGHLIGHTS.leave.label, LEAVE_HIGHLIGHTS.medical.label])
+  const key = ws.addRow(['Key:', LEAVE_HIGHLIGHTS.leave.label, LEAVE_HIGHLIGHTS.medical.label, OUTSTATION_HIGHLIGHT.label])
   key.font = { size: 9 }
   key.getCell(1).font = { size: 9, bold: true }
   key.getCell(2).fill = solidFill(LEAVE_HIGHLIGHTS.leave.hex)
   key.getCell(3).fill = solidFill(LEAVE_HIGHLIGHTS.medical.hex)
+  key.getCell(4).fill = solidFill(OUTSTATION_HIGHLIGHT.hex)
   // The second in/out pair is for a second job on the same day.
   styleHeader(ws.addRow(['Date', 'Day', 'Site', 'Time in', 'Time out', 'Time in', 'Time out', 'Normal (hrs)', 'OT (hrs)', 'Remarks']))
 
@@ -115,7 +117,7 @@ function addMemberSheet(wb, { member, cardsByDate, leaveOn, summary }, { dates, 
     const info = dayInfo(date)
     const offDay = info.kind === 'holiday' || info.kind === 'off'
     const slots = slotsOf(card)
-    const mark = dayHighlightHex(card, leave)
+    const mark = dayHighlightHex(card, leave, slots.some(s => s.site_id && isOutstation(s.site_id)))
 
     const notes = []
     if (info.kind === 'holiday') notes.push(info.label)

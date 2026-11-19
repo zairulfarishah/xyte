@@ -1,44 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Camera, ClipboardPaste, ImageUp, X } from 'lucide-react'
+import { Camera, ClipboardPaste, ExternalLink, ImageUp, Search, X } from 'lucide-react'
+import { photoToFile, searchWebPhotos } from '../../utils/photoSearch'
 
-// Cover photo picker: satellite view of the pin, photos from earlier sites, or upload / camera / paste.
+// Cover photo picker: free web photos, photos from earlier sites, or upload / camera / paste.
 // Calls onPick({ file, preview }) for a new image, or onPick({ url }) for a photo already in storage.
-
-const SAT_URL = (z, y, x) => `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`
-const SAT_ZOOMS = [[18, 'Close'], [17, 'Medium'], [16, 'Wide']]
-const OUT_W = 768, OUT_H = 480
-
-function loadImage(src) {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
-    img.onload = () => resolve(img)
-    img.onerror = () => reject(new Error('tile failed'))
-    img.src = src
-  })
-}
-
-// Stitch satellite tiles into one 768×480 JPEG centred on the pin
-async function satelliteImage(lat, lng, z) {
-  const n = 2 ** z
-  const r = lat * Math.PI / 180
-  const px = (lng + 180) / 360 * n * 256
-  const py = (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n * 256
-  const left = px - OUT_W / 2, top = py - OUT_H / 2
-  const canvas = document.createElement('canvas')
-  canvas.width = OUT_W; canvas.height = OUT_H
-  const ctx = canvas.getContext('2d')
-  const jobs = []
-  for (let tx = Math.floor(left / 256); tx <= Math.floor((left + OUT_W) / 256); tx++) {
-    for (let ty = Math.floor(top / 256); ty <= Math.floor((top + OUT_H) / 256); ty++) {
-      jobs.push(loadImage(SAT_URL(z, ty, tx)).then(img => ctx.drawImage(img, tx * 256 - left, ty * 256 - top)))
-    }
-  }
-  await Promise.all(jobs)
-  const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.85))
-  if (!blob) throw new Error('Could not build the image')
-  return blob
-}
 
 const words = s => new Set(String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2))
 function distKm(a, b) {
@@ -49,23 +14,11 @@ function distKm(a, b) {
 
 export default function PhotoPicker({ form, sites = [], onPick, onClose }) {
   const hasPin = form.latitude !== '' && form.latitude != null && form.longitude !== '' && form.longitude != null
-  const [tab, setTab] = useState(hasPin ? 'sat' : 'past')
-  const [sat, setSat] = useState({})          // zoom -> { blob, url } | { error }
+  const [tab, setTab] = useState('web')
   const [chosen, setChosen] = useState(null)  // { key, file?, preview?, url? }
   const [msg, setMsg] = useState('')
   const fileRef = useRef(null)
   const camRef = useRef(null)
-
-  // Build the three satellite options as soon as the picker opens (about 15 small tiles)
-  useEffect(() => {
-    if (!hasPin) return
-    const lat = Number(form.latitude), lng = Number(form.longitude)
-    SAT_ZOOMS.forEach(([z]) => {
-      satelliteImage(lat, lng, z)
-        .then(blob => setSat(s => ({ ...s, [z]: { blob, url: URL.createObjectURL(blob) } })))
-        .catch(() => setSat(s => ({ ...s, [z]: { error: true } })))
-    })
-  }, [hasPin, form.latitude, form.longitude])
 
   // Earlier sites with a photo: same client or nearby first, then name matches, then newest
   const past = useMemo(() => {
@@ -143,7 +96,49 @@ export default function PhotoPicker({ form, sites = [], onPick, onClose }) {
     }
   }
 
-  const tabs = [['sat', 'Satellite'], ['past', 'Previous sites'], ['up', 'Upload / Camera']]
+  // ── Web search ──
+  const defaultQuery = String(form.site_name || '').trim() || String(form.location || '').split(',')[0].trim()
+  const [webQ, setWebQ] = useState(defaultQuery)
+  const [web, setWeb] = useState({ status: 'loading', items: [] })   // loading | done | error
+  const [grabbing, setGrabbing] = useState(null)
+  const webAbort = useRef(null)
+
+  function runWeb(q = webQ) {
+    setWeb({ status: 'loading', items: [] })
+    fetchWeb(q)
+  }
+  async function fetchWeb(q) {
+    webAbort.current?.abort()
+    const ctrl = new AbortController()
+    webAbort.current = ctrl
+    try {
+      const items = await searchWebPhotos({ query: q, lat: hasPin ? Number(form.latitude) : null, lng: hasPin ? Number(form.longitude) : null, signal: ctrl.signal })
+      if (!ctrl.signal.aborted) setWeb({ status: 'done', items })
+    } catch (err) {
+      if (err?.name !== 'AbortError') setWeb({ status: 'error', items: [] })
+    }
+  }
+
+  // Search as soon as the picker opens
+  useEffect(() => { fetchWeb(defaultQuery); return () => webAbort.current?.abort() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function pickWeb(photo) {
+    const key = `web${photo.id}`
+    setGrabbing(key)
+    setMsg('')
+    try {
+      const file = await photoToFile(photo)
+      setChosen({ key, file, preview: URL.createObjectURL(file) })
+    } catch {
+      setMsg("Couldn't download that photo — try another one.")
+    } finally {
+      setGrabbing(null)
+    }
+  }
+
+  const googleUrl = `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(webQ || defaultQuery)}`
+
+  const tabs = [['web', 'Web'], ['past', 'Previous sites'], ['up', 'Upload / Camera']]
 
   return (
     <div className="sf-modal sf-top" onMouseDown={e => e.target === e.currentTarget && onClose()}>
@@ -157,24 +152,35 @@ export default function PhotoPicker({ form, sites = [], onPick, onClose }) {
           {tabs.map(([k, t]) => <button type="button" key={k} className={`sf-pill${tab === k ? ' on' : ''}`} onClick={() => setTab(k)}>{t}</button>)}
         </div>
 
-        {tab === 'sat' && (!hasPin
-          ? <p className="sf-empty">Set the location first (search it, or click the map) to see it from above.</p>
-          : <>
+        {tab === 'web' && (
+          <>
+            <form className="sf-websearch" onSubmit={e => { e.preventDefault(); runWeb() }}>
+              <Search size={14} />
+              <input value={webQ} onChange={e => setWebQ(e.target.value)} placeholder="Building, mall, area…" />
+              <button type="submit" className="sf-btn">Search</button>
+            </form>
+            {web.status === 'loading' && <p className="sf-empty">Searching photos…</p>}
+            {web.status === 'error' && <p className="sf-empty">Photo search isn't responding right now.</p>}
+            {web.status === 'done' && web.items.length === 0 && <p className="sf-empty">No free photos found. Try a shorter name (e.g. just the building or area), or use Google Images below.</p>}
+            {web.items.length > 0 && (
               <div className="sf-tiles">
-                {SAT_ZOOMS.map(([z, cap]) => {
-                  const it = sat[z]
-                  const key = `sat${z}`
+                {web.items.map(p => {
+                  const key = `web${p.id}`
                   return (
-                    <button type="button" key={z} className={`sf-tile${chosen?.key === key ? ' on' : ''}`} disabled={!it?.blob}
-                      onClick={() => setChosen({ key, file: new File([it.blob], `satellite-${z}.jpg`, { type: 'image/jpeg' }), preview: it.url })}>
-                      {it?.url ? <img src={it.url} alt="" /> : <span className="sf-tile-msg">{it?.error ? 'Not available' : 'Loading…'}</span>}
-                      <span className="sf-cap">{cap}</span>
+                    <button type="button" key={p.id} className={`sf-tile${chosen?.key === key ? ' on' : ''}`} disabled={!!grabbing} onClick={() => pickWeb(p)} title={p.credit}>
+                      <img src={p.thumb} alt="" loading="lazy" onError={e => { e.currentTarget.closest('button').style.display = 'none' }} />
+                      <span className="sf-cap">{grabbing === key ? 'Loading…' : p.source === 'near' ? `Near pin · ${p.title}` : p.title}</span>
                     </button>
                   )
                 })}
               </div>
-              <p className="sf-src">Satellite view centred on your pin · Imagery © Esri, Maxar, Earthstar Geographics</p>
-            </>)}
+            )}
+            <p className="sf-src">
+              Free photos from Wikimedia Commons & Openverse{hasPin ? ' — ones taken near your pin come first' : ''}. Hover a photo for its credit.{' '}
+              Not there? <a href={googleUrl} target="_blank" rel="noreferrer" className="sf-link"><ExternalLink size={11} /> Search Google Images</a>, copy an image, come back and press Ctrl+V.
+            </p>
+          </>
+        )}
 
         {tab === 'past' && (past.length === 0
           ? <p className="sf-empty">No earlier sites have a photo yet.</p>

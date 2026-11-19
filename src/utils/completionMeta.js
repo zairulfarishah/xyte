@@ -44,8 +44,12 @@ export function mergeCompletionMeta(notes, meta = {}) {
   return parts.join('\n\n').trim()
 }
 
-export function validateCompletionRequirement(siteStatus, deliveryOrderNumber, completionReason) {
+export function validateCompletionRequirement(siteStatus, deliveryOrderNumber, completionReason, siteType) {
+  if (!doApplies(siteType)) return null
   if (cleanValue(siteStatus).toLowerCase() !== 'completed') return null
   if (cleanValue(deliveryOrderNumber) || cleanValue(completionReason)) return null
   return 'Enter a delivery order number or provide a reason before marking this site as completed.'
 }
+
+// Delivery orders only apply to scanning jobs — site visits and meetings never have one
+export const doApplies = siteType => !siteType || siteType === 'site_scanning'

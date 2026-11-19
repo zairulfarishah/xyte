@@ -5,7 +5,7 @@ import { memberSchedule, notify, notifyMany, notifyScheduleChanges, siteRoleIds 
 import { useAuth } from '../context/AuthContext'
 import SiteForm from '../components/siteForm/SiteForm'
 import { EMPTY_SITE_FORM } from '../components/siteForm/siteFormModel'
-import { mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../utils/completionMeta'
+import { doApplies, mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../utils/completionMeta'
 import { fetchTeamLeaves, getLeaveSessionLabel, getLeaveSummary, getMemberLeaveOnDate } from '../utils/teamLeaves'
 import {
   assignmentMemberId, crewForDate, getSiteDates, isMissingPic, memberRoleOnSite, picForDate, representativeDate,
@@ -136,7 +136,8 @@ export default function Dashboard() {
     const completionError = validateCompletionRequirement(
       updateSite.site_status,
       updateSite.delivery_order_number,
-      updateSite.completion_reason
+      updateSite.completion_reason,
+      updateSite.site_type
     )
     if (completionError) {
       alert(completionError)
@@ -421,7 +422,7 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {updateSite.site_status === 'completed' && (
+              {updateSite.site_status === 'completed' && doApplies(updateSite.site_type) && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div>
                     <label style={{ fontSize: '12px', fontWeight: '600', color: '#374151', display: 'block', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>

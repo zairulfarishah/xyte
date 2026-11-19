@@ -6,6 +6,8 @@ import PhotoPicker from './PhotoPicker'
 import { getLeaveSummary, getMemberLeaveOnDate } from '../../utils/teamLeaves'
 import { buildJobIndex } from '../../utils/memberDay'
 import { isActiveMember } from '../../utils/members'
+import { isOutsideKlSelangor } from '../../utils/outstation'
+import { doApplies } from '../../utils/completionMeta'
 import {
   REPORT_STATUSES, SALESPERSONS, SESSIONS, SITE_STATUSES, SITE_TYPES,
   datesInRange, saveSite, siteDuration,
@@ -53,6 +55,11 @@ export default function SiteForm({ title, initial, editSite = null, members, lea
     return null
   }
 
+  // Pinned locations from earlier sites, newest first — offered while typing
+  const recentPlaces = useMemo(() => sites
+    .filter(s => s.location && s.latitude != null && s.longitude != null)
+    .sort((a, b) => String(b.scheduled_date || '').localeCompare(String(a.scheduled_date || '')))
+    .map(s => ({ label: s.location, name: s.site_name, latitude: s.latitude, longitude: s.longitude })), [sites])
   const companies = useMemo(() => [...new Set(sites.map(s => (s.client_company_name || '').trim()).filter(Boolean))].sort(), [sites])
   const lastForCompany = useMemo(() => {
     const c = form.client_company_name.trim().toLowerCase()
@@ -145,6 +152,8 @@ export default function SiteForm({ title, initial, editSite = null, members, lea
   const picIds = perDay ? days.map(d => form.daily_assignments[d]?.pic_id).filter(Boolean) : [form.pic_id].filter(Boolean)
   const typeLabel = SITE_TYPES.find(t => t.value === form.site_type)?.label
   const dateLabel = !form.scheduled_date ? 'Pick dates' : sameDay || !form.end_date ? `${fmt(form.scheduled_date, { weekday: 'short', day: 'numeric', month: 'short' })}${form.site_session ? ` · ${form.site_session}` : ''}` : `${fmt(form.scheduled_date)} – ${fmt(form.end_date)} · ${days.length} days`
+  const outside = isOutsideKlSelangor(form.location, form.latitude, form.longitude) === true
+  const outstation = outside && form.outstation
   const missing = [!form.location && 'location', !form.site_name && 'site name', !form.scheduled_date && 'start date'].filter(Boolean)
 
   return (
@@ -159,7 +168,7 @@ export default function SiteForm({ title, initial, editSite = null, members, lea
           {/* ── live preview ── */}
           <aside className="sf-prev">
             <div className="sf-lbl">Preview</div>
-            <div className="sf-card">
+            <div className={`sf-card${outstation ? ' outst' : ''}`}>
               <button type="button" className="sf-card-img" onClick={() => setPicker(true)} title="Change photo">
                 {form.site_photo_preview
                   ? <img src={form.site_photo_preview} alt="" />
@@ -169,6 +178,7 @@ export default function SiteForm({ title, initial, editSite = null, members, lea
                 <b>{form.site_name || 'Site name'}</b>
                 <span className="sf-card-loc"><MapPin size={12} />{shortPlace(form.location) || 'Location'}</span>
                 <div className="sf-chips">
+                  {outstation && <span className="outst">Outstation</span>}
                   <span>{typeLabel}</span>
                   <span>{dateLabel}</span>
                   {form.client_company_name && <span>{form.client_company_name}</span>}
@@ -196,7 +206,8 @@ export default function SiteForm({ title, initial, editSite = null, members, lea
                 value={form.location}
                 onChange={v => set({ location: v, latitude: '', longitude: '' })}
                 onSelect={r => set(f => ({ location: r.label, latitude: r.latitude, longitude: r.longitude, site_name: f.site_name || r.name || '' }))}
-                placeholder="Search building, road or area…"
+                placeholder="Building, road or area — or paste a Google Maps link"
+                recent={recentPlaces}
               />
               <label className="sf-lbl">Pin <span className="muted">· click the map to place it exactly</span></label>
               <LocationPicker lat={form.latitude} lng={form.longitude} height={190}
@@ -204,6 +215,16 @@ export default function SiteForm({ title, initial, editSite = null, members, lea
                 mapKey={`${form.latitude}-${form.longitude}`} />
               {form.latitude !== '' && (
                 <p className="sf-hint">{Number(form.latitude).toFixed(5)}, {Number(form.longitude).toFixed(5)} · <button type="button" className="sf-link" onClick={() => set({ latitude: '', longitude: '' })}>clear pin</button></p>
+              )}
+              {outside && (
+                <div className={`sf-outst${form.outstation ? ' on' : ''}`}>
+                  <label className="sf-lbl">Outstation? <span className="muted">· this location is outside KL / Selangor</span></label>
+                  <div className="sf-pills">
+                    <button type="button" className={`sf-pill${form.outstation ? ' on' : ''}`} onClick={() => set({ outstation: true })}>Yes, outstation</button>
+                    <button type="button" className={`sf-pill${!form.outstation ? ' on' : ''}`} onClick={() => set({ outstation: false })}>No</button>
+                  </div>
+                  {form.outstation && <p className="sf-hint">The site card gets an outstation tint and these days are highlighted on the team's timecards.</p>}
+                </div>
               )}
               <label className="sf-lbl">Cover photo</label>
               <div className="sf-photo-row">
@@ -353,10 +374,14 @@ export default function SiteForm({ title, initial, editSite = null, members, lea
                       </div>
                     </>
                   )}
-                  <div className="sf-row2">
-                    <div><label className="sf-lbl">Delivery order number</label><input className="sf-in" value={form.delivery_order_number} placeholder="DO-12345" onChange={e => set({ delivery_order_number: e.target.value })} /></div>
-                    <div><label className="sf-lbl">Reason if no DO</label><input className="sf-in" value={form.completion_reason} placeholder="Why there is no DO" onChange={e => set({ completion_reason: e.target.value })} /></div>
-                  </div>
+                  {doApplies(form.site_type) ? (
+                    <div className="sf-row2">
+                      <div><label className="sf-lbl">Delivery order number</label><input className="sf-in" value={form.delivery_order_number} placeholder="DO-12345" onChange={e => set({ delivery_order_number: e.target.value })} /></div>
+                      <div><label className="sf-lbl">Reason if no DO</label><input className="sf-in" value={form.completion_reason} placeholder="Why there is no DO" onChange={e => set({ completion_reason: e.target.value })} /></div>
+                    </div>
+                  ) : (
+                    <p className="sf-hint">Delivery order: not applicable for {isMeeting ? 'meetings' : 'site visits'}.</p>
+                  )}
                   <label className="sf-lbl">Notes</label>
                   <textarea className="sf-in" rows={3} value={form.notes} placeholder="Optional notes…" onChange={e => set({ notes: e.target.value })} />
                 </>

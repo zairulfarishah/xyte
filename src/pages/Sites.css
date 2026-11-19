@@ -271,3 +271,7 @@
 .ss-navy .ss-av { border-color: #1a2a40; }
 .ss-navy .ss-ib { background: rgba(255,255,255,.07); border-color: rgba(255,255,255,.14); color: #e2e8f0; }
 .ss-card img, .ss-tool, .ss-ib { -webkit-user-drag: none; user-select: none; -webkit-user-select: none; }
+
+/* Outstation site (outside KL / Selangor) — slightly different card colour */
+.ss-navy .ss-card.outst { background: linear-gradient(165deg, #262a5c 0%, #1a1d45 100%); border-color: #3c418a; }
+.ss-outst { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 99px; background: #6366f1; color: #fff; white-space: nowrap; }

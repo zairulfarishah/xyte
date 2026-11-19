@@ -4,7 +4,7 @@ import { supabase } from '../supabase'
 import { ChevronLeft, ChevronRight, Pencil, MapPin, Upload, X, Users, FileText, LayoutGrid, Grid3x3 } from 'lucide-react'
 import SiteLayouts from './layout/SiteLayouts'
 import { getSiteHeaderImage } from '../utils/siteHeader'
-import { parseCompletionMeta } from '../utils/completionMeta'
+import { doApplies, parseCompletionMeta } from '../utils/completionMeta'
 import { SiteFeedPosts } from '../components/FeedWidgets'
 import { shrinkPhoto } from '../utils/photo'
 import {
@@ -199,7 +199,7 @@ export default function SiteDetail() {
                     { label: 'Client company',  value: site.client_company_name || 'Not set' },
                     { label: 'Location',        value: site.location },
                     { label: 'Coordinates',     value: site.latitude && site.longitude ? `${Number(site.latitude).toFixed(4)}, ${Number(site.longitude).toFixed(4)}` : 'Not set' },
-                    { label: 'Delivery order',  value: completionMeta.deliveryOrderNumber || 'N/A' },
+                    { label: 'Delivery order',  value: doApplies(site.site_type) ? (completionMeta.deliveryOrderNumber || 'N/A') : 'Not applicable' },
                   ].map(({ label, value }) => (
                     <div key={label}><dt>{label}</dt><dd>{value}</dd></div>
                   ))}
@@ -272,9 +272,9 @@ export default function SiteDetail() {
               <div><dt>Scheduled date</dt><dd>{dateShort}</dd></div>
               <div><dt>Site duration</dt><dd>{site.site_duration_days} day(s)</dd></div>
               <div><dt>Site type</dt><dd>{TYPE_LABELS[site.site_type] || 'Site Scanning'}</dd></div>
-              <div><dt>Delivery order</dt><dd>{completionMeta.deliveryOrderNumber || 'N/A'}</dd></div>
+              <div><dt>Delivery order</dt><dd>{doApplies(site.site_type) ? (completionMeta.deliveryOrderNumber || 'N/A') : 'Not applicable'}</dd></div>
               <div><dt>Report status</dt><dd><StatusBadge map={REPORT_STATUS} value={site.report_status} /></dd></div>
-              <div><dt>Reason if no DO</dt><dd className={completionMeta.completionReason ? '' : 'na'}>{completionMeta.completionReason || 'N/A'}</dd></div>
+              {doApplies(site.site_type) && <div><dt>Reason if no DO</dt><dd className={completionMeta.completionReason ? '' : 'na'}>{completionMeta.completionReason || 'N/A'}</dd></div>}
             </dl>
           </Card>
 

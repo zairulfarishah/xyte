@@ -1,5 +1,6 @@
 import { publicHolidayName } from './holidays'
 import { isOffDay } from './teamLeaves'
+import { OUTSTATION_HIGHLIGHT } from './outstation'
 
 // Office hours per day of week (0 = Sunday). Minutes from midnight.
 // Anything worked outside the window counts as OT; a day with no window is an
@@ -173,8 +174,9 @@ export function leaveHighlight(leave) {
   return MEDICAL_TYPES.includes(leave.leave_type) ? LEAVE_HIGHLIGHTS.medical : LEAVE_HIGHLIGHTS.leave
 }
 
-// Row colour for a day: a colour picked on the timecard wins, then leave
-export const dayHighlightHex = (card, leave) => highlightHex(card?.highlight) || leaveHighlight(leave)?.hex || null
+// Row colour for a day: a colour picked on the timecard wins, then leave, then an outstation site
+export const dayHighlightHex = (card, leave, outstation = false) =>
+  highlightHex(card?.highlight) || leaveHighlight(leave)?.hex || (outstation ? OUTSTATION_HIGHLIGHT.hex : null)
 
 export function formatMinutes(mins) {
   if (!mins) return '0h'

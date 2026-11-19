@@ -91,3 +91,13 @@
 .tc-today .tot b.ot { color: #ea580c; }
 .tc-today .tot .tc-link { margin-left: auto; }
 .tc-today .hint { margin: 10px 0 0; font-size: 11.5px; color: #94a3b8; }
+
+/* Time differs from a teammate at the same site */
+.tc-tt { display: flex; flex-direction: column; gap: 10px; }
+.tc-tt-site { border: 1px solid #fde68a; background: #fffbeb; border-radius: 12px; padding: 10px 12px; }
+.tc-tt-site > b { display: block; font-size: 13px; color: #172335; margin-bottom: 6px; }
+.tc-tt-site .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 4px 0; font-size: 13px; color: #334155; }
+.tc-tt-site .row span { min-width: 90px; font-weight: 600; }
+.tc-tt-site .row em { font-style: normal; font-variant-numeric: tabular-nums; }
+.tc-tt-site .row.me em { font-weight: 700; color: #b45309; }
+.tc-tt-site .row .tc-btn { margin-left: auto; padding: 5px 10px; font-size: 12px; }

@@ -1,9 +1,10 @@
 import { supabase } from '../../supabase'
 import { memberSchedule, notify, notifyMany, notifyScheduleChanges } from '../../utils/notify'
-import { mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../../utils/completionMeta'
+import { doApplies, mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../../utils/completionMeta'
 import { getLeaveSessionLabel, getMemberLeaveOnDate } from '../../utils/teamLeaves'
 import { getSiteDates, siteCrew, sitePic } from '../../utils/siteDays'
 import { shrinkPhoto } from '../../utils/photo'
+import { isOutsideKlSelangor } from '../../utils/outstation'
 
 // Everything about a site form that isn't layout: the empty form, loading a site into it,
 // and saving it (photo upload, site row, assignments, notifications). Used by the Dashboard
@@ -20,7 +21,7 @@ export const SITE_STATUSES = ['upcoming', 'ongoing', 'completed', 'cancelled', '
 export const REPORT_STATUSES = ['pending', 'in_progress', 'submitted', 'approved', 'not_applicable']
 
 export const EMPTY_SITE_FORM = {
-  site_type: 'site_scanning', site_name: '', location: '', latitude: '', longitude: '',
+  site_type: 'site_scanning', site_name: '', location: '', latitude: '', longitude: '', outstation: false,
   client_company_name: '', client_name: '', client_number: '', scope_of_work: '',
   salesperson: '', scheduled_date: '', end_date: '', site_session: '', site_status: 'upcoming', report_status: 'pending',
   site_duration_days: '1', report_duration_days: '0.5', notes: '', pic_id: '', crew_ids: [],
@@ -62,6 +63,7 @@ export function formFromSite(site) {
     site_type: site.site_type || 'site_scanning',
     site_name: site.site_name, location: site.location,
     latitude: site.latitude || '', longitude: site.longitude || '',
+    outstation: !!site.outstation,
     client_company_name: site.client_company_name || '', client_name: site.client_name || '',
     client_number: site.client_number || '', scope_of_work: site.scope_of_work || '',
     salesperson: site.salesperson || '', scheduled_date: site.scheduled_date,
@@ -169,7 +171,7 @@ export async function saveSite({ form, editSite, members, leaves, fullName, memb
     const err = leaveConflict(members, leaves, [form.pic_id, ...form.crew_ids].filter(Boolean), form.scheduled_date)
     if (err) throw new Error(err)
   }
-  const completionError = validateCompletionRequirement(form.site_status, form.delivery_order_number, form.completion_reason)
+  const completionError = validateCompletionRequirement(form.site_status, form.delivery_order_number, form.completion_reason, form.site_type)
   if (completionError) throw new Error(completionError)
 
   let photoUrl = form.site_photo_url
@@ -181,6 +183,7 @@ export async function saveSite({ form, editSite, members, leaves, fullName, memb
     site_type: form.site_type, site_name: form.site_name, location: form.location,
     latitude: form.latitude !== '' ? parseFloat(form.latitude) : null,
     longitude: form.longitude !== '' ? parseFloat(form.longitude) : null,
+    outstation: isOutsideKlSelangor(form.location, form.latitude, form.longitude) === false ? false : !!form.outstation,
     client_company_name: form.client_company_name || null, client_name: form.client_name || null,
     client_number: form.client_number || null, scope_of_work: form.scope_of_work || null,
     salesperson: form.salesperson || null, site_photo_url: photoUrl || null,
@@ -192,8 +195,8 @@ export async function saveSite({ form, editSite, members, leaves, fullName, memb
     report_duration_days: isVisit || isMeeting ? 0 : (parseFloat(form.report_duration_days) || 0),
     report_status: isVisit || isMeeting ? 'not_applicable' : form.report_status,
     notes: mergeCompletionMeta(form.notes, {
-      deliveryOrderNumber: form.delivery_order_number,
-      completionReason: form.completion_reason,
+      deliveryOrderNumber: doApplies(form.site_type) ? form.delivery_order_number : '',
+      completionReason: doApplies(form.site_type) ? form.completion_reason : '',
     }),
   }
 
@@ -211,10 +214,23 @@ export async function saveSite({ form, editSite, members, leaves, fullName, memb
   // Only rewrite assignments when the rows themselves differ
   const keys = rows => rows.map(a => `${a.member_id || a.team_members?.id}|${a.assignment_role}|${a.work_date || ''}`).sort().join(',')
   const changed = !editSite || keys(editSite.site_assignments || []) !== keys(assignments)
+  // Before sql/migrate-site-outstation.sql is run the column is missing: still save the
+  // site, unless it was marked outstation (then say what to run).
+  const writeSite = async run => {
+    let res = await run(payload)
+    if (res.error && /outstation/.test(res.error.message)) {
+      if (payload.outstation) throw new Error('Outstation needs a database update — run sql/migrate-site-outstation.sql in the Supabase SQL editor.')
+      const rest = { ...payload }
+      delete rest.outstation
+      res = await run(rest)
+    }
+    if (res.error) throw new Error(res.error.message)
+    return res
+  }
+
   let siteId = editSite?.id
   if (editSite) {
-    const { error } = await supabase.from('sites').update(payload).eq('id', siteId)
-    if (error) throw new Error(error.message)
+    await writeSite(p => supabase.from('sites').update(p).eq('id', siteId))
     if (changed) {
       const [{ error: delError }] = await Promise.all([
         supabase.from('site_assignments').delete().eq('site_id', siteId),
@@ -223,8 +239,7 @@ export async function saveSite({ form, editSite, members, leaves, fullName, memb
       if (delError) throw new Error(delError.message)
     }
   } else {
-    const { data, error } = await supabase.from('sites').insert(payload).select().single()
-    if (error) throw new Error(error.message)
+    const { data } = await writeSite(p => supabase.from('sites').insert(p).select().single())
     siteId = data.id
   }
   if (changed && assignments.length) {

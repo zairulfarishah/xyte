@@ -12,7 +12,7 @@ import SiteForm from '../components/siteForm/SiteForm'
 import { EMPTY_SITE_FORM, duplicateForm, formFromSite } from '../components/siteForm/siteFormModel'
 import SitesViewSwitch from '../components/SitesViewSwitch'
 import { getSiteHeaderImage } from '../utils/siteHeader'
-import { mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../utils/completionMeta'
+import { doApplies, mergeCompletionMeta, parseCompletionMeta, validateCompletionRequirement } from '../utils/completionMeta'
 import { fetchTeamLeaves } from '../utils/teamLeaves'
 import { useViewport } from '../utils/useViewport'
 import { buildAssignmentMessage, buildSitesBrief, openWhatsApp, openWhatsAppShare, shortNameOf } from '../utils/whatsapp'
@@ -335,7 +335,8 @@ export default function Sites() {
     const completionError = validateCompletionRequirement(
       draftStatus.site_status,
       draftStatus.delivery_order_number,
-      draftStatus.completion_reason
+      draftStatus.completion_reason,
+      site.site_type
     )
     if (completionError) {
       toast(completionError, { tone:'err', ms:6000 })
@@ -396,7 +397,7 @@ export default function Sites() {
     const skipped = status === 'completed'
       ? targets.filter(s => {
           const meta = parseCompletionMeta(s.notes || '')
-          return validateCompletionRequirement(status, meta.deliveryOrderNumber, meta.completionReason)
+          return validateCompletionRequirement(status, meta.deliveryOrderNumber, meta.completionReason, s.site_type)
         })
       : []
     const ready = targets.filter(s => !skipped.includes(s))
@@ -785,7 +786,7 @@ export default function Sites() {
 
               return (
                 <div key={site.id}
-                  className={`ss-card${isExpanded ? ' on' : ''}${selectMode ? ' selecting' : ''}${isSel ? ' sel' : ''}`}
+                  className={`ss-card${site.outstation ? ' outst' : ''}${isExpanded ? ' on' : ''}${selectMode ? ' selecting' : ''}${isSel ? ' sel' : ''}`}
                   role="link" tabIndex={0} aria-label={`Open ${getSiteTitle(site)}`}
                   onClick={e => {
                     if (selectMode) { toggleSelected(site.id); return }
@@ -800,6 +801,7 @@ export default function Sites() {
                   <div className="ss-top">
                     {selectMode && <span className="ss-check">{isSel ? <CheckSquare size={18} /> : <Square size={18} />}</span>}
                     <StatusBadge map={SITE_STATUS} value={site.site_status} />
+                    {site.outstation && <span className="ss-outst">Outstation</span>}
                     {rel && <span className={`ss-when ${rel.tone}`}>{rel.text}</span>}
                   </div>
 
@@ -845,7 +847,7 @@ export default function Sites() {
                         ) : (
                           <span><i className="dot" style={{ background:`var(--x-${repTone})` }} />Report {site.report_status?.replace(/_/g, ' ')}</span>
                         )}
-                        <span className={`do${doNo ? '' : ' na'}`}>{doNo ? `DO ${doNo}` : 'No DO yet'}</span>
+                        {doApplies(site.site_type) && <span className={`do${doNo ? '' : ' na'}`}>{doNo ? `DO ${doNo}` : 'No DO yet'}</span>}
                       </div>
                     </div>
 
@@ -1019,7 +1021,7 @@ export default function Sites() {
                 </Field>
               )}
 
-              {draftStatus.site_status === 'completed' && (<>
+              {draftStatus.site_status === 'completed' && doApplies(site.site_type) && (<>
                 <Field label="Delivery order number">
                   <input className="x-control"
                     value={draftStatus.delivery_order_number || ''}

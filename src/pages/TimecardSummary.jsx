@@ -64,7 +64,7 @@ export default function TimecardSummary() {
   useEffect(() => {
     Promise.all([
       supabase.from('team_members').select('id, full_name, short_name, role, is_hidden').order('full_name'),
-      supabase.from('sites').select('id, site_name'),
+      supabase.from('sites').select('*'),
       fetchTeamLeaves().catch(() => []),
     ]).then(([m, s, l]) => {
       setMembers(m.data || [])
@@ -114,7 +114,8 @@ export default function TimecardSummary() {
     setError('')
     try {
       const siteNames = Object.fromEntries(sites.map(s => [s.id, s.site_name]))
-      const args = { entries: list, dates, from, to, today, siteName: id => siteNames[id] }
+      const outstationIds = new Set(sites.filter(s => s.outstation).map(s => s.id))
+      const args = { entries: list, dates, from, to, today, siteName: id => siteNames[id], isOutstation: id => outstationIds.has(id) }
       const member = which === 'all' ? null : list[0].member
       if (format === 'xlsx') downloadXlsx(await buildTimecardXlsx(args), timecardXlsxFilename(from, to, member))
       else downloadPdf(await buildTimecardPdf(args), timecardPdfFilename(from, to, member))

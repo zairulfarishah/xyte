@@ -56,19 +56,19 @@ function slotsOf(card) {
 // One timecard per member, each starting on a new page.
 //   entries: [{ member, cardsByDate, leaveOn(date), summary }]
 //   siteName(id): site name for a slot's site_id
-export async function buildTimecardPdf({ entries, dates, from, to, today, siteName }) {
+export async function buildTimecardPdf({ entries, dates, from, to, today, siteName, isOutstation = () => false }) {
   const pdf = await PDFDocument.create()
   const font = await pdf.embedFont(StandardFonts.Helvetica)
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
   const logoImg = await embedLogo(pdf)
 
   for (const entry of entries) {
-    drawMemberTimecard({ pdf, font, bold, logoImg, entry, dates, from, to, today, siteName })
+    drawMemberTimecard({ pdf, font, bold, logoImg, entry, dates, from, to, today, siteName, isOutstation })
   }
   return pdf.save()
 }
 
-function drawMemberTimecard({ pdf, font, bold, logoImg, entry, dates, from, to, today, siteName }) {
+function drawMemberTimecard({ pdf, font, bold, logoImg, entry, dates, from, to, today, siteName, isOutstation }) {
   const { member, cardsByDate, leaveOn, summary } = entry
   const pages = []
   let page = null
@@ -132,6 +132,7 @@ function drawMemberTimecard({ pdf, font, bold, logoImg, entry, dates, from, to, 
       const own = slots.filter((_, i) => i % 2 === pair)
       return [own.map(s => formatTime12(s.time_in) || '?'), own.map(s => formatTime12(s.time_out) || '?')]
     }).flat()
+    const dayMark = dayHighlightHex(card, leave, slots.some(s => s.site_id && isOutstation(s.site_id)))
     const siteLines = slots.map(s => (s.site_id && siteName(s.site_id)) || 'Office')
       .map(name => wrap(name, COLS[2].w - 10, font, SIZE, 1)[0])
 
@@ -152,7 +153,7 @@ function drawMemberTimecard({ pdf, font, bold, logoImg, entry, dates, from, to, 
     }
 
     const rY = y - rowH
-    page.drawRectangle({ x: ML, y: rY, width: TABLE_W, height: rowH, borderColor: LINE, borderWidth: 0.4, color: dayHighlightHex(card, leave) ? hexRgb(dayHighlightHex(card, leave)) : offDay ? OFF : idx % 2 ? WHITE : ZEBRA })
+    page.drawRectangle({ x: ML, y: rY, width: TABLE_W, height: rowH, borderColor: LINE, borderWidth: 0.4, color: dayMark ? hexRgb(dayMark) : offDay ? OFF : idx % 2 ? WHITE : ZEBRA })
     COLS.forEach((c, i) => {
       if (i > 0) page.drawLine({ start: { x: colX(i), y: rY + rowH }, end: { x: colX(i), y: rY }, thickness: 0.4, color: LINE })
     })
