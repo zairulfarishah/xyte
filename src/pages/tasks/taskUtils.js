@@ -30,11 +30,11 @@ export const byUrgency = today => (a, b) =>
   || (PRIORITY_RANK[a.priority] ?? 1) - (PRIORITY_RANK[b.priority] ?? 1)
 
 export const LANES = [
-  { key: 'late',  label: 'Overdue',   color: 'var(--mc-hi)',   empty: 'Nothing overdue ✓', test: (t, d) => isLate(t, d) },
-  { key: 'today', label: 'Today',     color: 'var(--mc-acc)',  empty: 'Nothing due today', test: (t, d) => !!t.due_date && daysTo(t.due_date, d) === 0 },
-  { key: 'week',  label: 'This week', color: 'var(--mc-acc2)', empty: 'Clear',             test: (t, d) => !!t.due_date && daysTo(t.due_date, d) >= 1 && daysTo(t.due_date, d) <= 7 },
-  { key: 'later', label: 'Later',     color: 'var(--mc-vio)',  empty: 'Clear',             test: (t, d) => !!t.due_date && daysTo(t.due_date, d) > 7 },
-  { key: 'none',  label: 'No date',   color: 'var(--mc-ink3)', empty: 'Clear',             test: t => !t.due_date },
+  { key: 'late',  label: 'Overdue',   color: 'var(--x-danger)', empty: 'Nothing overdue ✓', test: (t, d) => isLate(t, d) },
+  { key: 'today', label: 'Today',     color: 'var(--x-orange)', empty: 'Nothing due today', test: (t, d) => !!t.due_date && daysTo(t.due_date, d) === 0 },
+  { key: 'week',  label: 'This week', color: 'var(--x-info)', empty: 'Clear',             test: (t, d) => !!t.due_date && daysTo(t.due_date, d) >= 1 && daysTo(t.due_date, d) <= 7 },
+  { key: 'later', label: 'Later',     color: 'var(--x-review)', empty: 'Clear',             test: (t, d) => !!t.due_date && daysTo(t.due_date, d) > 7 },
+  { key: 'none',  label: 'No date',   color: 'var(--x-neutral)', empty: 'Clear',             test: t => !t.due_date },
 ]
 
 // Quick add:  "Check DO for KLIA @Izni !high fri"

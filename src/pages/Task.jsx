@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, Plus, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Check, CheckCheck, Plus, Trash2, X } from 'lucide-react'
 import { supabase } from '../supabase'
 import { activeMembers } from '../utils/members'
 import { cachedPage, rememberPage } from '../utils/pageCache'
 import { useAuth } from '../context/AuthContext'
+import { Button, FilterBar, Page, PageHeader, Tabs } from '../components/ui'
 import { createTask, setTaskDone } from '../utils/tasks'
 import { LANES, PRIORITY_WEIGHT, assigneesOf, byUrgency, dueText, isDone, isLate, parseQuickTask, todayIso } from './tasks/taskUtils'
+import './Sites.css'
 import './tasks/MissionControl.css'
 
 // Tasks — "Mission Control": open tasks laid out by when they're due, a quick-add bar
 // (type "Check DO @Izni !high fri"), team workload, and the full New task form.
 
-const COLORS = ['#ff7a1a', '#22d3ee', '#a78bfa', '#2ee6a6', '#f472b6', '#facc15']
+const COLORS = ['#f07c1e', '#3478d4', '#6d5bd0', '#16a36a', '#db2777', '#0891b2']
 const PRIO_COLOR = { high: 'var(--mc-hi)', medium: 'var(--mc-med)', low: 'var(--mc-low)' }
 const LANE_LIMIT = 8
 const EMPTY_FORM = { title: '', description: '', priority: 'medium', due_date: '', assignees: [] }
@@ -91,13 +93,13 @@ export default function TaskPage() {
   const done = visible.filter(isDone)
   const sortUrgent = byUrgency(today)
   const lanes = LANES.map(l => ({ ...l, items: open.filter(t => l.test(t, today)).sort(sortUrgent) }))
-  if (showDone) lanes.push({ key: 'done', label: 'Done', color: 'var(--mc-low)', empty: 'Nothing done yet', items: done })
+  if (showDone) lanes.push({ key: 'done', label: 'Done', color: 'var(--x-success)', empty: 'Nothing done yet', items: done })
 
   const stats = [
-    { label: 'Open',      value: open.length, of: visible.length, color: 'var(--mc-acc2)', sub: `of ${visible.length} total` },
-    { label: 'Due today', value: open.filter(t => t.due_date === today).length, of: open.length, color: 'var(--mc-acc)', sub: 'need doing today' },
-    { label: 'Overdue',   value: open.filter(t => isLate(t, today)).length, of: open.length, color: 'var(--mc-hi)', sub: 'past their date' },
-    { label: 'Done',      value: done.length, of: visible.length, color: 'var(--mc-low)', sub: `${visible.length ? Math.round(done.length / visible.length * 100) : 0}% complete` },
+    { label: 'Open',      value: open.length, of: visible.length, color: '#7fb2f0', sub: `of ${visible.length} total` },
+    { label: 'Due today', value: open.filter(t => t.due_date === today).length, of: open.length, color: 'var(--x-orange)', sub: 'need doing today' },
+    { label: 'Overdue',   value: open.filter(t => isLate(t, today)).length, of: open.length, color: '#f27272', sub: 'past their date' },
+    { label: 'Done',      value: done.length, of: visible.length, color: '#34c88a', sub: `${visible.length ? Math.round(done.length / visible.length * 100) : 0}% complete` },
   ]
 
   // workload across the whole team (high priority counts more)
@@ -154,66 +156,74 @@ export default function TaskPage() {
     setModal(null)
   }
 
-  if (loading) return <div className="mc"><div className="mc-loading"><i />Loading tasks…</div></div>
+  if (loading) return (
+    <Page className="ss mc">
+      <section className="ss-hero"><PageHeader title="Tasks" subtitle="Loading tasks…" /></section>
+    </Page>
+  )
 
   const late = stats[2].value
-  return (
-    <div className="mc">
-      <div className="mc-wrap">
-        <header className="mc-head">
-          <div>
-            <div className="mc-kicker">Task control · live</div>
-            <h1>Tasks <span>Mission Control</span></h1>
-            <p>{open.length} open · {late} overdue · {stats[1].value} due today</p>
-          </div>
-          <button type="button" className="mc-btn" onClick={() => openModal({ ...EMPTY_FORM, assignees: person ? [person] : [] })}><Plus /> New task</button>
-        </header>
+  const scopeTabs = [
+    { key: 'all', label: 'Everyone', count: tasks.filter(t => !isDone(t)).length },
+    { key: 'mine', label: 'Mine', count: tasks.filter(t => !isDone(t) && assigneesOf(t).includes(memberId)).length },
+    { key: 'gave', label: 'I gave', count: tasks.filter(t => !isDone(t) && t.created_by === memberId).length },
+  ]
+  const shownAssignees = parsed ? (parsed.assignees.length ? parsed.assignees : memberId ? [memberId] : []) : []
+  const showLate = () => document.querySelector('.mc .k-late')?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' })
 
+  return (
+    <Page className="ss mc">
+      <section className="ss-hero">
+        <PageHeader
+          title="Tasks"
+          subtitle={<>
+            <b>{open.length}</b> open · <b>{stats[1].value}</b> due today
+            {late > 0 && <> · <button className="ss-attn" onClick={showLate}><AlertTriangle size={12} /> {late} overdue</button></>}
+          </>}
+          actions={<Button variant="primary" icon={Plus} onClick={() => openModal({ ...EMPTY_FORM, assignees: person ? [person] : [] })}>New task</Button>}
+        />
         <div className="mc-hud">
           {stats.map(s => (
-            <div key={s.label} className="mc-stat mc-glass" style={{ '--c': s.color }}>
+            <div key={s.label} className="mc-stat">
               <Ring value={s.value} total={s.of} color={s.color} />
               <div><div className="lbl">{s.label}</div><div className="sub">{s.sub}</div></div>
             </div>
           ))}
         </div>
+        <Tabs tabs={scopeTabs} active={scope} onChange={setScope} />
+      </section>
 
-        <div className="mc-toolbar">
-          <div className="mc-cmd-wrap">
-            <label className="mc-cmd mc-glass">
-              <span className="k" aria-hidden="true">›_</span>
-              <input ref={quickRef} value={quick} disabled={quickBusy} autoComplete="off"
-                aria-label="Quick add a task. Use @name for who, !high, !med or !low for priority, and a day like fri or 12 dec."
-                placeholder="Type a task… e.g.  Check DO for KLIA @Izni !high fri"
-                onChange={e => { setQuick(e.target.value); setQuickError(null) }}
-                onKeyDown={e => { if (e.key === 'Enter') addQuick(); if (e.key === 'Escape') setQuick('') }} />
-              <span className="mc-kbd">Ctrl K</span>
-              <button type="button" className="mc-btn" onClick={addQuick} disabled={!parsed || quickBusy}>{quickBusy ? 'Adding…' : 'Add'}</button>
-            </label>
-            {parsed && (
-              <div className="mc-parse" aria-live="polite">
-                <span className="mc-chip">“{parsed.title || '…'}”</span>
-                {(parsed.assignees.length ? parsed.assignees : memberId ? [memberId] : []).map(id => (
-                  <span key={id} className="mc-chip"><Avatar member={memberById.get(id)} color={colorOf(id)} /> {firstName(memberById.get(id))}</span>
-                ))}
-                <span className={`mc-chip p-${parsed.priority}`}>{parsed.priority}</span>
-                <span className="mc-chip mono">{parsed.due_date ? dueText(parsed.due_date, today) : 'no date'}</span>
-                {!parsed.assignees.length && <span className="warn">for you — add @name to give it to someone</span>}
-              </div>
-            )}
-            {quickError && <p className="mc-err">{quickError}</p>}
-          </div>
-          <div className="mc-scope" role="group" aria-label="Show tasks">
-            {[['all', 'Everyone'], ['mine', 'Mine'], ['gave', 'I gave']].map(([k, l]) => (
-              <button key={k} type="button" className={scope === k ? 'on' : ''} aria-pressed={scope === k} onClick={() => setScope(k)}>{l}</button>
+      <div className="x-card ss-board mc-board">
+        <FilterBar>
+          <label className="x-inp mc-cmd">
+            <span className="k" aria-hidden="true">›_</span>
+            <input ref={quickRef} value={quick} disabled={quickBusy} autoComplete="off"
+              aria-label="Quick add a task. Use @name for who, !high, !med or !low for priority, and a day like fri or 12 dec."
+              placeholder="Quick add… e.g.  Check DO for KLIA @Izni !high fri"
+              onChange={e => { setQuick(e.target.value); setQuickError(null) }}
+              onKeyDown={e => { if (e.key === 'Enter') addQuick(); if (e.key === 'Escape') setQuick('') }} />
+            <span className="mc-kbd">Ctrl K</span>
+            <Button variant="primary" size="sm" onClick={e => { e.preventDefault(); addQuick() }} disabled={!parsed || quickBusy}>{quickBusy ? 'Adding…' : 'Add'}</Button>
+          </label>
+          <button type="button" className={`ss-tool${showDone ? ' on' : ''}`} aria-pressed={showDone} onClick={() => setShowDone(v => !v)}>
+            <CheckCheck size={14} /> Show done <span className="mc-done-n">{done.length}</span>
+          </button>
+        </FilterBar>
+
+        {parsed && (
+          <div className="mc-parse" aria-live="polite">
+            <span className="mc-chip">“{parsed.title || '…'}”</span>
+            {shownAssignees.map(id => (
+              <span key={id} className="mc-chip"><Avatar member={memberById.get(id)} color={colorOf(id)} /> {firstName(memberById.get(id))}</span>
             ))}
-            <span className="sep" />
-            <button type="button" className={showDone ? 'on' : ''} aria-pressed={showDone} onClick={() => setShowDone(v => !v)}>Done <i>{done.length}</i></button>
+            <span className={`mc-chip p-${parsed.priority}`}>{parsed.priority}</span>
+            <span className="mc-chip mono">{parsed.due_date ? dueText(parsed.due_date, today) : 'no date'}</span>
+            {!parsed.assignees.length && <span className="warn">for you — add @name to give it to someone</span>}
           </div>
-        </div>
-
+        )}
+        {quickError && <p className="mc-err">{quickError}</p>}
         {person && (
-          <div className="mc-filter">Showing {firstName(memberById.get(person))}'s tasks <button type="button" onClick={() => setPerson(null)}>Show everyone</button></div>
+          <div className="mc-filter">Showing {firstName(memberById.get(person))}’s tasks <button type="button" onClick={() => setPerson(null)}>Show everyone</button></div>
         )}
 
         <div className="mc-lanes" style={{ '--n': lanes.length }}>
@@ -221,15 +231,15 @@ export default function TaskPage() {
             const all = lane.items
             const shown = expanded[lane.key] ? all : all.slice(0, LANE_LIMIT)
             return (
-              <section key={lane.key} className="mc-lane mc-glass" style={{ '--c': lane.color }} aria-label={lane.label}>
+              <section key={lane.key} className={`mc-lane k-${lane.key}`} style={{ '--c': lane.color }} aria-label={lane.label}>
                 <h3><span>{lane.label}</span><i>{all.length}</i></h3>
                 {!all.length && <div className="mc-empty">{lane.empty}</div>}
                 {shown.map(task => {
                   const who = assigneesOf(task)
                   const giver = task.created_by && task.created_by !== memberId && !who.includes(task.created_by) ? memberById.get(task.created_by) : null
-                  const late = isLate(task, today)
+                  const taskLate = isLate(task, today)
                   return (
-                    <article key={task.id} className={`mc-tk${late ? ' late' : ''}${isDone(task) ? ' done' : ''}`} style={{ '--pc': PRIO_COLOR[task.priority] || PRIO_COLOR.medium }}>
+                    <article key={task.id} className={`mc-tk${taskLate ? ' late' : ''}${isDone(task) ? ' done' : ''}`} style={{ '--pc': PRIO_COLOR[task.priority] || PRIO_COLOR.medium }}>
                       <button type="button" className={`mc-chk${isDone(task) ? ' on' : ''}`} disabled={busy === task.id}
                         onClick={() => toggleDone(task)} aria-label={isDone(task) ? `Mark "${task.title}" not done` : `Mark "${task.title}" done`}>
                         <Check strokeWidth={3.5} />
@@ -239,7 +249,7 @@ export default function TaskPage() {
                         {task.description && !isDone(task) && <div className="td">{task.description}</div>}
                         <div className="meta">
                           <span className={`mc-chip p-${task.priority || 'medium'}`}>{task.priority || 'medium'}</span>
-                          <span className={`mc-chip mono${late ? ' late' : ''}`}>{dueText(task.due_date, today)}</span>
+                          <span className={`mc-chip mono${taskLate ? ' late' : ''}`}>{dueText(task.due_date, today)}</span>
                           <span className="mc-avs">{who.map(id => <Avatar key={id} member={memberById.get(id)} color={colorOf(id)} />)}</span>
                         </div>
                         {giver && <div className="from">From {firstName(giver)}</div>}
@@ -257,27 +267,27 @@ export default function TaskPage() {
             )
           })}
         </div>
-
-        <section className="mc-sec" aria-label="Team load">
-          <h4>Team load · click a person to see only their tasks</h4>
-          <div className="mc-loads">
-            {loads.map(({ m, count, weight }) => (
-              <div key={m.id} role="button" tabIndex={0} className={`mc-load mc-glass${person === m.id ? ' on' : ''}`} aria-pressed={person === m.id}
-                onClick={() => setPerson(p => p === m.id ? null : m.id)}
-                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPerson(p => p === m.id ? null : m.id) } }}>
-                <Avatar member={m} color={colorOf(m.id)} />
-                <div>
-                  <div className="nm">{firstName(m)}</div>
-                  <div className="mc-bar"><i style={{ width: `${weight / maxLoad * 100}%` }} /></div>
-                  <small>{count} open</small>
-                </div>
-                <button type="button" className="mc-give" title={`Give ${firstName(m)} a task`} aria-label={`Give ${firstName(m)} a task`}
-                  onClick={e => { e.stopPropagation(); openModal({ ...EMPTY_FORM, assignees: [m.id] }) }}><Plus /></button>
-              </div>
-            ))}
-          </div>
-        </section>
       </div>
+
+      <section className="mc-sec" aria-label="Team load">
+        <h4>Team load <span>· click a person to see only their tasks</span></h4>
+        <div className="mc-loads">
+          {loads.map(({ m, count, weight }) => (
+            <div key={m.id} role="button" tabIndex={0} className={`mc-load${person === m.id ? ' on' : ''}`} aria-pressed={person === m.id}
+              onClick={() => setPerson(p => p === m.id ? null : m.id)}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPerson(p => p === m.id ? null : m.id) } }}>
+              <Avatar member={m} color={colorOf(m.id)} />
+              <div>
+                <div className="nm">{firstName(m)}</div>
+                <div className={`mc-bar${weight >= 10 ? ' over' : weight >= 6 ? ' busy' : ''}`}><i style={{ width: `${weight / maxLoad * 100}%` }} /></div>
+                <small>{count} open</small>
+              </div>
+              <button type="button" className="mc-give" title={`Give ${firstName(m)} a task`} aria-label={`Give ${firstName(m)} a task`}
+                onClick={e => { e.stopPropagation(); openModal({ ...EMPTY_FORM, assignees: [m.id] }) }}><Plus /></button>
+            </div>
+          ))}
+        </div>
+      </section>
 
       {modal && (
         <div className="mc-modal-bg" onClick={e => e.target === e.currentTarget && setModal(null)}>
@@ -298,7 +308,7 @@ export default function TaskPage() {
               </label>
               <div className="mc-row">
                 <div className="mc-field">
-                  <label><span>Priority</span></label>
+                  <span className="mc-lbl">Priority</span>
                   <div className="mc-seg" role="group" aria-label="Priority">
                     {['low', 'medium', 'high'].map(p => (
                       <button key={p} type="button" className={`p-${p}${modal.priority === p ? ' on' : ''}`} aria-pressed={modal.priority === p}
@@ -311,7 +321,7 @@ export default function TaskPage() {
                 </label>
               </div>
               <div>
-                <label><span>Give it to *</span></label>
+                <span className="mc-lbl">Give it to *</span>
                 <div className="mc-people">
                   {members.map(m => {
                     const on = modal.assignees.includes(m.id)
@@ -326,13 +336,13 @@ export default function TaskPage() {
               </div>
               {formError && <p className="mc-err">{formError}</p>}
               <div className="mc-actions">
-                <button type="button" className="mc-btn" onClick={saveModal} disabled={saving}>{saving ? 'Adding…' : 'Add task'}</button>
-                <button type="button" className="mc-ghost" onClick={() => setModal(null)}>Cancel</button>
+                <Button variant="primary" onClick={saveModal} disabled={saving}>{saving ? 'Adding…' : 'Add task'}</Button>
+                <Button variant="secondary" onClick={() => setModal(null)}>Cancel</Button>
               </div>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </Page>
   )
 }
