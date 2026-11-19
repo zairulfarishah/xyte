@@ -1128,20 +1128,20 @@ function buildChains(segs){
         const pairs=[]; open.forEach(c=>here.forEach(s=>{ const dc=Math.abs(c.lastC-s.c); if(dc<=S.tol+1e-6) pairs.push([dc,c,s]); }));
         pairs.sort((a,b)=>a[0]-b[0]);
         const uc=new Set(), us=new Set();
-        pairs.forEach(([dc,c,s])=>{ if(uc.has(c)||us.has(s)) return; uc.add(c); us.add(s); c.pts.push([s.mid,s.c,false]); c.end=s.s1; c.lastC=s.c; c.segs.push(s); });
+        pairs.forEach(([dc,c,s])=>{ if(uc.has(c)||us.has(s)) return; uc.add(c); us.add(s); c.pts.push([s.mid,s.c,false,s]); c.end=s.s1; c.lastC=s.c; c.segs.push(s); });
         // carry unmatched PT through a no-access panel as "assumed"
         const nxt=bounds[bi+1];
         if(nxt!==undefined) open.forEach(c=>{ if(uc.has(c)) return; const m=(st+nxt)/2; const p=o==='H'?panelAt(m,c.lastC):panelAt(c.lastC,m);
           if(p && S.assumeNA!==false && effStatus(p)==='noaccess'){ c.pts.push([nxt,c.lastC,true]); c.end=nxt; c.assumed=true; } });
-        here.forEach(s=>{ if(!us.has(s)) mine.push({o,type,pts:[[s.s0,s.c,false],[s.mid,s.c,false]],end:s.s1,lastC:s.c,segs:[s]}); });
+        here.forEach(s=>{ if(!us.has(s)) mine.push({o,type,pts:[[s.s0,s.c,false,s],[s.mid,s.c,false,s]],end:s.s1,lastC:s.c,segs:[s]}); });
       });
-      mine.forEach(c=>{ const lp=c.pts[c.pts.length-1]; if(Math.abs(lp[0]-c.end)>0.5) c.pts.push([c.end,c.lastC,false]); chains.push(c); });
+      mine.forEach(c=>{ const lp=c.pts[c.pts.length-1]; if(Math.abs(lp[0]-c.end)>0.5) c.pts.push([c.end,c.lastC,false,lp[3]]); chains.push(c); });
     });
   });
   ['H','V'].forEach(o=>chains.filter(c=>c.o===o).sort((a,b)=>a.pts[0][1]-b.pts[0][1]||a.pts[0][0]-b.pts[0][0])
     .forEach((c,i)=>c.name='PT-'+o+String(i+1).padStart(2,'0')));
   chains.forEach(c=>{
-    c.w=c.pts.map(([a,b,d])=>c.o==='H'?{X:a,Y:b,dash:d}:{X:b,Y:a,dash:d});
+    let last=null; c.w=c.pts.map(([a,b,d,s])=>{ if(s) last=s; const p=c.o==='H'?{X:a,Y:b,dash:d}:{X:b,Y:a,dash:d}; p.dir=last?segDir(last):null; return p; });
     c.len=0; for(let i=1;i<c.w.length;i++) c.len+=Math.hypot(c.w[i].X-c.w[i-1].X,c.w[i].Y-c.w[i-1].Y);
     const a=c.pts[0][0], b=c.pts[c.pts.length-1][0]; c.from=gridNameAt(c.o,a); c.to=gridNameAt(c.o,b);
     c.ref=c.segs[0].r.from; c.offs=[...new Set(c.segs.map(s=>s.d))];
@@ -1150,6 +1150,15 @@ function buildChains(segs){
 }
 // labels step left / middle / right so close PT don't overlap; with stagger off they all sit mid-panel
 function labelPos(s){ const along = s.mid + (S.lblStagger===false?0:((s.i%3)-1)*Math.min(1400,(s.s1-s.s0)*0.15)); return s.o==='H'?{X:along,Y:s.c}:{X:s.c,Y:along}; }
+// Distance labels are coloured by the way the measurement runs from its gridline (up/down on the plan for letter grids, left/right for number grids).
+const DIRCOL = {up:'#e6b800', down:'#d9152c', left:'#0f766e', right:'#a16207'};
+const DIRLBL = {up:'PT measured upward', down:'PT measured downward', left:'PT measured to the left', right:'PT measured to the right'};
+const segDir = s => s.o==='H' ? (s.sign>0?'up':'down') : (s.sign>0?'right':'left');
+const DIRWORD = {up:'Up', down:'Down', left:'Left', right:'Right'};
+const DIRACI = {up:2, down:1, left:4, right:42};   // DXF colour index: yellow, red, cyan, dark gold
+// A cable's readings grouped by the gridline (and direction) they were measured from, in run order.
+function chainRefs(c){ const out=[]; c.segs.forEach(s=>{ const dir=segDir(s); let g=out.find(x=>x.from===s.r.from&&x.dir===dir);
+  if(!g) out.push(g={from:s.r.from, dir, offs:[]}); const d=Math.round(s.d); if(!g.offs.includes(d)) g.offs.push(d); }); return out; }
 function trimNum(v){ let s=v.toFixed(3); s=s.replace(/0+$/,''); if(s.endsWith('.')) s=s.slice(0,-1); if(/\.\d$/.test(s)) s+='0'; return s; }
 function showVal(mm){ return S.unit==='mm' ? String(Math.round(mm)) : trimNum(mm/1000); }
 function recompute(){ GEO=geo(); const r=segments(); SEGS=r.segs; BAD=r.bad; CH=buildChains(SEGS); }
@@ -1232,12 +1241,13 @@ function render(g, V, Wpx, Hpx, screen){
   if(S.showBuffer && S.buffer>0){ g.strokeStyle=COL.buf; g.lineCap='butt'; g.lineJoin='round'; g.lineWidth=Math.max(1,S.buffer*2*V.s);
     CH.forEach(c=>{ g.beginPath(); c.w.forEach((p,i)=>{ const q=P(p.X,p.Y); i?g.lineTo(q.x,q.y):g.moveTo(q.x,q.y); }); g.stroke(); }); }
   g.lineCap='round'; g.lineJoin='round';
-  CH.forEach(c=>{ g.strokeStyle=COL[c.type]||COL.pt; g.lineWidth=2.2*u;
-    for(let i=1;i<c.w.length;i++){ g.setLineDash(c.w[i].dash?[7*u,5*u]:[]); line(g,P(c.w[i-1].X,c.w[i-1].Y),P(c.w[i].X,c.w[i].Y)); }
-    g.setLineDash([]); g.fillStyle=COL[c.type]||COL.pt; [c.w[0],c.w[c.w.length-1]].forEach(p=>{ const q=P(p.X,p.Y); g.beginPath(); g.arc(q.x,q.y,3.2*u,0,7); g.fill(); }); });
+  const ptCol=(c,p)=>DIRCOL[p.dir]||COL[c.type]||COL.pt;
+  CH.forEach(c=>{ g.lineWidth=2.2*u;
+    for(let i=1;i<c.w.length;i++){ g.strokeStyle=ptCol(c,c.w[i]); g.setLineDash(c.w[i].dash?[7*u,5*u]:[]); line(g,P(c.w[i-1].X,c.w[i-1].Y),P(c.w[i].X,c.w[i].Y)); }
+    g.setLineDash([]); [c.w[0],c.w[c.w.length-1]].forEach(p=>{ const q=P(p.X,p.Y); g.fillStyle=ptCol(c,p); g.beginPath(); g.arc(q.x,q.y,3.2*u,0,7); g.fill(); }); });
   const lp=110*V.s;
   if(S.showLabels && (lp>=7 || !screen)){
-    SEGS.forEach(s=>{ const p=labelPos(s), q=P(p.X,p.Y), px=Math.max(lp, screen?0:8*u), off=px*0.75, col=s.outside?'#e04a1c':(COL[s.type]||COL.pt);
+    SEGS.forEach(s=>{ const p=labelPos(s), q=P(p.X,p.Y), px=Math.max(lp, screen?0:8*u), off=px*0.75, col=s.outside?'#e04a1c':DIRCOL[segDir(s)];
       if(s.o==='H') text(g,showVal(s.d),q.x,q.y-off,px,col,'center',0);
       else text(g,showVal(s.d),q.x-off,q.y,px,col,'center',-Math.PI/2); });
   }
@@ -2008,7 +2018,10 @@ function legendItems(){ const it=[['line','PT cable (GPR located)']];
   const pc=panelCounts(); if(pc.nopt) it.push(['nopt','Scanned, no PT found']); if(pc.noaccess) it.push(['noacc','No access, not scanned']);
   if(S.areas.some(a=>!noPT(a))) it.push(['area','No-access area, not scanned']);
   if(S.areas.some(noPT)) it.push(['areaNopt','Area scanned, no PT found']);
+  const used=new Set(SEGS.map(segDir)), dirs=['up','down','left','right'].filter(d=>used.has(d));
+  if(dirs.length) it.splice(0,1,...dirs.map(d=>['dir:'+d,DIRLBL[d]]));
   return it; }
+const hexRGB = h => [1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
 function renderPNG(levelName){
   const plan=renderPlan(6000), Wp=plan.width, foot=Math.round(Wp*0.06), c=document.createElement('canvas'); c.width=Wp; c.height=plan.height+foot;
   const g=c.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,c.width,c.height); g.drawImage(plan,0,0);
@@ -2028,6 +2041,7 @@ function drawLegendSw(g,t,x,y,w,u){ g.save(); g.setLineDash([]); g.lineCap='butt
   else if(t==='areaNopt'){ g.fillStyle='rgba(61,111,179,0.25)'; g.fillRect(x,y-6*u,w,12*u); g.strokeStyle='#3d6fb3'; g.lineWidth=1.2*u; g.strokeRect(x,y-6*u,w,12*u); }
   else if(t==='noacc'||t==='area'){ g.fillStyle=COL.nna; g.fillRect(x,y-6*u,w,12*u); hatch(g,x,y-6*u,w,12*u,5*u,COL.hatch,1*u);
     if(t==='area'){ g.strokeStyle='#8a6a1f'; g.lineWidth=1.2*u; g.strokeRect(x,y-6*u,w,12*u); } }
+  else if(t.startsWith('dir:')){ g.strokeStyle=DIRCOL[t.slice(4)]; g.lineWidth=2.5*u; line(g,{x,y},{x:x+w,y}); }
   g.restore(); }
 const toBlob=(c,type,q)=>new Promise(r=>c.toBlob(r,type||'image/png',q));
 $('#exPNG').onclick=async()=>{ toast('Preparing image…'); const b=await toBlob(renderPNG(curLevel().name)); await saveFile(`${base()}_${slug(curLevel().name)}_PT_plan.png`, b); };
@@ -2035,7 +2049,8 @@ $('#exPNG').onclick=async()=>{ toast('Preparing image…'); const b=await toBlob
 /* ---------------- DXF ---------------- */
 function dxf(levelName){
   const o=[], P=(...a)=>o.push(...a), n=v=>(Math.round(v*10)/10).toFixed(1), R=S.report;
-  const layers=[['GRID',8,'DASHDOT'],['GRID-TEXT',7,'CONTINUOUS'],['GRID-DIM',7,'CONTINUOUS'],['PT',1,'CONTINUOUS'],['PT-ASSUMED',1,'DASHED'],['PT-ID',2,'CONTINUOUS'],
+  const layers=[['GRID',8,'DASHDOT'],['GRID-TEXT',7,'CONTINUOUS'],['GRID-DIM',7,'CONTINUOUS'],['PT',1,'CONTINUOUS'],
+    ['PT-UP',DIRACI.up,'CONTINUOUS'],['PT-DOWN',DIRACI.down,'CONTINUOUS'],['PT-LEFT',DIRACI.left,'CONTINUOUS'],['PT-RIGHT',DIRACI.right,'CONTINUOUS'],['PT-ASSUMED',1,'DASHED'],['PT-ID',7,'CONTINUOUS'],
     ['PT-DIM',3,'CONTINUOUS'],['NO-DRILL',30,'CONTINUOUS'],['PANEL-STATUS',8,'CONTINUOUS'],['NO-ACCESS',40,'CONTINUOUS'],['NO-PT',5,'CONTINUOUS'],['PT-SCHEDULE',7,'CONTINUOUS'],['NOTES',7,'CONTINUOUS'],['TITLE',7,'CONTINUOUS'],['NORTH',7,'CONTINUOUS']];
   P('0','SECTION','2','HEADER','9','$ACADVER','1','AC1009','9','$INSUNITS','70','4','9','$LTSCALE','40','1.0','0','ENDSEC');
   P('0','SECTION','2','TABLES','0','TABLE','2','LTYPE','70','3');
@@ -2044,8 +2059,9 @@ function dxf(levelName){
   P('0','LTYPE','2','DASHDOT','70','0','3','Dash dot __ . __','72','65','73','4','40','1800.0','49','1200.0','49','-250.0','49','100.0','49','-250.0');
   P('0','ENDTAB','0','TABLE','2','LAYER','70',String(layers.length)); layers.forEach(([l,c,lt])=>P('0','LAYER','2',l,'70','0','62',String(c),'6',lt));
   P('0','ENDTAB','0','ENDSEC','0','SECTION','2','ENTITIES');
-  const LINE=(l,a,b)=>P('0','LINE','8',l,'10',n(a.X),'20',n(a.Y),'30','0.0','11',n(b.X),'21',n(b.Y),'31','0.0');
-  const TXT=(l,p,h,s,rot,align)=>{ s=String(s).replace(/[\r\n]+/g,' '); P('0','TEXT','8',l,'10',n(p.X),'20',n(p.Y),'30','0.0','40',n(h),'1',s,'50',n(rot||0));
+  // optional aci = colour for this entity only (otherwise it follows its layer)
+  const LINE=(l,a,b,aci)=>P('0','LINE','8',l,...(aci?['62',String(aci)]:[]),'10',n(a.X),'20',n(a.Y),'30','0.0','11',n(b.X),'21',n(b.Y),'31','0.0');
+  const TXT=(l,p,h,s,rot,align,aci)=>{ s=String(s).replace(/[\r\n]+/g,' '); P('0','TEXT','8',l,...(aci?['62',String(aci)]:[]),'10',n(p.X),'20',n(p.Y),'30','0.0','40',n(h),'1',s,'50',n(rot||0));
     if(align==='c') P('72','1','11',n(p.X),'21',n(p.Y),'31','0.0','73','2'); else if(align==='r') P('72','2','11',n(p.X),'21',n(p.Y),'31','0.0'); };
   const CIRC=(l,p,r)=>P('0','CIRCLE','8',l,'10',n(p.X),'20',n(p.Y),'30','0.0','40',n(r));
   const g=S.grid;
@@ -2060,7 +2076,8 @@ function dxf(levelName){
     for(let i=0;i<g.yNames.length-1;i++){ const a=GEO.yPos[g.yNames[i]], b=GEO.yPos[g.yNames[i+1]]; TXT('GRID-DIM',{X:lx-200,Y:(a+b)/2},220,String(Math.round(Math.abs(b-a))),90,'c'); } }
   // PT, assumed PT, no-drill, IDs
   CH.forEach(c=>{
-    for(let i=1;i<c.w.length;i++){ const a=c.w[i-1], b=c.w[i]; LINE(b.dash?'PT-ASSUMED':'PT',a,b);
+    for(let i=1;i<c.w.length;i++){ const a=c.w[i-1], b=c.w[i];
+      if(b.dash) LINE('PT-ASSUMED',a,b,DIRACI[b.dir]); else LINE(b.dir?'PT-'+b.dir.toUpperCase():'PT',a,b);
       if(S.buffer>0){ const L=Math.hypot(b.X-a.X,b.Y-a.Y)||1, nx=-(b.Y-a.Y)/L*S.buffer, ny=(b.X-a.X)/L*S.buffer;
         LINE('NO-DRILL',{X:a.X+nx,Y:a.Y+ny},{X:b.X+nx,Y:b.Y+ny}); LINE('NO-DRILL',{X:a.X-nx,Y:a.Y-ny},{X:b.X-nx,Y:b.Y-ny}); } }
     if(S.buffer>0){ [[c.w[0],c.w[1]],[c.w[c.w.length-1],c.w[c.w.length-2]]].forEach(([p,q])=>{ const L=Math.hypot(q.X-p.X,q.Y-p.Y)||1, nx=-(q.Y-p.Y)/L*S.buffer, ny=(q.X-p.X)/L*S.buffer; LINE('NO-DRILL',{X:p.X+nx,Y:p.Y+ny},{X:p.X-nx,Y:p.Y-ny}); }); }
@@ -2070,12 +2087,12 @@ function dxf(levelName){
   S.readings.forEach(r=>{
     const segs=SEGS.filter(s=>s.r===r); if(!segs.length) return;
     const s0=segs[0], st=s0.s0+(s0.s1-s0.s0)*0.12, far=segs.reduce((m,s)=>Math.abs(s.c-s0.g)>Math.abs(m-s0.g)?s.c:m, s0.g);
-    const H=s0.o==='H', pt=(along,across)=>H?{X:along,Y:across}:{X:across,Y:along};
-    LINE('PT-DIM',pt(st,s0.g),pt(st,far));
-    LINE('PT-DIM',pt(st-120,s0.g),pt(st+120,s0.g));
-    TXT('PT-DIM', H?{X:st+90,Y:s0.g-s0.sign*170}:{X:s0.g-s0.sign*170,Y:st+90}, 80, '0 = GRID '+r.from, H?0:90);
-    segs.forEach(s=>{ const p=pt(st,s.c); LINE('PT-DIM',{X:p.X-45,Y:p.Y-45},{X:p.X+45,Y:p.Y+45});
-      TXT('PT-DIM', H?{X:st+90,Y:s.c+25}:{X:s.c-25,Y:st+90}, 80, String(Math.round(s.d)), H?0:90); });
+    const H=s0.o==='H', pt=(along,across)=>H?{X:along,Y:across}:{X:across,Y:along}, dir=segDir(s0), k=DIRACI[dir];
+    LINE('PT-DIM',pt(st,s0.g),pt(st,far),k);
+    LINE('PT-DIM',pt(st-120,s0.g),pt(st+120,s0.g),k);
+    TXT('PT-DIM', H?{X:st+90,Y:s0.g-s0.sign*170}:{X:s0.g-s0.sign*170,Y:st+90}, 80, `0 = GRID ${r.from} (${DIRWORD[dir].toUpperCase()})`, H?0:90, null, k);
+    segs.forEach(s=>{ const p=pt(st,s.c); LINE('PT-DIM',{X:p.X-45,Y:p.Y-45},{X:p.X+45,Y:p.Y+45},k);
+      TXT('PT-DIM', H?{X:st+90,Y:s.c+25}:{X:s.c-25,Y:st+90}, 80, String(Math.round(s.d)), H?0:90, null, k); });
   });
   // panel status
   allPanels().forEach(p=>{ const st=effStatus(p); if(st==='pt') return;
@@ -2100,9 +2117,10 @@ function dxf(levelName){
     if(A.note) TXT('NO-ACCESS',{X:m.X,Y:m.Y-th*0.8},th*0.8,A.note.toUpperCase(),0,'c'); });
   // PT schedule table
   const tx=GEO.maxX+3500; let ty=GEO.maxY+1500;
-  const cols=[['PT ID',1300],['FROM GRID',1300],['OFFSET mm',1700],['RUNS GRID',2100],['LENGTH mm',1600]], TW=cols.reduce((a,c)=>a+c[1],0), RH=420;
+  const cols=[['PT ID',1300],['FROM GRID',2000],['OFFSET mm',2600],['RUNS GRID',2100],['LENGTH mm',1600]], TW=cols.reduce((a,c)=>a+c[1],0), RH=420;
   TXT('PT-SCHEDULE',{X:tx,Y:ty+250},300,`PT SCHEDULE - ${levelName.toUpperCase()}`);
-  const rows=[...CH].sort((a,b)=>a.name.localeCompare(b.name)).map(c=>[c.name, c.ref, c.offs.map(v=>Math.round(v)).join('/'), `${c.from} to ${c.to}${c.assumed?' *':''}`, Math.round(c.len)]);
+  const rows=[...CH].sort((a,b)=>a.name.localeCompare(b.name)).map(c=>{ const rf=chainRefs(c), one=rf.length===1;
+    return [c.name, rf.map(g=>`${g.from} ${DIRWORD[g.dir].toUpperCase()}`).join(', '), rf.map(g=>(one?'':g.from+': ')+g.offs.join('/')).join('  '), `${c.from} to ${c.to}${c.assumed?' *':''}`, Math.round(c.len)]; });
   const all=[cols.map(c=>c[0]),...rows];
   all.forEach((row,i)=>{ const y=ty-i*RH; LINE('PT-SCHEDULE',{X:tx,Y:y},{X:tx+TW,Y:y}); let x=tx; row.forEach((v,j)=>{ TXT('PT-SCHEDULE',{X:x+90,Y:y-RH+120},170,v); x+=cols[j][1]; }); });
   const yb=ty-all.length*RH; LINE('PT-SCHEDULE',{X:tx,Y:yb},{X:tx+TW,Y:yb});
@@ -2149,9 +2167,9 @@ function dxf(levelName){
 function csv(rowsByLevel){
   const q=v=>{ const s=String(v??''); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; };
   const out=[]; const add=r=>out.push(r.map(q).join(','));
-  add(['READINGS']); add(['Level','Panel','Measured from gridline','PT runs','Distance_'+(S.unit==='m'?'m':'mm')]);
+  add(['READINGS']); add(['Level','Panel','Measured from gridline','Direction','PT runs','Distance_'+(S.unit==='m'?'m':'mm')]);
   rowsByLevel.forEach(L=>L.readings.forEach(r=>add(r)));
-  add([]); add(['PT SCHEDULE']); add(['Level','PT','From gridline','Offset mm','Runs','Assumed part','Start X mm','Start Y mm','End X mm','End Y mm','Length mm','Panels']);
+  add([]); add(['PT SCHEDULE']); add(['Level','PT','From gridline','Direction','Offset mm','Runs','Assumed part','Start X mm','Start Y mm','End X mm','End Y mm','Length mm','Panels']);
   rowsByLevel.forEach(L=>L.chains.forEach(r=>add(r)));
   add([]); add(['PANEL STATUS']); add(['Level','Panel','Status']);
   rowsByLevel.forEach(L=>L.panels.forEach(r=>add(r)));
@@ -2161,8 +2179,10 @@ function csv(rowsByLevel){
   return out.join('\r\n')+'\r\n';
 }
 function levelRows(L){
-  return { readings:S.readings.flatMap(r=>r.offs.map(d=>[L.name, panelLabel(r).replace(/–/g,'-'), r.from, r.fromAxis==='y'?`${r.xa}-${r.xb}`:`${r.ya}-${r.yb}`, showVal(d)])),
-    chains:CH.map(c=>{ const a=c.w[0], b=c.w[c.w.length-1]; return [L.name,c.name,c.ref,c.offs.map(Math.round).join('/'),`${c.from} to ${c.to}`,c.assumed?'yes':'',Math.round(a.X),Math.round(a.Y),Math.round(b.X),Math.round(b.Y),Math.round(c.len),c.segs.length]; }),
+  const rDir=r=>{ const s=SEGS.find(s=>s.r===r); return s?DIRWORD[segDir(s)]:''; };
+  return { readings:S.readings.flatMap(r=>r.offs.map(d=>[L.name, panelLabel(r).replace(/–/g,'-'), r.from, rDir(r), r.fromAxis==='y'?`${r.xa}-${r.xb}`:`${r.ya}-${r.yb}`, showVal(d)])),
+    chains:CH.map(c=>{ const a=c.w[0], b=c.w[c.w.length-1], rf=chainRefs(c), one=rf.length===1;
+      return [L.name,c.name,rf.map(g=>g.from).join(' / '),rf.map(g=>DIRWORD[g.dir]).join(' / '),rf.map(g=>(one?'':g.from+': ')+g.offs.join('/')).join('  '),`${c.from} to ${c.to}`,c.assumed?'yes':'',Math.round(a.X),Math.round(a.Y),Math.round(b.X),Math.round(b.Y),Math.round(c.len),c.segs.length]; }),
     panels:allPanels().map(p=>[L.name, panelLabel(p).replace(/–/g,'-'), STAT_TXT[effStatus(p)]]),
     areas:S.areas.map(A=>{ const c=centroid(A.pts), p=panelAt(c.X,c.Y), B=bbox(A.pts);
       return [L.name, noPT(A)?'No PT found':'No access', p?panelLabel(p).replace(/–/g,'-'):'', A.rect?'Box':`${A.pts.length} corners`, Math.round(B.x1-B.x0), Math.round(B.y1-B.y0),
@@ -2199,7 +2219,9 @@ async function buildCADzip(){
     'To put the PT onto your CAD drawing:','1. Open the level DXF, select all, Copy with Base Point (Ctrl+Shift+C), pick 0,0.',
     `2. In your drawing, Paste (Ctrl+V) and click intersection ${c1}.`,'   If your drawing is in metres, SCALE the pasted objects by 0.001 from that point.',
     '3. Check the GRID layer lines up with your gridlines, then freeze GRID and GRID-TEXT.','',
-    'Layers:','  PT            PT cable located by GPR (red)','  PT-ASSUMED    PT carried through a no-access panel (red dashed)',
+    'Layers:','  PT-UP         PT cable located by GPR, measured upward from its gridline (yellow)','  PT-DOWN       PT cable, measured downward (red)',
+    '  PT-LEFT       PT cable, measured to the left (cyan)','  PT-RIGHT      PT cable, measured to the right (dark gold)',
+    '  PT-ASSUMED    PT carried through a no-access panel (dashed, coloured by direction)',
     '  PT-DIM        dimensions in mm from the gridline measured from on site','  PT-ID         PT reference numbers (match the schedule)',
     `  NO-DRILL      no-drill zone +/-${S.buffer} mm each side`,'  PANEL-STATUS  no PT found / no access / not scanned','  NO-ACCESS     areas (part of a panel) that could not be scanned','  NO-PT         areas (part of a panel) scanned, no PT found',
     '  PT-SCHEDULE   PT table (ID, gridline, offset, run, length)','  NOTES         project details and notes',
@@ -2261,6 +2283,7 @@ async function buildPDF(){
       else if(t==='areaNopt'){ doc.setFillColor(214,226,243); doc.rect(x,yy-1.8,10,3.6,'F'); doc.setDrawColor(61,111,179); doc.setLineWidth(0.35); doc.rect(x,yy-1.8,10,3.6,'S'); }
       else if(t==='noacc'||t==='area'){ doc.setFillColor(232,228,220); doc.rect(x,yy-1.8,10,3.6,'F'); doc.setDrawColor(140,120,80); doc.setLineWidth(0.2); for(let i=0;i<10;i+=1.6) doc.line(x+i,yy+1.8,x+Math.min(10,i+3.6),yy-1.8);
         if(t==='area'){ doc.setDrawColor(138,106,31); doc.setLineWidth(0.35); doc.rect(x,yy-1.8,10,3.6,'S'); } }
+      else if(t.startsWith('dir:')){ doc.setDrawColor(...hexRGB(DIRCOL[t.slice(4)])); doc.setLineWidth(0.7); doc.line(x,yy,x+10,yy); }
       doc.setTextColor(30); doc.text(l,x+13,y); y+=5.2; });
     doc.setDrawColor(180); doc.setLineWidth(0.2); y+=1; doc.line(x,y,x+cw,y); y+=6;
     // notes
@@ -2293,7 +2316,7 @@ async function buildPDF(){
   // schedule pages
   await forEachLevel(async L=>{
     if(!CH.length) return;
-    const rows=[...CH].sort((a,b)=>a.name.localeCompare(b.name)); const cols=[['PT ID',28],['From gridline',30],['Offset (mm)',36],['Runs between grids',58],['Length (m)',28],['Panels',22]];
+    const rows=[...CH].sort((a,b)=>a.name.localeCompare(b.name)); const cols=[['PT ID',24],['Measured from',40],['Offset (mm)',44],['Runs between grids',44],['Length (m)',24],['Panels',18]];
     let i=0; while(i<rows.length){
       doc.addPage('a3','landscape'); pages.push(L.name+' schedule');
       doc.setDrawColor(40); doc.setLineWidth(0.5); doc.rect(M,M,PW-2*M,PH-2*M);
@@ -2303,9 +2326,14 @@ async function buildPDF(){
       while(i<rows.length && colX+tableW<=PW-M-4){
         let yy=y; doc.setFillColor(238,240,241); doc.rect(colX,yy-4.5,tableW,6.5,'F'); doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(30);
         let cx=colX; cols.forEach(([h,w])=>{ doc.text(h,cx+1.5,yy); cx+=w; }); yy+=6.5; doc.setFont('helvetica','normal');
-        while(i<rows.length && yy<PH-M-8){ const c=rows[i];
-          const vals=[c.name,c.ref,c.offs.map(Math.round).join(' / '),`${c.from} to ${c.to}${c.assumed?' *':''}`,(c.len/1000).toFixed(2),String(c.segs.length)];
-          cx=colX; vals.forEach((v,j)=>{ doc.text(String(v),cx+1.5,yy); cx+=cols[j][1]; }); doc.setDrawColor(220); doc.setLineWidth(0.15); doc.line(colX,yy+1.6,colX+tableW,yy+1.6); yy+=5.4; i++; }
+        while(i<rows.length && yy<PH-M-8){ const c=rows[i], rf=chainRefs(c), one=rf.length===1;
+          const vals=[c.name,null,rf.map(g=>(one?'':g.from+': ')+g.offs.join(' / ')).join('   '),`${c.from} to ${c.to}${c.assumed?' *':''}`,(c.len/1000).toFixed(2),String(c.segs.length)];
+          cx=colX; vals.forEach((v,j)=>{ const w=cols[j][1];
+            if(v===null){ // colour chip + "A Up" for each gridline this cable was measured from
+              let px=cx+1.5; rf.forEach((g,k)=>{ const t=`${g.from} ${DIRWORD[g.dir]}${k<rf.length-1?',':''}`;
+                doc.setFillColor(...hexRGB(DIRCOL[g.dir])); doc.rect(px,yy-2.4,2.6,2.6,'F'); doc.setTextColor(30); doc.text(t,px+3.6,yy); px+=3.6+doc.getTextWidth(t)+2; });
+            } else doc.text(doc.splitTextToSize(String(v),w-2.5)[0],cx+1.5,yy);
+            cx+=w; }); doc.setDrawColor(220); doc.setLineWidth(0.15); doc.line(colX,yy+1.6,colX+tableW,yy+1.6); yy+=5.4; i++; }
         colX+=tableW+colGap;
       }
       if(rows.some(r=>r.assumed)){ doc.setFontSize(7.5); doc.setTextColor(110); doc.text('* part of the run is assumed through a no-access panel', M+8, PH-M-4); }
