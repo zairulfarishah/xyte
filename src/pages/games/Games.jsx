@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Trophy } from 'lucide-react'
+import { ArrowLeft, CalendarDays, Crown, Gamepad2, Medal, Sparkles, Trophy } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { notify } from '../../utils/notify'
 import { toast } from '../../utils/toast'
 import { GAMES, fetchBoard, fmtScore, gameOf, saveScore, weekStart } from './scores'
+import { GAME_ART, GAME_GROUPS, groupOf } from './gameArt'
+import './GamesArcade.css'
 import Flappy from './Flappy'
 import Game2048 from './Game2048'
 import Snake from './Snake'
@@ -48,37 +50,109 @@ function SetupNotice({ message }) {
 
 function Hub({ onOpen }) {
   const { memberId } = useAuth()
-  const [boards, setBoards] = useState({})
+  const [boards, setBoards] = useState(null)   // null while loading
   const [error, setError] = useState(null)
+  const [filter, setFilter] = useState('all')
 
   useEffect(() => {
     Promise.all(GAMES.map(g => fetchBoard(g.key).then(b => [g.key, b])))
       .then(list => setBoards(Object.fromEntries(list)))
-      .catch(err => setError(err.message))
+      .catch(err => { setError(err.message); setBoards({}) })
   }, [])
+
+  const mineOf = key => boards?.[key]?.find(r => r.member_id === memberId)
+  const played = boards ? GAMES.filter(g => mineOf(g.key)).length : null
+  const records = boards ? GAMES.filter(g => memberId && boards[g.key]?.[0]?.member_id === memberId).length : null
+  const groups = GAME_GROUPS.map(c => ({ ...c, n: GAMES.filter(g => groupOf(g.key) === c.key).length })).filter(c => c.n > 0)
+  const list = filter === 'all' ? GAMES : GAMES.filter(g => groupOf(g.key) === filter)
 
   return (
     <>
       {error && <SetupNotice message={error} />}
-      <div className="gm-hub">
-        {GAMES.map(g => {
-          const board = boards[g.key] || []
-          const mine = board.find(r => r.member_id === memberId)
-          const rank = mine ? board.indexOf(mine) + 1 : null
-          return (
-            <button key={g.key} className={`gm-card g-${g.key}`} onClick={() => onOpen(g.key)}>
-              <span className="em">{g.emoji}</span>
-              <b>{g.name}</b>
-              <small>{g.blurb}</small>
-              <div className="gm-card-foot">
-                <span><Trophy size={12} /> {board[0] ? `${board[0].member_name.split(' ')[0]} · ${fmtScore(g.key, board[0].score)}` : 'No record yet'}</span>
-                <span>{mine ? `You: ${fmtScore(g.key, mine.score)} · #${rank}` : 'Not played yet'}</span>
-              </div>
-            </button>
-          )
-        })}
+      <div className="ga">
+        <div className="ga-head">
+          <div className="ga-top">
+            <div>
+              <span className="ga-eyebrow"><Gamepad2 />Xyte Arcade</span>
+              <h2 className="ga-title"><span>Pick a game, top the board</span></h2>
+              <p className="ga-sub">Quick games for the break. Every score counts toward the team leaderboard.</p>
+            </div>
+            <div className="ga-stats">
+              <div className="ga-stat"><b>{GAMES.length}</b><span>Games</span></div>
+              <div className="ga-stat"><b>{played ?? '–'}<small>/{GAMES.length}</small></b><span>You've played</span></div>
+              <div className="ga-stat gold"><b>{records ?? '–'}</b><span>Records held</span></div>
+            </div>
+          </div>
+          <div className="ga-filters" role="tablist" aria-label="Game type">
+            {[{ key: 'all', label: 'All', n: GAMES.length }, ...groups].map(c => (
+              <button key={c.key} type="button" role="tab" aria-selected={filter === c.key} className={`ga-chip${filter === c.key ? ' on' : ''}`} onClick={() => setFilter(c.key)}>
+                {c.label} <em>{c.n}</em>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="ga-grid">
+          {list.map(g => <GameCard key={g.key} game={g} board={boards ? boards[g.key] || [] : null} memberId={memberId} onOpen={onOpen} />)}
+        </div>
       </div>
     </>
+  )
+}
+
+// One game: illustration, name, and the leaderboard (top player vs your record).
+// board === null while the scores are loading.
+function GameCard({ game: g, board, memberId, onOpen }) {
+  const mine = board?.find(r => r.member_id === memberId)
+  const rank = mine ? board.indexOf(mine) + 1 : null
+  const top = board?.[0]
+  const first = name => String(name || '').split(' ')[0]
+
+  return (
+    <button type="button" className={`gc g-${g.key}`} onClick={() => onOpen(g.key)} aria-label={`Play ${g.name}`}>
+      <span className="gc-top">
+        <span className="gc-art" dangerouslySetInnerHTML={{ __html: GAME_ART[g.key] || '' }} />
+        <span className="gc-side">
+          <span className="gc-play"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5Z" /></svg></span>
+          {rank === 1 ? <span className="gc-badge gold"><Crown />Record</span>
+            : rank && rank <= 3 ? <span className="gc-badge"><Medal />Top 3</span>
+            : g.sum ? <span className="gc-badge"><CalendarDays />Daily</span> : null}
+        </span>
+      </span>
+      <b className="gc-title">{g.name}</b>
+      <small className="gc-desc">{g.blurb}</small>
+
+      {!board ? (
+        <span className="gc-board" aria-label="Loading scores">
+          <span className="gc-cell"><span className="gc-sk" /><span className="gc-sk" /></span>
+          <span className="gc-cell"><span className="gc-sk" /><span className="gc-sk" /></span>
+        </span>
+      ) : !top ? (
+        <span className="gc-board empty">
+          <span className="gc-cell"><Sparkles /><span><span className="gc-muted">Not played yet</span><br /><span className="gc-hint">Be the first to set the record</span></span></span>
+        </span>
+      ) : (
+        <span className="gc-board">
+          <span className="gc-cell">
+            <span className="gc-lbl"><Crown className="crown" />Top player</span>
+            <span className="gc-name">{top.member_id === memberId ? 'You' : first(top.member_name)}</span>
+            <span className="gc-score">{fmtScore(g.key, top.score)}</span>
+          </span>
+          <span className="gc-cell me">
+            <span className="gc-lbl">Your record</span>
+            {mine ? (
+              <>
+                <span className="gc-score"><span className="gc-big">{fmtScore(g.key, mine.score)}</span></span>
+                <span className="gc-score"><span className={`gc-rank r${rank}`}>#{rank}</span>of {board.length}</span>
+              </>
+            ) : (
+              <><span className="gc-muted">Not played</span><span className="gc-hint">Tap to play</span></>
+            )}
+          </span>
+        </span>
+      )}
+      <span className="gc-rule">{g.lowerWins ? 'Lowest wins' : g.sum ? 'Points add up daily' : 'Highest wins'}</span>
+    </button>
   )
 }
 
