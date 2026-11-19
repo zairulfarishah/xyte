@@ -9,8 +9,8 @@ import './Badges.css'
 // (it swings the way you moved, then settles); clicking turns it over; Esc turns it back.
 
 const STRAPS = [48, 80, 40, 100, 64, 88, 56]   // lanyard lengths, repeating — a staggered wall
-// Soft spring: a slow, heavy swing that settles gently (stiffness 1/s², damping 1/s, max swing deg)
-const STIFF = 24, DAMP = 2.1, MAX = 13
+// Small, quick swing that settles fast (stiffness 1/s², damping 1/s, max swing deg) — kept light so it never lags
+const STIFF = 60, DAMP = 9, MAX = 5
 
 // Scroll position that lines a badge up with the wall's snap point (start on desktop, centre on phones)
 function slotLeft(el, slot) {
@@ -33,6 +33,24 @@ export default function BadgeWall({ sites, today, isZairul, updating, onStatus, 
   const raf = useRef(null)
   const lastT = useRef(0)
   const last = useRef(null)               // last pointer { x, t, v }
+  const near = useRef(new Set())          // ids of badges on (or just off) screen — the only ones animated
+
+  // Only badges near the screen get a GPU layer and take part in the drag lean
+  useEffect(() => {
+    const root = trackRef.current
+    if (!root || typeof IntersectionObserver === 'undefined') return
+    const io = new IntersectionObserver(entries => {
+      for (const en of entries) {
+        const hang = en.target.firstElementChild
+        const id = hang?.dataset.hang
+        if (!id) continue
+        if (en.isIntersecting) { near.current.add(id); hang.classList.add('near') }
+        else { near.current.delete(id); hang.classList.remove('near') }
+      }
+    }, { root, rootMargin: '0px 240px' })
+    root.querySelectorAll('.bw-slot').forEach(el => io.observe(el))
+    return () => io.disconnect()
+  }, [sites])
 
   // ── swing physics: a damped spring per badge, real frame time, one loop for all ──
   const tickRef = useRef(null)
@@ -41,15 +59,22 @@ export default function BadgeWall({ sites, today, isZairul, updating, onStatus, 
     lastT.current = now
     if (!dragging.current) wind.current *= Math.pow(0.04, dt)     // the lean fades out smoothly
     let moving = Math.abs(wind.current) > 0.02
-    if (moving || dragging.current) for (const id of hangRefs.current.keys()) if (!phys.current.has(id)) phys.current.set(id, { a: 0, v: 0 })
+    if (moving || dragging.current) for (const id of near.current) if (!phys.current.has(id)) phys.current.set(id, { a: 0, v: 0 })
     for (const [id, p] of phys.current) {
       for (let k = 0; k < 2; k++) {                                // two half-steps keep it silky
         const h = dt / 2
         p.v += (-STIFF * (p.a - wind.current) - DAMP * p.v) * h
         p.a = Math.max(-MAX, Math.min(MAX, p.a + p.v * h))
       }
-      if (Math.abs(p.a) < 0.02 && Math.abs(p.v) < 0.04 && !moving) { p.a = 0; p.v = 0 } else moving = true
-      hangRefs.current.get(id)?.style.setProperty('--sw', `${p.a.toFixed(2)}deg`)
+      const el = hangRefs.current.get(id)
+      if (Math.abs(p.a) < 0.02 && Math.abs(p.v) < 0.04 && Math.abs(wind.current) < 0.02) {
+        p.a = 0; p.v = 0; phys.current.delete(id)                  // at rest: stop simulating it
+        if (el) el.style.transform = ''
+        continue
+      }
+      moving = true
+      // written straight to transform (no CSS variable), so only the compositor works
+      if (el) el.style.transform = `rotate(${p.a.toFixed(2)}deg)`
     }
     if (moving || dragging.current) raf.current = requestAnimationFrame(tickRef.current)
     else { raf.current = null; lastT.current = 0 }
@@ -58,15 +83,15 @@ export default function BadgeWall({ sites, today, isZairul, updating, onStatus, 
   const wake = useCallback(() => { if (!raf.current) raf.current = requestAnimationFrame(tick) }, [tick])
   const kick = useCallback((id, dv) => {
     const p = phys.current.get(id) || { a: 0, v: 0 }
-    p.v = Math.max(-55, Math.min(55, p.v + Math.max(-16, Math.min(16, dv))))
+    p.v = Math.max(-30, Math.min(30, p.v + Math.max(-10, Math.min(10, dv))))
     phys.current.set(id, p)
     wake()
   }, [wake])
-  useEffect(() => () => { cancelAnimationFrame(raf.current); cancelAnimationFrame(scrollAnim.current) }, [])
+  useEffect(() => () => { cancelAnimationFrame(raf.current); cancelAnimationFrame(scrollAnim.current); cancelAnimationFrame(scrollRaf.current) }, [])
 
   // ── smooth scrolling of the rail (our own easing, so drag, glide and arrows all feel the same) ──
   const scrollAnim = useRef(null)
-  function animateTo(to, ms = 520) {
+  function animateTo(to, ms = 380) {
     const el = trackRef.current
     if (!el) return
     cancelAnimationFrame(scrollAnim.current)
@@ -112,10 +137,10 @@ export default function BadgeWall({ sites, today, isZairul, updating, onStatus, 
     el.classList.remove('dragging')
     // A fling carries on (further for a faster flick), then eases onto the nearest badge
     const fresh = performance.now() - d.lt < 60 ? d.v : 0
-    const aim = el.scrollLeft - fresh * 320
+    const aim = el.scrollLeft - fresh * 200
     const i = nearestTo(aim)
     const dist = Math.abs(slotLeft(el, el.querySelectorAll('.bw-slot')[i]) - el.scrollLeft)
-    go(i, Math.max(360, Math.min(900, 300 + dist * 0.9)))
+    go(i, Math.max(260, Math.min(520, 220 + dist * 0.6)))
   }
   useEffect(() => {
     const up = () => endDrag()
@@ -129,14 +154,12 @@ export default function BadgeWall({ sites, today, isZairul, updating, onStatus, 
     const d = drag.current
     if (d && e.pointerType === 'mouse') {
       const dx = e.clientX - d.x
-      if (!d.moved && Math.abs(dx) > 5) { d.moved = true; dragging.current = true; trackRef.current.classList.add('dragging'); wake() }
+      if (!d.moved && Math.abs(dx) > 5) { d.moved = true; trackRef.current.classList.add('dragging') }
       if (d.moved) {
         trackRef.current.scrollLeft = d.left - dx
         const v = (e.clientX - d.lx) / Math.max(8, now - d.lt)
         d.v = d.v * 0.7 + v * 0.3
         d.lx = e.clientX; d.lt = now
-        // Badges lean back against the movement, like lanyards being carried
-        if (!reduceMotion()) wind.current = Math.max(-9, Math.min(9, d.v * 9))
         last.current = null
         return
       }
@@ -150,13 +173,13 @@ export default function BadgeWall({ sites, today, isZairul, updating, onStatus, 
     if (Math.abs(vx) < 0.04) return
     // Push whichever badge the cursor is over: moving right swings its bottom right
     const card = e.target.closest?.('[data-badge]')
-    if (card) kick(card.dataset.badge, -vx * 22)
+    if (card) kick(card.dataset.badge, -vx * 14)
   }
 
   // A tap on a badge: it nudges, then turns over
   function toggle(id) {
     if (justDragged.current) return
-    if (!reduceMotion()) kick(id, flipped === id ? 10 : -10)
+    if (!reduceMotion()) kick(id, flipped === id ? 6 : -6)
     setFlipped(f => (f === id ? null : id))
   }
 
@@ -167,16 +190,20 @@ export default function BadgeWall({ sites, today, isZairul, updating, onStatus, 
   }, [])
 
   // The badge nearest the middle is "active" (dots + caption)
+  // (worked out once per frame from the slot spacing, not by measuring every badge)
+  const scrollRaf = useRef(null)
   function onScroll() {
-    const el = trackRef.current
-    if (!el) return
-    const mid = el.scrollLeft + el.clientWidth / 2
-    let best = 0, dist = Infinity
-    ;[...el.querySelectorAll('.bw-slot')].forEach((s, i) => {
-      const d = Math.abs(s.offsetLeft + s.offsetWidth / 2 - mid)
-      if (d < dist) { dist = d; best = i }
+    if (scrollRaf.current) return
+    scrollRaf.current = requestAnimationFrame(() => {
+      scrollRaf.current = null
+      const el = trackRef.current
+      const a = el?.querySelector('.bw-slot')
+      if (!a) return
+      const pitch = a.nextElementSibling ? a.nextElementSibling.offsetLeft - a.offsetLeft : 1
+      const mid = el.scrollLeft + el.clientWidth / 2
+      const i = Math.round((mid - a.offsetLeft - a.offsetWidth / 2) / pitch)
+      setActive(Math.max(0, Math.min(sites.length - 1, i)))
     })
-    setActive(best)
   }
   function go(i, ms) {
     const el = trackRef.current
@@ -196,7 +223,7 @@ export default function BadgeWall({ sites, today, isZairul, updating, onStatus, 
       <div className="bw-track" ref={trackRef} onScroll={onScroll}>
         {sites.map((site, i) => (
           <div key={site.id} className={`bw-slot t-${badgeTone(site, today)}`}>
-            <div className="bw-hang" ref={el => { if (el) hangRefs.current.set(String(site.id), el); else hangRefs.current.delete(String(site.id)) }}>
+            <div className="bw-hang" data-hang={site.id} ref={el => { if (el) hangRefs.current.set(String(site.id), el); else hangRefs.current.delete(String(site.id)) }}>
               <i className="bw-hook" />
               <i className="bw-strap" style={{ height: STRAPS[i % STRAPS.length] }} />
               <i className="bw-ring" />

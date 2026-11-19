@@ -1,3 +1,4 @@
+import { memo, useState } from 'react'
 import { ArrowUpRight, Calendar, FileWarning, Truck, Users } from 'lucide-react'
 import { REPORT_STATUS, SITE_STATUS, statusInfo } from '../../components/ui/status'
 import { getSiteHeaderImage } from '../../utils/siteHeader'
@@ -17,6 +18,18 @@ function barcode(seed) {
   for (let i = 0; i < 46; i++) { h = Math.imul(h ^ (h >>> 13), 2654435761); bars.push(1 + ((h >>> 0) % 3)) }
   return bars
 }
+// The bars as one painted gradient (one element instead of 46)
+function barsBackground(bars) {
+  const stops = []
+  let x = 0
+  bars.forEach((w, i) => {
+    stops.push(`#e5e7eb ${x}px ${x + w}px`)
+    x += w
+    const gap = i % 3 ? 1 : 2
+    if (i < bars.length - 1) { stops.push(`transparent ${x}px ${x + gap}px`); x += gap }
+  })
+  return { width: x, background: `linear-gradient(90deg, ${stops.join(', ')})` }
+}
 const digitsOf = (seed, n = 10) => {
   const d = String(seed).replace(/\D/g, '')
   return (d + '0000000000').slice(0, n)
@@ -35,7 +48,10 @@ function dueLine(site, today) {
   return { text: left <= 0 ? 'Due today' : left === 1 ? 'Due tomorrow' : `Due in ${left} days` }
 }
 
-export default function ReportBadge({ site, today, flipped, isZairul, updating, onStatus, onOpen }) {
+function ReportBadge({ site, today, flipped, isZairul, updating, onStatus, onOpen }) {
+  // The back is only built once the badge has been turned over (most never are)
+  const [seenBack, setSeenBack] = useState(flipped)
+  if (flipped && !seenBack) setSeenBack(true)
   const roster = uniqueAssignments(site.site_assignments || [])
   const pic = roster.find(isPic)
   const crew = roster.filter(a => !isPic(a))
@@ -49,23 +65,23 @@ export default function ReportBadge({ site, today, flipped, isZairul, updating, 
   const stop = e => e.stopPropagation()
 
   return (
-    <div className={`rb-flip${flipped ? ' on' : ''}`}>
+    <div className={`rb-flip${seenBack ? ' d3' : ''}${flipped ? ' on' : ''}`}>
       {/* ── front ── */}
       <div className="rb-face rb-front" aria-hidden={flipped}>
         <div className="rb-band"><i className="rb-slot" /></div>
         {overdue > 0 && <span className="rb-stamp">Overdue</span>}
-        <div className="rb-photo"><img src={site.site_photo_url || getSiteHeaderImage(site.site_type)} alt="" loading="lazy" draggable="false" /></div>
+        <div className="rb-photo"><img src={site.site_photo_url || getSiteHeaderImage(site.site_type)} alt="" loading="lazy" decoding="async" draggable="false" /></div>
         <b className="rb-name">{site.site_name}</b>
         <span className="rb-sub">{site.client_company_name || TYPE_LABEL[site.site_type] || 'Site'}</span>
         <span className="rb-caps">Report · {status.label}</span>
         <div className="rb-code">
-          <div className="rb-bars" aria-hidden="true">{bars.map((w, i) => <i key={i} style={{ width: w, marginRight: i % 3 ? 1 : 2 }} />)}</div>
+          <div className="rb-bars" aria-hidden="true" style={barsBackground(bars)} />
           <span>{doNo ? doNo : digitsOf(seed)}</span>
         </div>
       </div>
 
       {/* ── back ── */}
-      <div className="rb-face rb-back" aria-hidden={!flipped}>
+      {seenBack && <div className="rb-face rb-back" aria-hidden={!flipped}>
         <div className="rb-band thin"><i className="rb-slot" /></div>
         <b className="rb-bname">{site.site_name}</b>
         <span className="rb-bsub">{TYPE_LABEL[site.site_type] || 'Site'} · site {statusInfo(SITE_STATUS, site.site_status).label.toLowerCase()}</span>
@@ -98,7 +114,9 @@ export default function ReportBadge({ site, today, flipped, isZairul, updating, 
             Open site <ArrowUpRight />
           </button>
         </div>
-      </div>
+      </div>}
     </div>
   )
 }
+
+export default memo(ReportBadge)
